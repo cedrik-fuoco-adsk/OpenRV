@@ -289,7 +289,8 @@ ELSE() # Windows
   EXTERNALPROJECT_ADD_STEP(
     ${_target} add_vcpkg_manifest
     COMMENT "Copying the VCPKG manifest"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_vcpkg_manifest} "${_source_dir}/vcpkg.json"
+    COMMAND python3 "${OPENRV_ROOT}/src/build/copy_third_party.py" --build-root "${CMAKE_BINARY_DIR}" --source "${_vcpkg_manifest}" --destination
+            "${_source_dir}/vcpkg.json"
     DEPENDERS configure
   )
 
@@ -319,7 +320,8 @@ IF(RV_VFX_CY2023)
     TARGET ${_target}
     POST_BUILD
     COMMENT "Copying PyOpenColorIO lib into '${_ocio_stage_plugins_python_dir}'."
-    COMMAND ${CMAKE_COMMAND} -E copy ${_pyocio_lib} ${_ocio_stage_plugins_python_dir}
+    COMMAND python3 "${OPENRV_ROOT}/src/build/copy_third_party.py" --build-root "${CMAKE_BINARY_DIR}" 
+            --source "${_pyocio_lib}" --destination "${_ocio_stage_plugins_python_dir}"
   )
 ELSEIF(RV_VFX_CY2024)
   # All platform
@@ -328,7 +330,8 @@ ELSEIF(RV_VFX_CY2024)
     POST_BUILD
     COMMENT "Copying PyOpenColorIO directory into '${_ocio_stage_plugins_python_dir}'."
     # Copy PyOpenColorIO directory to the stage python plugins directory.
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_pyocio_lib_dir} ${_ocio_stage_plugins_python_dir}
+    COMMAND python3 "${OPENRV_ROOT}/src/build/copy_third_party.py" --build-root "${CMAKE_BINARY_DIR}" 
+            --source "${_pyocio_lib_dir}" --destination "${_ocio_stage_plugins_python_dir}"
   )
 ENDIF()
 
@@ -337,7 +340,8 @@ ADD_CUSTOM_COMMAND(
   TARGET ${_target}
   POST_BUILD
   COMMENT "Copying OpenColorIO lib into '${RV_STAGE_LIB_DIR}'."
-  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
+  COMMAND python3 "${OPENRV_ROOT}/src/build/copy_third_party.py" --build-root "${CMAKE_BINARY_DIR}" 
+          --source "${_lib_dir}" --destination "${RV_STAGE_LIB_DIR}"
 )
 
 IF(RV_TARGET_WINDOWS)
@@ -351,7 +355,8 @@ IF(RV_TARGET_WINDOWS)
     TARGET ${_target}
     POST_BUILD
     # Copy OCIO shared library to the stage python plugins directory.
-    COMMAND ${CMAKE_COMMAND} -E copy ${_ocio_win_sharedlib_path} ${_ocio_stage_plugins_python_dir}
+    COMMAND python3 "${OPENRV_ROOT}/src/build/copy_third_party.py" --build-root "${CMAKE_BINARY_DIR}" 
+            --source "${_ocio_win_sharedlib_path}" --destination "${_ocio_stage_plugins_python_dir}"
   ) 
 
   # Windows only.
