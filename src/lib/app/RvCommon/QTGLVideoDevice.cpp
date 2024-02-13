@@ -23,7 +23,7 @@ using namespace std;
 using namespace TwkGLF;
 using namespace TwkApp;
 
-QTGLVideoDevice::QTGLVideoDevice(VideoModule* m, const string& name, QGLWidget *view) 
+QTGLVideoDevice::QTGLVideoDevice(VideoModule* m, const string& name, QOpenGLWidget *view) 
     : GLVideoDevice(m, name, ImageOutput | ProvidesSync | SubWindow ),
       m_view(view),
       m_translator(new QTTranslator(this, view)),
@@ -43,7 +43,7 @@ QTGLVideoDevice::QTGLVideoDevice(VideoModule* m, const string& name)
 {
 }
 
-QTGLVideoDevice::QTGLVideoDevice(const string& name, QGLWidget *view) 
+QTGLVideoDevice::QTGLVideoDevice(const string& name, QOpenGLWidget *view) 
     : GLVideoDevice(NULL, name, NoCapabilities ),
       m_view(view),
       m_translator(new QTTranslator(this, view)),
@@ -60,7 +60,7 @@ QTGLVideoDevice::~QTGLVideoDevice()
 } 
 
 void
-QTGLVideoDevice::setWidget(QGLWidget* widget)
+QTGLVideoDevice::setWidget(QOpenGLWidget* widget)
 {
     m_view = widget;
     m_translator = new QTTranslator(this, m_view);
@@ -69,15 +69,23 @@ QTGLVideoDevice::setWidget(QGLWidget* widget)
 GLVideoDevice* 
 QTGLVideoDevice::newSharedContextWorkerDevice() const
 {
-    QGLWidget* w = new QGLWidget(m_view->parentWidget(), m_view);
+    // QGLWidget* w = new QGLWidget(m_view->parentWidget(), m_view);
+    // return new QTGLVideoDevice(name() + "-workerContextDevice", w);
+    
+    // Create a new QOpenGLWidget with the same parent widget as the original view.
+    QOpenGLWidget* w = new QOpenGLWidget(m_view->parentWidget());
+    // Set the same QSurfaceFormat as the original view.
+    w->setFormat(m_view->format());
     return new QTGLVideoDevice(name() + "-workerContextDevice", w);
 }
 
 void 
 QTGLVideoDevice::makeCurrent() const 
 { 
-    if (m_view->context()->contextHandle() && m_view->context()->isValid()) m_view->makeCurrent();
-    if (!isWorkerDevice()) GLVideoDevice::makeCurrent(); 
+    // if (m_view->context()->contextHandle() && m_view->context()->isValid()) m_view->makeCurrent();
+    // if (!isWorkerDevice()) GLVideoDevice::makeCurrent(); 
+    if (m_view->context() && m_view->isValid()) m_view->makeCurrent();
+    if (!isWorkerDevice()) GLVideoDevice::makeCurrent();
 }
 
 void 
@@ -97,7 +105,7 @@ QTGLVideoDevice::redrawImmediately() const
     {
         if (m_view->isVisible()) 
         {
-            m_view->updateGL();
+            m_view->update();
         }
         else 
         {
@@ -177,8 +185,11 @@ QTGLVideoDevice::syncBuffers() const
 {
     if (!isWorkerDevice())
     {
-        makeCurrent();
-        m_view->swapBuffers();
+        // With QOpenGLWidget, you don't need to manually swap buffers
+        // Simply update the widget to trigger the paintGL() method
+        // TODO_QT But what about when there is no paintGL() ? Do we need to add it?
+        //makeCurrent();
+        //m_view->swapBuffers();
     }
 }
 

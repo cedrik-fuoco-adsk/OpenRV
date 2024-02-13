@@ -10,6 +10,7 @@
 #include <QtCore/QUrl>
 #include <QtCore/QDir>
 #include <QtCore/QTextCodec>
+#include <QtCore/QTextCodec>
 #include <QtCore/QStandardPaths>
 #include <QtNetwork/QNetworkRequest>
 #include <QtNetwork/QNetworkReply>

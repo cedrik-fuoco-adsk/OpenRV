@@ -12,7 +12,7 @@
 namespace Rv {
 using namespace std;
 
-QTFrameBuffer::QTFrameBuffer(QGLWidget *view) :
+QTFrameBuffer::QTFrameBuffer(QOpenGLWidget *view) :
     FrameBuffer(view->objectName().toUtf8().data()),
     m_view(view),
     m_translator(this, view),

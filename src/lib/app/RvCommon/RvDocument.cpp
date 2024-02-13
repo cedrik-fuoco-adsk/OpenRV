@@ -164,6 +164,7 @@ RvDocument::RvDocument()
     //
     //
 
+    cout << "INFO: docs.empty()=" << docs.empty() << endl;
     if (docs.empty())
     {
         m_glView = new GLView(this,
@@ -292,6 +293,7 @@ RvDocument::RvDocument()
     m_session->playStopSignal().connect(boost::bind(&RvDocument::playStopSlot, this, std::placeholders::_1));
     m_session->physicalVideoDeviceChangedSignal().connect(boost::bind(&RvDocument::physicalVideoDeviceChangedSlot, this, std::placeholders::_1));
 
+    cout << "INFO: RvDocument::RvDocument() " << endl;
     if (resetGLPrefs) resetGLStateAndPrefs();
 
 #ifdef PLATFORM_LINUX
@@ -793,6 +795,7 @@ RvDocument::rebuildGLView(bool stereo,
 
     m_glView->videoDevice()->sendEvent(TwkApp::RenderContextChangeEvent("gl-context-changed", m_glView->videoDevice()));
 
+    cout << "INFO: RvDocument::rebuildGLView" << endl;
     if (resetGLPrefs) resetGLStateAndPrefs();
 
     if (DesktopVideoModule* m = RvApp()->desktopVideoModule())
@@ -819,7 +822,8 @@ RvDocument::setStereo(bool b)
 {
     const bool vsync  = m_glView->format().swapInterval() == 1;
     const bool stereo = m_glView->format().stereo();
-    const bool dbl    = m_glView->format().doubleBuffer();
+    bool dbl = false;
+    if (m_glView->format().swapBehavior() == QSurfaceFormat::DoubleBuffer) dbl = true;
     const int  red    = m_glView->format().redBufferSize();
     const int  green  = m_glView->format().greenBufferSize();
     const int  blue   = m_glView->format().blueBufferSize();
@@ -833,7 +837,8 @@ RvDocument::setVSync(bool b)
     if (m_vsyncDisabled) return;
     const bool vsync = m_glView->format().swapInterval() == 1;
     const bool stereo = m_glView->format().stereo();
-    const bool dbl    = m_glView->format().doubleBuffer();
+    bool dbl = false;
+    if (m_glView->format().swapBehavior() == QSurfaceFormat::DoubleBuffer) dbl = true;
     const int  red    = m_glView->format().redBufferSize();
     const int  green  = m_glView->format().greenBufferSize();
     const int  blue   = m_glView->format().blueBufferSize();
@@ -861,7 +866,8 @@ RvDocument::setDisplayOutput(DisplayOutputType type)
 {
     const bool vsync = m_glView->format().swapInterval() == 1;
     const bool stereo = m_glView->format().stereo();
-    const bool dbl    = m_glView->format().doubleBuffer();
+    bool dbl = false;
+    if (m_glView->format().swapBehavior() == QSurfaceFormat::DoubleBuffer) dbl = true;
     int  red    = m_glView->format().redBufferSize();
     int  green  = m_glView->format().greenBufferSize();
     int  blue   = m_glView->format().blueBufferSize();
