@@ -111,7 +111,7 @@ class ThreadTrampoline
 }
 
 GLView::GLView(QWidget* parent,
-               const QGLWidget* share,
+               const QOpenGLWidget* share,
                RvDocument* doc,
                bool strereo,
                bool vsync,
@@ -121,9 +121,7 @@ GLView::GLView(QWidget* parent,
                int blue,
                int alpha,
                bool noResize)
-    : QGLWidget(GLView::rvGLFormat(strereo, vsync, doubleBuffer, red, green, blue, alpha), 
-                parent, 
-                share),
+    : QOpenGLWidget(parent),
       m_doc(doc),
       m_red(red),
       m_green(green),
@@ -140,6 +138,11 @@ GLView::GLView(QWidget* parent,
       m_stopProcessingEvents(false),
       m_syncThreadData(0)
 {
+    setFormat(GLView::rvGLFormat(strereo, vsync, doubleBuffer, red, green, blue, alpha));
+
+    cout << "format().profile = " << format().profile() << endl;
+    cout << "format().version = " << format().version().first << "." << format().version().second << endl;
+
     setObjectName((m_doc->session()) ?  m_doc->session()->name().c_str() : "no session");
     //m_frameBuffer = new QTFrameBuffer( this );
     ostringstream str;
@@ -149,12 +152,15 @@ GLView::GLView(QWidget* parent,
     setMouseTracking(true);
     setAcceptDrops(true);
     setFocusPolicy(Qt::StrongFocus);
-    setAutoBufferSwap(false);
+
+    // TODO_QT No need to manually buffer swap now.
+    //setAutoBufferSwap(false);
 
     m_eventProcessingTimer.setSingleShot(true);
     connect(&m_eventProcessingTimer, SIGNAL(timeout()), this, SLOT(eventProcessingTimeout()));
 
-    QGLFormat f = format();
+    // TODO_QT What is this?
+    QSurfaceFormat f = format();
 }
 
 GLView::~GLView()
@@ -204,7 +210,7 @@ GLView::absolutePosition(int& x, int& y) const
     y = gp.y();
 }
 
-QGLFormat 
+QSurfaceFormat 
 GLView::rvGLFormat(bool stereo,
                    bool vsync,
                    bool doubleBuffer,
@@ -215,13 +221,26 @@ GLView::rvGLFormat(bool stereo,
 {
     const Rv::Options& opts = Rv::Options::sharedOptions();
 
-    QGLFormat fmt;
+    QSurfaceFormat fmt;
+    // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the depth buffer.
     fmt.setDepthBufferSize(0);
-    fmt.setDoubleBuffer(doubleBuffer);
+
+    if (doubleBuffer) 
+    {
+        fmt.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+    }
+    else 
+    {
+        fmt.setSwapBehavior(QSurfaceFormat::SingleBuffer);
+    }
+    
+    // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the stencil buffer.
     fmt.setStencilBufferSize(8);
-    fmt.setStencil(true);
-    fmt.setDepth(false);
-    fmt.setStereo(stereo);
+
+    if (stereo) 
+    {
+        fmt.setOption(QSurfaceFormat::StereoBuffers);
+    }
 
     //
     //  The default value for these buffer sizes is -1, but it is
@@ -233,7 +252,7 @@ GLView::rvGLFormat(bool stereo,
     if (blue  >  0) fmt.setBlueBufferSize(blue);
     if (alpha >= 0)
     {
-        fmt.setAlpha(alpha != 0);
+        // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the alpha buffer.
         fmt.setAlphaBufferSize(alpha);
     }
 
@@ -251,7 +270,12 @@ GLView::initializeGL()
 
     if (isValid())
     {
-        QGLFormat f = context()->format();
+        std::cout << "INFO: Hello from GLView::initializeGL()" << endl;
+        // initializeOpenGLFunctions();
+
+        // Get the format from the context of this widget.
+        QSurfaceFormat f = context()->format();
+
 
 #ifndef PLATFORM_DARWIN
         //
@@ -290,7 +314,8 @@ GLView::initializeGL()
         }
 #endif
 
-        if (!f.stencil())
+        // TODO_QT Confirm 
+        if (f.stencilBufferSize() == 0)
         {
             cout << "WARNING: no stencil buffer available" << endl;
         }
@@ -458,7 +483,8 @@ GLView::paintGL()
         }
         else
         {
-            swapBuffers();
+            // TODO_QT Swapping buffer are handled automatically after paintGL.
+            //swapBuffers();
         }
 
         trecord.swapEnd = session->profilingElapsedTime();
@@ -500,13 +526,16 @@ GLView::paintGL()
             swapBuffers();
 #else
             session->outputVideoDevice()->syncBuffers();
-            makeCurrent();
-            swapBuffersNoSync();
+            
+            // TODO_QT Swapping buffer are handled automatically after paintGL.
+            //makeCurrent();
+            //swapBuffersNoSync();
 #endif
         }
         else
         {
-            swapBuffers();
+            // TODO_QT Swapping buffer are handled automatically after paintGL.
+            //swapBuffers();
         }
     }
 
@@ -670,7 +699,7 @@ GLView::event(QEvent* event)
                 session->userGenericEvent("view-resized", contents.str());
             }
         }
-        return QGLWidget::event(event);
+        return QOpenGLWidget::event(event);
     }
 
     if (session && session->outputVideoDevice() &&
@@ -736,7 +765,7 @@ GLView::event(QEvent* event)
     }
     else
     {
-        bool result = QGLWidget::event(event);
+        bool result = QOpenGLWidget::event(event);
 
         return result;
     }

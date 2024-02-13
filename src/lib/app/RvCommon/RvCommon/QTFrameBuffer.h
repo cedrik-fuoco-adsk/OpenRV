@@ -8,7 +8,7 @@
 #ifndef __mu_usf__QTFrameBuffer__h__
 #define __mu_usf__QTFrameBuffer__h__
 #include <QtGui/QWidget>
-#include <QtOpenGL/QGLWidget>
+#include <QOpenGLWidget>
 #include <TwkGLF/FrameBuffer.h>
 #include <RvCommon/QTTranslator.h>
 
@@ -17,7 +17,7 @@ namespace Rv {
 class QTFrameBuffer : public TwkGLF::FrameBuffer
 {
 public:
-    QTFrameBuffer(QGLWidget *view);
+    QTFrameBuffer(QOpenGLWidget *view);
     ~QTFrameBuffer();
     
     virtual size_t width() const;
@@ -38,7 +38,7 @@ public:
 private:
     int          m_x;
     int          m_y;
-    QGLWidget*   m_view;
+    QOpenGLWidget*   m_view;
     QTTranslator m_translator;
 };
 

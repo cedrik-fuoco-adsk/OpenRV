@@ -26,16 +26,29 @@ using namespace TwkApp;
 
 //----------------------------------------------------------------------
 
-class ScreenView : public QGLWidget
+class ScreenView : public QOpenGLWidget
 {
   public:
-    ScreenView(const QGLFormat& fmt,
+    // For QOpenGLWidget instances that are placed into the same top-level window, sharing is implicit 
+    // and always enabled.
+    // For QOpenGLWidget instances that are placed into different top-level windows, the new 
+    // application attribute Qt::AA_ShareOpenGLContexts is provided. Setting this attribute at 
+    // the beginning of the application will make the contexts of all QOpenGLWidget instances 
+    // sharing with each other without any further steps. 
+    // No more manual setting up of share hierarchies, as was the case with QGLWidget.
+
+    // TODO_QT Not sure what to do with the "share" part.
+    ScreenView(const QSurfaceFormat& fmt,
                QWidget* parent,
-               QGLWidget* share,
+               //QGLWidget* share,
                Qt::WindowFlags flags)
-        : QGLWidget(fmt, parent, share, flags)
+        : QOpenGLWidget(parent, flags)
         {
-            setAutoBufferSwap(false);
+            // Configure the QSurfaceFormat and apply it.
+            setFormat(fmt);
+
+            // TODO_QT Not sure about this one.
+            //setAutoBufferSwap(false);
         }
 
     ~ScreenView() {}
@@ -70,7 +83,7 @@ QTDesktopVideoDevice::~QTDesktopVideoDevice()
 
 
 void
-QTDesktopVideoDevice::setWidget(QGLWidget* widget)
+QTDesktopVideoDevice::setWidget(QOpenGLWidget* widget)
 {
     m_view = widget;
     m_translator = new QTTranslator(this, m_view);
@@ -99,7 +112,7 @@ QTDesktopVideoDevice::redrawImmediately() const
     if (m_view && m_view->isVisible()) 
     {
         ScopedLock lock(m_mutex);
-        m_view->updateGL();
+        m_view->update();
     }
     else 
     {
@@ -114,7 +127,8 @@ QTDesktopVideoDevice::syncBuffers() const
     {
         ScopedLock lock(m_mutex);
         makeCurrent();
-        m_view->swapBuffers();
+        // TODO_QT
+        //m_view->swapBuffers();
     }
 }
 
@@ -125,9 +139,12 @@ QTDesktopVideoDevice::open(const StringVector& args)
     //  always make the fullscreen device synced
     //
 
-    QGLFormat fmt = shareDevice()->widget()->format();
-    fmt.setSwapInterval(m_vsync ? 1 : 0);
-    ScreenView* s = new ScreenView(fmt, 0, shareDevice()->widget(), Qt::Window);
+    QSurfaceFormat surfaceFormat = shareDevice()->widget()->format();
+
+    //fmt.setSwapInterval(m_vsync ? 1 : 0);
+    surfaceFormat.setSwapInterval(m_vsync ? 1 : 0);
+
+    ScreenView* s = new ScreenView(surfaceFormat, 0, Qt::Window);
     setWidget(s);
     setViewDevice(new QTGLVideoDevice(0, "local view", s));
 
