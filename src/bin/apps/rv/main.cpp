@@ -527,6 +527,14 @@ utf8Main(int argc, char *argv[])
     //  Application
     //
 
+
+    // TODO_QT
+    QSurfaceFormat fmt;
+    // fmt.setVersion(4, 6);
+    // fmt.setProfile(QSurfaceFormat::NoProfile);
+    // fmt.setRenderableType(QSurfaceFormat::OpenGL);
+    QSurfaceFormat::setDefaultFormat(fmt);
+
     QApplication* app = new QApplication(argc, argv);
 
     QTranslator* translator = new QTranslator();

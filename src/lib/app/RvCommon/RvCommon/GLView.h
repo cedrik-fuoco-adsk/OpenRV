@@ -11,7 +11,6 @@
 #include <QOpenGLWidget>
 #include <QSurfaceFormat>
 #include <QOpenGLContext>
-//#include <QOpenGLFunctions>
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
 #include <TwkUtil/Timer.h>

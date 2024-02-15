@@ -140,6 +140,14 @@ GLView::GLView(QWidget* parent,
 {
     setFormat(GLView::rvGLFormat(strereo, vsync, doubleBuffer, red, green, blue, alpha));
 
+    // QOpenGLContext *context = QOpenGLContext::currentContext();
+    // if (!context) {
+    //     cout << "Creating context?" << endl;
+    //     context = new QOpenGLContext();
+    //     context->setFormat(format());
+    //     context->create();
+    // }
+
     cout << "format().profile = " << format().profile() << endl;
     cout << "format().version = " << format().version().first << "." << format().version().second << endl;
 
@@ -222,6 +230,11 @@ GLView::rvGLFormat(bool stereo,
     const Rv::Options& opts = Rv::Options::sharedOptions();
 
     QSurfaceFormat fmt;
+
+    //fmt.setVersion(3, 2);
+    // fmt.setProfile(QSurfaceFormat::NoProfile);
+    // fmt.setRenderableType(QSurfaceFormat::OpenGL);
+
     // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the depth buffer.
     fmt.setDepthBufferSize(0);
 
@@ -267,10 +280,9 @@ GLView::initializeGL()
     //
     //  At this point the format is known. Can't do this in the constructor
     //
-
+    std::cout << "INFO: GLView::initializeGL()" << endl;
     if (isValid())
     {
-        std::cout << "INFO: Hello from GLView::initializeGL()" << endl;
         // initializeOpenGLFunctions();
 
         // Get the format from the context of this widget.
@@ -483,7 +495,8 @@ GLView::paintGL()
         }
         else
         {
-            // TODO_QT Swapping buffer are handled automatically after paintGL.
+            // TODO_QT swapBuffers is not part of QOpenGLWidget. It is now part of QOpenGLContext.
+            // TODO_QT QOpenGLContext::swapBuffers needs a QSurface
             //swapBuffers();
         }
 
@@ -523,18 +536,21 @@ GLView::paintGL()
             //session->outputVideoDevice()->syncBuffers();
 
             makeCurrent();
-            swapBuffers();
+            // TODO_QT swapBuffers is not part of QOpenGLWidget. It is now part of QOpenGLContext.
+            // TODO_QT QOpenGLContext::swapBuffers needs a QSurface
+            //swapBuffers();
 #else
             session->outputVideoDevice()->syncBuffers();
             
-            // TODO_QT Swapping buffer are handled automatically after paintGL.
-            //makeCurrent();
-            //swapBuffersNoSync();
+            // TODO_QT Swapping buffer is handled differently now. Not sure about this.
+            makeCurrent();
+            swapBuffersNoSync();
 #endif
         }
         else
         {
-            // TODO_QT Swapping buffer are handled automatically after paintGL.
+            // TODO_QT swapBuffers is not part of QOpenGLWidget. It is now part of QOpenGLContext.
+            // TODO_QT QOpenGLContext::swapBuffers needs a QSurface
             //swapBuffers();
         }
     }

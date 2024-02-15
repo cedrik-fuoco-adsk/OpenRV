@@ -180,10 +180,7 @@ RvDocument::RvDocument()
                               !m_startupResize
                               );
 
-        //
-        //  Make the GL context valid ASAP so we can query it later
-        //
-
+        cout << "INFO: m_glView->isValid()=" << m_glView->isValid() << endl;
         if (!m_glView->isValid())
         {
             delete m_glView;
@@ -736,6 +733,7 @@ RvDocument::rebuildGLView(bool stereo,
                           int blue,
                           int alpha)
 {
+    cout << "INFO: RvDocument::rebuildGLView" << endl;
     //
     //  On the mac, we need to carefully replace the content GL widget so
     //  that Qt doesn't resize the dock widgets and everything
@@ -795,7 +793,6 @@ RvDocument::rebuildGLView(bool stereo,
 
     m_glView->videoDevice()->sendEvent(TwkApp::RenderContextChangeEvent("gl-context-changed", m_glView->videoDevice()));
 
-    cout << "INFO: RvDocument::rebuildGLView" << endl;
     if (resetGLPrefs) resetGLStateAndPrefs();
 
     if (DesktopVideoModule* m = RvApp()->desktopVideoModule())
