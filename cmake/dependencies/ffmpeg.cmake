@@ -229,7 +229,7 @@ IF(NOT RV_FFMPEG_CONFIG_OPTIONS)
   LIST(APPEND _disabled_protocols "--disable-protocol=rtmpte")
 
   SET(RV_FFMPEG_CONFIG_OPTIONS
-      "${_disabled_decoders} ${_disabled_encoders} ${_disabled_filters} ${_disabled_parsers} ${_disabled_protocols}"
+      ${_disabled_decoders} ${_disabled_encoders} ${_disabled_filters} ${_disabled_parsers} ${_disabled_protocols}
   )
 ENDIF()
 
@@ -239,18 +239,23 @@ LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTRA_C_OPTIONS)
 LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTRA_LIBPATH_OPTIONS)
 LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTERNAL_LIBS)
 
-SET(_ffmpeg_david_cmake_lib_dir_path
-    "${RV_DEPS_DAVID_LIB_DIR}"
-)
+# Convert the environment variable to a CMake path list
+cmake_path(CONVERT "$ENV{PKG_CONFIG_PATH}" TO_CMAKE_PATH_LIST _ffmpeg_preprocess_pkg_config_path)
+# Convert the new path to a CMake path list
+cmake_path(CONVERT "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig" TO_CMAKE_PATH_LIST _DAV1D_LIB_DIR_)
+# Append the new path to the existing list
+SET(_ffmpeg_preprocess_pkg_config_path "${_ffmpeg_preprocess_pkg_config_path};/c/abc;${_DAV1D_LIB_DIR_}")
+
 IF(RV_TARGET_WINDOWS)
-  # Changing path start from "c:/..." to "/c/..." and replacing all backslashes with slashes since PkgConfig wants a linux path
-  STRING(REPLACE "\\" "/" _ffmpeg_david_cmake_lib_dir_path "${_ffmpeg_david_cmake_lib_dir_path}")
-  STRING(REPLACE ":" "" _ffmpeg_david_cmake_lib_dir_path "${_ffmpeg_david_cmake_lib_dir_path}")
-  STRING(FIND ${_ffmpeg_david_cmake_lib_dir_path} / _ffmpeg_first_slash_index)
-  IF(_ffmpeg_first_slash_index GREATER 0)
-    STRING(PREPEND _ffmpeg_david_cmake_lib_dir_path "/")
-  ENDIF()
+  # Since MSYS2 accepts the semi-colons as separated, keep it to support all the forward-slash style path.
+  # e.g. /c/abc and c:/abc are valid forward-slash style path.
+  STRING(REPLACE ";" $<SEMICOLON> _ffmpeg_pkg_config_path "${_ffmpeg_preprocess_pkg_config_path}")
+ELSE()
+  # Replace the semi-colon with colons for path separator.
+  STRING(REPLACE ";" ":" _ffmpeg_pkg_config_path "${_ffmpeg_preprocess_pkg_config_path}")
 ENDIF()
+
+SEPARATE_ARGUMENTS(RV_FFMPEG_PATCH_COMMAND_STEP)
 
 EXTERNALPROJECT_ADD(
   ${_target}
@@ -262,10 +267,10 @@ EXTERNALPROJECT_ADD(
   URL ${_download_url}
   URL_MD5 ${_download_hash}
   SOURCE_DIR ${RV_DEPS_BASE_DIR}/${_target}/src
-  ${RV_FFMPEG_PATCH_COMMAND_STEP}
+  PATCH_COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
   CONFIGURE_COMMAND
-    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=$PKG_CONFIG_PATH:${_ffmpeg_david_cmake_lib_dir_path}/pkgconfig" ${_configure_command} --prefix=${_install_dir}
-    ${RV_FFMPEG_COMMON_CONFIG_OPTIONS} ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS} ${RV_FFMPEG_EXTERNAL_LIBS}
+    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}" ${_configure_command} --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
+    ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS} ${RV_FFMPEG_EXTERNAL_LIBS}
   BUILD_COMMAND ${_make_command} -j${_cpu_count}
   INSTALL_COMMAND ${_make_command} install
   BUILD_IN_SOURCE TRUE
