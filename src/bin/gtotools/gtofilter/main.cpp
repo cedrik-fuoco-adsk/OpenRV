@@ -18,11 +18,7 @@
 #include <sys/types.h>
 #include <sstream>
 
-#ifdef WIN32
-#include <pcreposix.h>
-#else
-#include <regex.h>
-#endif
+#include <QRegularExpression>
 
 using namespace Gto;
 using namespace std;
@@ -32,8 +28,8 @@ bool glob       = true;
 bool text       = false;
 bool nocompress = false;
 
-regex_t excludeRegex;
-regex_t includeRegex;
+QRegularExpression excludeRegex;
+QRegularExpression includeRegex;
 
 struct FullProperty
 {
@@ -110,7 +106,8 @@ void filter(RawDataBase* db,
             }
             else
             {
-                matched = !regexec(&includeRegex, fp.name.c_str(), 0, 0, 0);
+                QRegularExpressionMatch match = excludeRegex.match(QString::fromUtf8(fp.name.c_str()));
+                matched = match.hasMatch();
             }
 
             if (verbose && matched)
@@ -132,7 +129,8 @@ void filter(RawDataBase* db,
             }
             else
             {
-                matched = !regexec(&excludeRegex, fp.name.c_str(), 0, 0, 0);
+                QRegularExpressionMatch match = excludeRegex.match(QString::fromUtf8(fp.name.c_str()));
+                matched = match.hasMatch();
             }
 
             if (verbose && matched)
@@ -282,22 +280,22 @@ int utf8Main(int argc, char *argv[])
     {
         if (excludeExpr)
         {
-            if (int err = regcomp(&excludeRegex, excludeExpr, REG_NOSUB))
+            // Check if the regular expression is valid.
+            excludeRegex.setPattern(excludeExpr);
+            if (!excludeRegex.isValid()) 
             {
-                char temp[256];
-                regerror(err, &excludeRegex, temp, 256);
-                cerr << "ERROR: " << temp << endl;
+                cerr << "ERROR: " << qPrintable(excludeRegex.errorString()) << endl;
                 exit(-1);
             }
         }
 
         if (includeExpr)
         {
-            if (int err = regcomp(&includeRegex, includeExpr, REG_NOSUB))
+            // Check if the regular expression is valid.
+            includeRegex.setPattern(includeExpr);
+            if (!includeRegex.isValid()) 
             {
-                char temp[256];
-                regerror(err, &includeRegex, temp, 256);
-                cerr << "ERROR: " << temp << endl;
+                cerr << "ERROR: " << qPrintable(includeRegex.errorString()) << endl;
                 exit(-1);
             }
         }
