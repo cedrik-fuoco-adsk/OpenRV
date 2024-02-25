@@ -32,7 +32,7 @@ namespace TwkUtil {
 // match.
 RegEx::RegEx()
   : m_pattern( MATCH_NOTHING ),
-    m_flags( REG_EXTENDED ),
+    m_flags( QRegularExpression::NoPatternOption ),
     m_regexCompStatus( -1 )
 {
     init();
@@ -40,7 +40,7 @@ RegEx::RegEx()
 
 //******************************************************************************
 // Regular constructors...
-RegEx::RegEx( const char *pattern, int flags )
+RegEx::RegEx( const char *pattern, QRegularExpression::PatternOptions flags )
   : m_pattern( pattern ),
     m_flags( flags ),
     m_regexCompStatus( -1 )
@@ -49,7 +49,7 @@ RegEx::RegEx( const char *pattern, int flags )
 }
 
 //******************************************************************************
-RegEx::RegEx( const std::string &pattern, int flags )
+RegEx::RegEx( const std::string &pattern, QRegularExpression::PatternOptions flags )
   : m_pattern( pattern ),
     m_flags( flags ),
     m_regexCompStatus( -1 )
@@ -70,23 +70,18 @@ RegEx::RegEx( const RegEx &regex )
 //******************************************************************************
 RegEx::~RegEx()
 {
-    if ( m_regexCompStatus == 0 )
-    {
-        regfree( &m_preg );
-    }
+
 }
 
 //******************************************************************************
 // Assignment operator
 RegEx &RegEx::operator=( const RegEx &copy )
 {
-    if ( m_regexCompStatus == 0 )
-    {
-        regfree( &m_preg );
-    }
     m_pattern = copy.m_pattern;
     m_flags = copy.m_flags;
     m_regexCompStatus = -1;
+    m_preg = QRegularExpression(QString::fromStdString(m_pattern));
+    // m_preg.setPatternOptions ?
     init();
     return (*this);
 }
@@ -94,21 +89,23 @@ RegEx &RegEx::operator=( const RegEx &copy )
 //******************************************************************************
 void RegEx::init()
 {
-    m_regexCompStatus = regcomp( &m_preg, m_pattern.c_str(), m_flags );
-    if ( m_regexCompStatus != 0 )
+    try
     {
-        char errbuf[128];
-        regerror( m_regexCompStatus, &m_preg, errbuf, 127 );
-        char buf[256];
-        snprintf( buf, 255, "%s: %s", errbuf, m_pattern.c_str() );
-        TWK_EXC_THROW_WHAT( Exception, ( const char * )buf );
+        m_preg.setPattern(QString::fromStdString(m_pattern));
+    }
+    catch(const std::exception& e)
+    {
+        std::string errMsg(e.what());
+        std::string fullMsg = "RegEx::init: " + errMsg + ": " + m_pattern;
+        TWK_EXC_THROW_WHAT(Exception, fullMsg.c_str());
     }
 }
 
 // *****************************************************************************
 bool RegEx::matches( const char *fullStr ) const
 {
-    return regexec( &m_preg, fullStr, 0, NULL ,0 ) == 0;
+    QRegularExpressionMatch match = m_preg.match(QString::fromUtf8(fullStr));
+    return match.hasMatch();
 }
 
 
@@ -170,8 +167,7 @@ string GlobEx::deglobSyntax( const char *pattern )
 Match::Match()
   : m_regex( &RegEx::nothing() ),
     m_fullStr( "" ),
-    m_foundMatch( false ),
-    m_pmatch( NULL )
+    m_foundMatch( false )
 {
     init();
 }
@@ -181,8 +177,7 @@ Match::Match()
 Match::Match( const RegEx &regex, const char *fullStr )
   : m_regex( &regex ),
     m_fullStr( fullStr ),
-    m_foundMatch( false ),
-    m_pmatch( NULL )
+    m_foundMatch( false )
 {
     init();
 }
@@ -191,8 +186,7 @@ Match::Match( const RegEx &regex, const char *fullStr )
 Match::Match( const RegEx &regex, const std::string &fullStr )
   : m_regex( &regex ),
     m_fullStr( fullStr ),
-    m_foundMatch( false ),
-    m_pmatch( NULL )
+    m_foundMatch( false )
 {
     init();
 }
@@ -202,8 +196,7 @@ Match::Match( const RegEx &regex, const std::string &fullStr )
 Match::Match( const Match &copy )
   : m_regex( copy.m_regex ),
     m_fullStr( copy.m_fullStr ),
-    m_foundMatch( false ),
-    m_pmatch( NULL )
+    m_foundMatch( false )
 {
     init();
 }
@@ -211,19 +204,22 @@ Match::Match( const Match &copy )
 //******************************************************************************
 Match::~Match()
 {
-    delete[] m_pmatch;
+
 }
 
 //******************************************************************************
 // Assignment operator
 Match &Match::operator=( const Match &copy )
 {
-    m_regex = copy.m_regex;
-    m_fullStr = copy.m_fullStr;
-    m_foundMatch = false;
-    delete[] m_pmatch;
-    m_pmatch = NULL;
-    init();
+    if (this != &copy)
+    {
+        m_regex = copy.m_regex;
+        m_fullStr = copy.m_fullStr;
+        m_foundMatch = false;
+        // Directly assign the QRegularExpressionMatch object
+        m_pmatch = copy.m_pmatch;
+        init();
+    }
     return (*this);
 }
 
@@ -232,18 +228,9 @@ void Match::init()
 {
     m_foundMatch = false;
     
-    if( m_regex->subCount() > 0 )
-    {
-        m_pmatch = new regmatch_t[m_regex->subCount()+1];
-    }
-
-    int result = regexec( m_regex->preg(), 
-                          m_fullStr.c_str(), 
-                          m_regex->subCount(),
-                          m_pmatch,
-                          0 );
-
-    if( result == 0 )
+    QRegularExpression regex = m_regex->preg();
+    m_pmatch = regex.match(QString::fromStdString(m_fullStr));
+    if (m_pmatch.hasMatch())
     {
         m_foundMatch = true;
     }
@@ -253,91 +240,63 @@ void Match::init()
 // *****************************************************************************
 bool Match::hasSub( const int subNum ) const
 {
-    assert( subNum >= 0 &&
-            subNum < m_regex->subCount() );
+    assert(subNum >= 0 && subNum < m_regex->subCount());
+    assert(m_foundMatch);
 
-    assert( m_foundMatch );
-    
-    if( m_pmatch[ ( subNum + 1 ) ].rm_so < 0 )
-    {
-        return false;
-    }
-
-    return true;
+    // Check if the capturing group has a match.
+    QString str = m_pmatch.captured(subNum);
+    return !str.isNull();
 }
 
 
 // *****************************************************************************
 int Match::subStartPos( const int subNum ) const
 {
-    assert( subNum >= 0 &&
-            subNum < m_regex->subCount() );
+    assert(subNum >= 0 && subNum < m_regex->subCount());
+    assert(m_foundMatch);
 
-    assert( m_foundMatch );
-    
-    if( m_pmatch[ ( subNum + 1 ) ].rm_so < 0 )
-    {
-        return -1;
-    }
-    
-    return m_pmatch[ ( subNum + 1 ) ].rm_so;
+    // get the start position of the subNum-th captured group.
+    int startPos = m_pmatch.capturedStart(subNum);
+    // TODO_PCRE Check if it should be -1 or 0
+    return startPos != -1 ? startPos : -1;
 }
 
 
 // *****************************************************************************
 int Match::subEndPos( const int subNum ) const
 {
-    assert( subNum >= 0 &&
-            subNum < m_regex->subCount() );
+    assert(subNum >= 0 && subNum < m_regex->subCount());
+    assert(m_foundMatch);
 
-    assert( m_foundMatch );
-    
-    if( m_pmatch[ ( subNum + 1 ) ].rm_so < 0 )
-    {
-        return -1;
-    }
-    
-    return m_pmatch[ ( subNum + 1 ) ].rm_eo;
+    // Get the end position of the subNum-th captured group.
+    int endPos = m_pmatch.capturedEnd(subNum); 
+    // TODO_PCRE Check if it should be -1 or 0
+    return endPos != -1 ? endPos : -1;
 }
 
 
 //******************************************************************************
 int Match::subLen( const int subNum ) const
 {
-    assert( subNum >= 0 &&
-            subNum < m_regex->subCount() );
+    assert(subNum >=  0 && subNum < m_regex->subCount());
+    assert(m_foundMatch);
 
-    assert( m_foundMatch );
-    
-    if( m_pmatch[ ( subNum + 1 ) ].rm_so < 0 )
-    {
-        return -1;
-    }
-    
-    regoff_t rm_so = m_pmatch[ ( subNum + 1 ) ].rm_so;
-    regoff_t rm_eo = m_pmatch[ ( subNum + 1 ) ].rm_eo;
-    
-    return rm_eo - rm_so;
+    // Get the length of the subNum-th captured group.
+    int len = m_pmatch.capturedLength(subNum);
+    // TODO_PCRE Check if it should be -1 or 0
+    return len != -1 ? len : -1;
 }
 
 
 //******************************************************************************
 string Match::subStr( const int subNum ) const
 {
-    assert( subNum >= 0 &&
-            subNum < m_regex->subCount() );
+    assert(subNum >=  0 && subNum < m_regex->subCount());
+    assert(m_foundMatch);
 
-    assert( m_foundMatch );
-    
-    if( m_pmatch[ ( subNum + 1 ) ].rm_so < 0 )
-    {
-        return "";
-    }
-    
-    regoff_t rm_so = m_pmatch[ ( subNum + 1 ) ].rm_so;
-    regoff_t rm_eo = m_pmatch[ ( subNum + 1 ) ].rm_eo;
-    
-    return m_fullStr.substr( rm_so, rm_eo - rm_so );
+    // Get the captured substring
+    QString captured = m_pmatch.captured(subNum);
+    return captured.toStdString();
 }
 
 

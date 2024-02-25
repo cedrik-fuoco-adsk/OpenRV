@@ -54,6 +54,12 @@ ADD_LIBRARY(
   ${_sources}
 )
 
+FIND_PACKAGE(
+  Qt5
+  COMPONENTS Core
+  REQUIRED
+)
+
 TARGET_INCLUDE_DIRECTORIES(
   ${_target}
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
@@ -92,7 +98,7 @@ IF(RV_TARGET_WINDOWS)
   TARGET_LINK_LIBRARIES(
     ${_target}
     PRIVATE nedmalloc win_posix win_pthreads TwkQtCoreUtil
-    PUBLIC pcre
+    PUBLIC Qt5::Core
   )
 ENDIF()
 

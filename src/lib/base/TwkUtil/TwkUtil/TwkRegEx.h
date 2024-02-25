@@ -53,13 +53,11 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include <QRegularExpression>
+#include <QString>
+
 #include <sys/types.h>
-#ifdef _MSC_VER
-    #include <pcre.h>
-    #include <pcreposix.h>
-#else
-    #include <regex.h>
-#endif
+
 #include <string>
 
 namespace TwkUtil {
@@ -84,8 +82,8 @@ public:
     RegEx();
 
     // Normal constructors
-    RegEx( const char *pattern, int flags = REG_EXTENDED );
-    RegEx( const std::string &pattern, int flags = REG_EXTENDED );
+    RegEx( const char *pattern, QRegularExpression::PatternOptions flags = QRegularExpression::NoPatternOption);
+    RegEx( const std::string &pattern, QRegularExpression::PatternOptions flags = QRegularExpression::NoPatternOption);
 
     // Copy constructor
     RegEx( const RegEx &copy );
@@ -115,13 +113,13 @@ public:
 protected:
     // Match functions
     friend class Match;
-    const int subCount() const { return m_preg.re_nsub + 1; }
-    const regex_t *preg() const { return &m_preg; }
+    const int subCount() const { return m_preg.captureCount(); }
+    const QRegularExpression preg() const { return m_preg; }
 
 protected:
     std::string m_pattern;
-    int m_flags;
-    regex_t m_preg;
+    QRegularExpression::PatternOptions m_flags;
+    QRegularExpression m_preg;
     int m_regexCompStatus;
 };
 
@@ -134,9 +132,9 @@ public:
     GlobEx() : RegEx() {}
 
     // Regular constructors
-    GlobEx( const char *pattern, int flags = REG_EXTENDED )
+    GlobEx( const char *pattern, QRegularExpression::PatternOptions flags = QRegularExpression::NoPatternOption)
       : RegEx( deglobSyntax( pattern ), flags ) {}
-    GlobEx( const std::string &pattern, int flags = REG_EXTENDED )
+    GlobEx( const std::string &pattern, QRegularExpression::PatternOptions flags = QRegularExpression::NoPatternOption)
       : RegEx( deglobSyntax( pattern.c_str() ), flags ) {}
 
     // Copy constructor
@@ -200,7 +198,7 @@ protected:
     const RegEx *m_regex;
     std::string m_fullStr;
     bool m_foundMatch;
-    regmatch_t *m_pmatch;
+    QRegularExpressionMatch m_pmatch;
 };
 
 

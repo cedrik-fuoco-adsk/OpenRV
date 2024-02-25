@@ -9,12 +9,6 @@
 #define __TWKUTILREGEXGLOB_H__
 
 #include <sys/types.h>
-#ifdef _MSC_VER
-    #include <pcre.h>
-    #include <pcreposix.h>
-#else
-    #include <regex.h>
-#endif
 #include <string>
 #include <vector>
 #include <map>
