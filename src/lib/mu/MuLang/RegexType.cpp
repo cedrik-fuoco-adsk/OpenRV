@@ -95,12 +95,12 @@ regex_smatch_stringBSB_ESB__regex_string(Mu::Thread& NODE_THREAD,
     const StringType::String* str = reinterpret_cast<StringType::String*>(pstr);
 
     if (!r || !str) throw NilArgumentException(NODE_THREAD);
-    vector<regmatch_t> matches(r->maxMatches() + 1);
 
-    if (!r->smatch(NODE_THREAD, str->c_str(), 
-                   0, &matches.front(), matches.size()))
+    QRegularExpressionMatch matches;
+    // TODO_PCRE Remove num param
+    if (!r->smatch(NODE_THREAD, str->c_str(),  0, matches, 0)) 
     {
-        return 0;
+        return  0;
     }
 
     const StringType* stype = static_cast<const StringType*>(str->type());
@@ -108,17 +108,19 @@ regex_smatch_stringBSB_ESB__regex_string(Mu::Thread& NODE_THREAD,
         static_cast<DynamicArrayType*>(context->arrayType(stype, 1, 0));
 
     DynamicArray *array = new DynamicArray(atype, 1);
-    array->resize(matches.size());
+    // capturedTexts() include the implicit capturing group number 0, 
+    // capturing the substring matched by the entire pattern
+    array->resize(matches.capturedTexts().size());
 
-    for (int i=0; i < matches.size(); i++)
+    for (int i=0; i < matches.capturedTexts().size(); i++)
     {
         StringType::String* s = 0;
-        int b = matches[i].rm_so;
-        int e = matches[i].rm_eo;
+        // Access captured text directly
+        QString capturedText = matches.capturedTexts().at(i);
 
-        if (b != -1)
+        if (!capturedText.isEmpty()) 
         {
-            s = stype->allocate(str->utf8().substr(b, e - b));
+            s = stype->allocate(capturedText.toStdString());
         }
 
         array->element<StringType::String*>(i) = s;
@@ -157,7 +159,6 @@ regex_replace_string_regex_string_string(Mu::Thread& NODE_THREAD,
 
     if (!r || !instr || !inrepl) throw NilArgumentException(NODE_THREAD);
 
-    vector<regmatch_t> matches(r->maxMatches() + 1);
     String text(instr->c_str());
     String repl(inrepl->c_str());
     String::size_type ic;
@@ -203,41 +204,34 @@ regex_replace_string_regex_string_string(Mu::Thread& NODE_THREAD,
         parts.push_back(ReplPart(repl, -2));
     }
 
-    StringType::String* s = 0;
-
+    QRegularExpressionMatch matches;
     ostringstream out;
 
-    while (r->smatch(NODE_THREAD, text, 0, &matches.front(), matches.size()))
+    while (r->smatch(NODE_THREAD, text, 0, matches, 0))
     {
-        int b = matches[0].rm_so;
-        int e = matches[0].rm_eo;
+        int b = matches.capturedStart(0);
+        int e = matches.capturedEnd(0);
 
-        //
-        //  outputeeverything before the match
-        //
-
+        //  Output everything before the match
         for (int i=0; i < b; i++) out << text[i];
 
-        //
-        //  output the replacement string
-        //
-
-        for (int i=0; i < parts.size(); i++)
+        // Output the replacement string
+        for (const auto& part : parts)
         {
-            int rl = parts[i].second;
-            out << parts[i].first;
+            int rl = part.second;
+            out << part.first;
 
-            if (rl == -1) 
+            if (rl == -1)  
             {
                 out << '\\';
             }
-            else if (rl >= 0)
+            else if (rl >=  0)
             {
-                int bm = matches[rl].rm_so;
-                int em = matches[rl].rm_eo;
+                int bm = matches.capturedStart(rl);
+                int em = matches.capturedEnd(rl);
 
-                if (bm < 0 || bm >= text.size() ||
-                    em < 0 || em >= text.size()+1)
+                if (bm <  0 || bm >= text.size() ||
+                    em <  0 || em >= text.size()+1)
                 {
                     OutOfRangeException exc(NODE_THREAD);
                     exc.message() = "bad replacement index: " + exc.message();
@@ -250,10 +244,7 @@ regex_replace_string_regex_string_string(Mu::Thread& NODE_THREAD,
             }
         }
 
-        //
-        //  output everything after the match
-        //
-
+        //  Output everything after the match
         text.erase(0, e);
     }
 
@@ -269,13 +260,15 @@ using namespace std;
 using namespace Mu;
 
 RegexType::Regex::Regex(const Class *c) 
-    : ClassInstance(c), _flags(0)
+    : ClassInstance(c)
 {
+    _flags = convertPcreFlagsToQt(_flags);
 }
 
 RegexType::Regex::Regex(const Class *c, Thread& t, const char* s, int flags)
-    : ClassInstance(c), _flags(0)
+    : ClassInstance(c)
 {
+    _flags = convertPcreFlagsToQt(_flags);
     if (s) 
     {
         _std_string = s;
@@ -285,7 +278,7 @@ RegexType::Regex::Regex(const Class *c, Thread& t, const char* s, int flags)
 
 RegexType::Regex::~Regex()
 {
-    regfree(&_regex);
+    //regfree(&_regex);
 }
 
 void 
@@ -296,13 +289,8 @@ RegexType::freeze()
 }
 
 void
-RegexType::Regex::throwError(Thread& thread, int err)
+RegexType::Regex::throwError(Thread& thread, std::string err)
 {
-    vector<char> temp(1);
-    size_t n = regerror(err, &_regex, &temp.front(), temp.size());
-    temp.resize(n+1);
-    regerror(err, &_regex, &temp.front(), temp.size());
-    
     Process* p = thread.process();
     const MuLangContext* c = static_cast<const MuLangContext*>(p->context());
     
@@ -310,58 +298,141 @@ RegexType::Regex::throwError(Thread& thread, int err)
         new ExceptionType::Exception(c->exceptionType());
     
     e->string() += "Regular exression error: ";
-    e->string() += &temp.front();
+    e->string() += err;
     
     thread.setException(e);
     throw ProgramException(thread, e);
 }
 
+// TODO_PCRE Temporary
+#define REG_ICASE     0x0001
+#define REG_NEWLINE   0x0002
+#define REG_NOTBOL    0x0004
+#define REG_NOTEOL    0x0008
+#define REG_DOTALL    0x0010   /* NOT defined by POSIX. */
+#define REG_NOSUB     0x0020
+#define REG_UTF8      0x0040   /* NOT defined by POSIX. */
+
+QRegularExpression::PatternOptions RegexType::Regex::convertPcreFlagsToQt(int pcreFlags) 
+{
+    QRegularExpression::PatternOptions qtFlags = QRegularExpression::NoPatternOption;
+
+    if (pcreFlags & REG_ICASE) {
+        qtFlags |= QRegularExpression::CaseInsensitiveOption;
+    }
+    if (pcreFlags & REG_NEWLINE) {
+        qtFlags |= QRegularExpression::DotMatchesEverythingOption;
+    }
+    if (pcreFlags & REG_NOTBOL) {
+        // Qt does not have a direct equivalent for REG_NOTBOL.
+        // You might need to adjust your pattern or use a workaround.
+        cout << "WARNING: REG_NOTBOL NOT SUPPORTED AS IS IN QT" << endl;
+    }
+    if (pcreFlags & REG_NOTEOL) {
+        // Qt does not have a direct equivalent for REG_NOTEOL.
+        // You might need to adjust your pattern or use a workaround.
+        cout << "WARNING: REG_NOTEOL NOT SUPPORTED AS IS IN QT" << endl;
+    }
+    if (pcreFlags & REG_DOTALL) {
+        qtFlags |= QRegularExpression::DotMatchesEverythingOption;
+    }
+    if (pcreFlags & REG_NOSUB) {
+        // Qt does not have a direct equivalent for REG_NOSUB.
+        // You might need to adjust your pattern or use a workaround.
+        cout << "WARNING: REG_NOSUB NOT SUPPORTED AS IS IN QT" << endl;
+    }
+    if (pcreFlags & REG_UTF8) {
+        qtFlags |= QRegularExpression::UseUnicodePropertiesOption;
+    }
+
+    return qtFlags;
+}
+
+QRegularExpression::MatchOptions RegexType::Regex::convertPcreMatchOptionsToQt(int pcreFlags) {
+    QRegularExpression::MatchOptions qtFlags = QRegularExpression::NoMatchOption;
+
+    if (pcreFlags & REG_NOTBOL) {
+        qtFlags |= QRegularExpression::AnchoredMatchOption;
+    }
+    // if (pcreFlags & REG_NOTEMPTY) {
+    //     // Qt does not have a direct equivalent for REG_NOTEMPTY.
+    //     // You might need to adjust your pattern or use a workaround.
+    //     cout << "WARNING: REG_NOTEMPTY NOT SUPPORTED AS IS IN QT" << endl;
+    // }
+    if (pcreFlags & REG_NOTEOL) {
+        // Qt does not have a direct equivalent for REG_NOTEOL.
+        // You might need to adjust your pattern or use a workaround.
+        cout << "WARNING: REG_NOTEOL NOT SUPPORTED AS IS IN QT" << endl;
+    }
+    // if (pcreFlags & REG_STARTEND) {
+    //     // Qt does not have a direct equivalent for REG_STARTEND.
+    //     // You might need to adjust your pattern or use a workaround.
+    //     cout << "WARNING: REG_STARTEND NOT SUPPORTED AS IS IN QT" << endl;
+    // }
+    if (pcreFlags & REG_NOSUB) {
+        // Qt does not have a direct equivalent for REG_NOSUB.
+        // You might need to adjust your pattern or use a workaround.
+        cout << "WARNING: REG_NOSUB NOT SUPPORTED AS IS IN QT" << endl;
+    }
+    if (pcreFlags & REG_UTF8) {
+        // Qt does not have a direct equivalent for REG_UTF8.
+        // You might need to adjust your pattern or use a workaround.
+        cout << "WARNING: REG_UTF8 NOT SUPPORTED AS IS IN QT" << endl;
+    }
+
+    return qtFlags;
+}
+
 void
 RegexType::Regex::compile(Thread& thread, int flags)
 {
-    _flags = flags;
-    #ifdef MU_USE_PCRE
-        _flags = _flags | REG_DOTALL;  //  "." matches _all_ chars even '\n'
+    _flags = convertPcreFlagsToQt(flags);
+    
+    #if defined(_MSC_VER) || defined(PLATFORM_WINDOWS)
+        //  "." matches _all_ chars even '\n'
+        _flags = convertPcreFlagsToQt(_flags | REG_DOTALL);  
     #endif
-
-    if (int err = regcomp(&_regex, _std_string.c_str(), _flags))
+    
+    QRegularExpression regex(QString::fromStdString(_std_string.c_str()), _flags);
+    if (!regex.isValid())
     {
-        throwError(thread, err);
+        throwError(thread, regex.errorString().toStdString());
     }
 }
 
 bool
 RegexType::Regex::matches(Thread& thread, const Mu::String& s, int flags)
 {
-    int result = regexec(&_regex, s.c_str(), 0, 0, flags);
-
-    if (result == REG_NOMATCH || result == 0)
+    QRegularExpression::MatchOptions matchOptions = convertPcreMatchOptionsToQt(flags);
+    QRegularExpressionMatch match = _regex.match(s.c_str(), 
+                                                 0, 
+                                                 QRegularExpression::NormalMatch,
+                                                 matchOptions);
+    bool matched = match.hasMatch();
+    if (!matched)
     {
-        return result == 0;
-    }
-    else
-    {
-        throwError(thread, result);
+        throwError(thread, s.c_str());
         return false; // never gets here
     }
+    return matched;
 }
 
 
 bool
-RegexType::Regex::smatch(Thread& thread, const Mu::String& s, int flags,
-                         regmatch_t* matches, size_t num)
+RegexType::Regex::smatch(Thread& thread, const Mu::String& s, 
+                         int flags,
+                         QRegularExpressionMatch& matches, size_t num)
 {
-    int result = regexec(&_regex, s.c_str(), num, matches, flags);
-
-    if (result == REG_NOMATCH || result == 0)
+    //TODO_PCRE Could return the match object and the caller handle it?
+    QRegularExpression::MatchOptions matchOpt = convertPcreMatchOptionsToQt(flags);
+    matches = _regex.match(QString::fromStdString(s.c_str()),  0, QRegularExpression::NormalMatch, matchOpt);
+    bool matched = matches.hasMatch();
+    if (!matched)
     {
-        return result == 0;
-    }
-    else
-    {
-        throwError(thread, result);
+        throwError(thread, s.c_str());
         return false; // never gets here
     }
+    return matched;
 }
 
 //----------------------------------------------------------------------

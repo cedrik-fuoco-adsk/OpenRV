@@ -10,12 +10,8 @@
 #include <Mu/ClassInstance.h>
 #include <Mu/Node.h>
 #include <iosfwd>
-#ifdef MU_USE_PCRE
-    #include <pcre.h>
-    #include <pcreposix.h>
-#else
-    #include <regex.h>
-#endif
+#include <QRegularExpression>
+#include <QString>
 #include <string>
 #include <sys/types.h>
 
@@ -36,27 +32,31 @@ class RegexType : public Class
     class Regex : public ClassInstance
     {
       public:
-	Regex(const Class*);
-	Regex(const Class*, Thread&, const char* s=0, int flags=0);
+        Regex(const Class*);
+        Regex(const Class*, Thread&, const char* s=0, int flags=0);
         ~Regex();
 
         Mu::String& string() { return _std_string; }
-	const Mu::String& string() const { return _std_string; }
+	      const Mu::String& string() const { return _std_string; }
 
-        int flags() const { return _flags; }
-        int maxMatches() const { return _regex.re_nsub; }
+        QRegularExpression::PatternOptions flags() const { return _flags; }
+        int maxMatches() const { return _regex.captureCount(); }
 
-        void throwError(Thread&m, int);
+        //void throwError(Thread&m, int);
+        void throwError(Thread&m, std::string);
+
         void compile(Thread&, int flags);
         bool matches(Thread&, const Mu::String&, int flags);
-        bool smatch(Thread&, const Mu::String&, int flags,
-                    regmatch_t* matches, size_t num);
+        bool smatch(Thread&, const Mu::String&, int flags, QRegularExpressionMatch& matches, size_t num);
         
       private:
         Mu::String              _std_string;
-        regex_t                 _regex;
-        int                     _flags;
-	friend class RegexType;
+        QRegularExpression      _regex;
+        QRegularExpression::PatternOptions _flags;
+	      friend class RegexType;
+
+        QRegularExpression::PatternOptions convertPcreFlagsToQt(int pcreFlags);
+        QRegularExpression::MatchOptions convertPcreMatchOptionsToQt(int pcreFlags);
     };
 
     //
