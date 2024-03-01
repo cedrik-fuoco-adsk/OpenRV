@@ -60,6 +60,7 @@ RvNetworkDialog::RvNetworkDialog(QWidget* parent)
     DB("");
     setWindowFlags(Qt::Window);
     setWindowModality(Qt::NonModal);
+    setWindowIcon(QIcon(RV_ICON));
     m_ui.setupUi(this);
 
     m_connectUI.setupUi(&m_connectDialog);

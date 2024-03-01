@@ -101,6 +101,7 @@ namespace Rv
     m_ui.showComboBox->setFocus();
 
     setWindowTitle( UI_APPLICATION_NAME " Console" );
+    setWindowIcon(QIcon(RV_ICON));
     setSizeGripEnabled( true );
     bool doRedirect = ( getenv( "RV_NO_CONSOLE_REDIRECT" ) == 0 );
     // setAttribute(Qt::WA_MacBrushedMetal);
