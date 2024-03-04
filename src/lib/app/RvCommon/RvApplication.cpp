@@ -512,9 +512,15 @@ RvApplication::about()
         new QMessageBox("About " UI_APPLICATION_NAME, QString(temp.data()), QMessageBox::Information, 0, 0, 0, parent,
                         Qt::WindowTitleHint | Qt::WindowSystemMenuHint);
     msgBox->setAttribute(Qt::WA_DeleteOnClose);
-    QIcon icon = msgBox->windowIcon();
-    QSize size = icon.actualSize(QSize(64, 64));
-    msgBox->setIconPixmap(icon.pixmap(size));
+
+    QPixmap pixmap;
+    pixmap.load(RV_ICON);
+    msgBox->setIconPixmap(pixmap);
+
+    // QIcon icon = QIcon(RV_ICON);
+    // QSize size = icon.actualSize(QSize(64, 64));
+    // msgBox->setIconPixmap(icon.pixmap(size));
+
     msgBox->setStandardButtons(QMessageBox::Close);
 
     QGridLayout* grid = static_cast<QGridLayout*>(msgBox->layout());
