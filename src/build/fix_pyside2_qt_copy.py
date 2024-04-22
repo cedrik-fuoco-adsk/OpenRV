@@ -26,7 +26,7 @@ def create_symlink(source: pathlib.Path, destination: pathlib.Path) -> None:
     :param destination: Destination of the symlink.
     :return:
     """
-    symlink_val = os.path.relpath(source, destination)
+    symlink_val = os.path.relpath(source, os.path.dirname(destination))
 
     print(f"Creating symlink {destination} -> {symlink_val}")
 

@@ -8,16 +8,53 @@
 #
 # *****************************************************************************
 import argparse
+import concurrent.futures
 import logging
 import os
 import pathlib
+import site
 import subprocess
+import threading
 
 from typing import Iterable
+
+# List of futures to burn.
+futures = []
+
+# Lock to ensure that only one thread is accessing the list of futures at a time.
+future_lock = threading.Lock()
 
 # Configure logging.
 logging.basicConfig(format='-- %(message)s')
 logger = logging.getLogger().setLevel(logging.INFO)
+
+def save_future(future: concurrent.futures.Future):
+    """
+    Save a future to be burned later. This is used to ensure that all futures are burned before the program exits.
+
+    :param future: The future to save.
+    :return: None
+    """
+    with future_lock:
+        futures.append(future)
+
+
+def burn_future() -> bool:
+    """
+    Burn a future. This will block until the future is complete.
+
+    :return: weather or not a future was burned.
+    """
+    future = None
+
+    with future_lock:
+        if len(futures) > 0:
+            future = futures.pop()
+
+    if future:
+        future.result()
+
+    return future is not None
 
 def threadsafe_print(message: str):
     """
@@ -52,11 +89,17 @@ def get_rpaths(object_file_path: pathlib.Path) -> Iterable[str]:
     )
 
     i = 0
+    found_architecture = False
     while i < len(otool_output):
         otool_line = otool_output[i].strip()
         i += 1
 
-        if otool_line == "":
+        # Check if we're looking at the ARM64 architecture section
+        if "architecture arm64" in otool_line:
+            found_architecture = True
+            continue
+
+        if otool_line == "" or not found_architecture:
             continue
 
         if otool_line.split()[-1] == "LC_RPATH":
@@ -68,8 +111,10 @@ def get_rpaths(object_file_path: pathlib.Path) -> Iterable[str]:
                     break
 
 
-def set_id(object_file_path: pathlib.Path) -> str:
+def set_id(object_file_path: pathlib.Path, id_name: str = "") -> str:
     new_library_id = f"@rpath/{object_file_path.name}"
+    if id_name:
+        new_library_id = f"@rpath/{id_name}"
 
     set_id_command = [
         "install_name_tool",
@@ -77,6 +122,7 @@ def set_id(object_file_path: pathlib.Path) -> str:
         new_library_id,
         str(object_file_path),
     ]
+    logging.info(f"Set id to {new_library_id} for {str(object_file_path)}, {set_id_command}")
     subprocess.run(set_id_command).check_returncode()
 
     return new_library_id
@@ -88,10 +134,19 @@ def get_shared_library_paths(object_file_path: pathlib.Path) -> Iterable[pathlib
     )
 
     i = 0
-
+    found_architecture = False
     while i < len(otool_output):
         otool_line = otool_output[i].strip()
         i += 1
+
+        # Check if we're looking at the ARM64 architecture section
+        if "architecture arm64" in otool_line:
+            found_architecture = True
+            continue
+
+        if not found_architecture:
+            continue
+
         if "(compatibility version" in otool_line:
             yield pathlib.Path(otool_line.split("(compatibility")[0].strip())
 
@@ -135,13 +190,22 @@ def fix_rpath(target: pathlib.Path, build_root: pathlib.Path):
 
                 logging.debug(output)
 
-            logging.debug(f"Setting shared library identification name for {file}")
-            lib_id = set_id(file)
 
-            logging.debug(f"\t{file} identification name: {lib_id}")
+            new_id_name = ""
+            # Checks if the file is coming from Qt Frameworks.
+            # Example: [...]/RV.app/Contents/Frameworks/Qt3DAnimation.framework/Versions/5/Qt3DAnimation
+            framework_name_index = file._str.find(f".framework")
+            # When Python is build from source, the folder will be called "python" + the version.
+            # Assume that it is the case for all Python version and search only for python in the path.
+            python_folder = file._str.find(f"python")
+            site_package_folder = file._str.find(f"site-packages")
+
+            # Do not change the id for Qt Frameworks and for Python's site-packages.
+            if framework_name_index == -1 and python_folder == -1 and site_package_folder == -1:
+                lib_id = set_id(file, new_id_name)
+                logging.info(f"Setting shared library identification for {file} to {lib_id}")
 
             logging.info(f"Fixing shared library paths for {file}")
-
             for library_path in get_shared_library_paths(file):
                 output = f"\t{file} library path: {library_path}"
 
@@ -189,6 +253,20 @@ def fix_rpath(target: pathlib.Path, build_root: pathlib.Path):
             raise e
 
 
+def read_paths_from_file(file_path):
+    paths = []
+    with open(file_path, 'r') as file:
+        for line in file:
+            paths.append(line.strip()) # strip() removes newline characters
+    return paths
+
+not_mach_o_extensions = [
+    ".h", ".c", ".C", ".js", ".mu", ".rvpkg", ".glsl", ".hpp", ".cpp", ".json", ".xml",
+    ".py", ".pyc", ".pyi", ".pxd", ".pyproject", ".txt", ".pak", ".qm", ".qmltypes", ".plist",
+    ".png", ".jpg", ".jpeg", ".aifc", ".aiff", ".au", ".wav", ".decTest", ".qml", ".qmlc",
+    ".metainfo", ".mesh", ".init", ".zip", ".md",
+]
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -207,9 +285,13 @@ if __name__ == "__main__":
         raise FileNotFoundError(f"Unable to locate {args.build_root.absolute()}")
 
     # Fail if file is not in build_root
-    if args.file.resolve().relative_to(args.build_root.resolve()) is False:
-        raise ValueError(
-            f"File {args.file.absolute()} is not in build_root {args.build_root.absolute()}"
-        )
+    # if args.file.resolve().relative_to(args.build_root.resolve()) is False:
+    #     raise ValueError(
+    #         f"File {args.file.absolute()} is not in build_root {args.build_root.absolute()}"
+    #     )
 
-    fix_rpath(args.file.resolve().absolute(), args.build_root.resolve().absolute())
+    paths = read_paths_from_file(str(args.file.resolve().absolute()))
+    for path in paths:
+        file_extension = os.path.splitext(path)[1]
+        if file_extension.lower() not in map(str.lower, not_mach_o_extensions):
+            fix_rpath(args.build_root / path, args.build_root.resolve().absolute())
