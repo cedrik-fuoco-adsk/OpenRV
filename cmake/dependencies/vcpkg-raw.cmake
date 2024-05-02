@@ -75,70 +75,51 @@ IF(RV_TARGET_WINDOWS)
   )
 
 ELSE()
-  # The '_configure_options' list gets reset and initialized in 'RV_CREATE_STANDARD_DEPS_VARIABLES'
-  SET(_configure_options
-      ""
-  ) # Overrides defaults set in 'RV_CREATE_STANDARD_DEPS_VARIABLES'
-  LIST(APPEND _configure_options "--prefix=${_install_dir}")
-  LIST(APPEND _configure_options "--enable-lcms")
+  # # The '_configure_options' list gets reset and initialized in 'RV_CREATE_STANDARD_DEPS_VARIABLES'
+  # SET(_configure_options
+  #     ""
+  # ) # Overrides defaults set in 'RV_CREATE_STANDARD_DEPS_VARIABLES'
+  # LIST(APPEND _configure_options "--prefix=${_install_dir}")
+  # LIST(APPEND _configure_options "--enable-lcms")
 
-  GET_TARGET_PROPERTY(_lcms_include_dir lcms INTERFACE_INCLUDE_DIRECTORIES)
-  SET(_lcms2_flags
-      "-I${_lcms_include_dir}"
-  )
-  SET(_lcms2_libs
-      "-L${RV_STAGE_LIB_DIR} -llcms"
-  )
+  # GET_TARGET_PROPERTY(_lcms_include_dir lcms INTERFACE_INCLUDE_DIRECTORIES)
+  # SET(_lcms2_flags
+  #     "-I${_lcms_include_dir}"
+  # )
+  # SET(_lcms2_libs
+  #     "-L${RV_STAGE_LIB_DIR} -llcms"
+  # )
 
-  IF(APPLE)
-    # Use native build if CMAKE_OSX_ARCHITECTURE is not defined or empty.
-    # No extra options added to make command line.
-    IF(RV_TARGET_APPLE_X86_64)
-      SET(__raw_arch__ x86_64)
-    ELSEIF(RV_TARGET_APPLE_ARM64)
-      SET(__raw_arch__ arm64)
-    ENDIF()
-
-    SET(__raw_cc__ "-arch ${__raw_arch__}")
-    SET(__raw_cxx__ "-arch ${__raw_arch__}")
-
-    SET(_configure_command
-      ${CMAKE_COMMAND} -E env CFLAGS=${__raw_cc__}
-      ${CMAKE_COMMAND} -E env CXXFLAGS=${__raw_cxx__}
-      ${_configure_command}
-    )
-
-    SET(_configure_options
-        ${_configure_options}
-        --build=${__raw_arch__}-apple-darwin${CMAKE_SYSTEM_VERSION}
-    )
-  ENDIF()
-
-  SET(_configure_command
-    ${CMAKE_COMMAND} -E env LCMS2_CFLAGS='${_lcms2_flags}'
-    ${CMAKE_COMMAND} -E env LCMS2_LIBS='${_lcms2_libs}'
-    ${_configure_command}
-  )
-
-  EXTERNALPROJECT_ADD(
+  # EXTERNALPROJECT_ADD(
+  #   ${_target}
+  #   URL ${_download_url}
+  #   URL_MD5 ${_download_hash}
+  #   DOWNLOAD_NAME ${_target}_${_version}.tar.gz
+  #   DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
+  #   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  #   SOURCE_DIR ${_source_dir}
+  #   INSTALL_DIR ${_install_dir}
+  #   DEPENDS ZLIB::ZLIB lcms
+  #   #CONFIGURE_COMMAND aclocal
+  #   CONFIGURE_COMMAND autoreconf --install
+  #   COMMAND ${CMAKE_COMMAND} -E env LCMS2_CFLAGS='${_lcms2_flags}' ${CMAKE_COMMAND} -E env LCMS2_LIBS='${_lcms2_libs}' ${_configure_command} ${_configure_options}
+  #   BUILD_COMMAND ${_make_command} -j${_cpu_count}
+  #   INSTALL_COMMAND ${_make_command} install
+  #   BUILD_IN_SOURCE TRUE
+  #   BUILD_ALWAYS FALSE
+  #   BUILD_BYPRODUCTS ${_byproducts}
+  #   USES_TERMINAL_BUILD TRUE
+  # )
+  ADD_CUSTOM_TARGET(
     ${_target}
-    URL ${_download_url}
-    URL_MD5 ${_download_hash}
-    DOWNLOAD_NAME ${_target}_${_version}.tar.gz
-    DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    SOURCE_DIR ${_source_dir}
-    INSTALL_DIR ${_install_dir}
-    DEPENDS ZLIB::ZLIB lcms
-    CONFIGURE_COMMAND aclocal
-    COMMAND autoreconf --install
-    COMMAND ${_configure_command} ${_configure_options}
-    BUILD_COMMAND ${_make_command} -j${_cpu_count}
-    INSTALL_COMMAND ${_make_command} install
-    BUILD_IN_SOURCE TRUE
-    BUILD_ALWAYS FALSE
-    BUILD_BYPRODUCTS ${_byproducts}
-    USES_TERMINAL_BUILD TRUE
+  )
+
+  GET_TARGET_PROPERTY(_vcpkg_location VCPKG::VCPKG IMPORTED_LOCATION)
+  GET_FILENAME_COMPONENT(_vcpkg_path ${_vcpkg_location} DIRECTORY)
+  ADD_CUSTOM_COMMAND(
+    TARGET ${_target}
+    COMMENT "Installing libraw via VCPKG"
+    COMMAND ${_vcpkg_location} install --x-manifest-root=${CMAKE_CURRENT_SOURCE_DIR} --triplet arm64-osx-dynamic
   )
 ENDIF()
 
@@ -151,11 +132,11 @@ ADD_LIBRARY(Raw::Raw SHARED IMPORTED GLOBAL)
 ADD_DEPENDENCIES(Raw::Raw ${_target})
 SET_PROPERTY(
   TARGET Raw::Raw
-  PROPERTY IMPORTED_LOCATION ${_libpath}
+  PROPERTY IMPORTED_LOCATION ${_vcpkg_path}/packages/libraw_arm64-osx-dynamic/lib/libraw_r.dylib
 )
 SET_PROPERTY(
   TARGET Raw::Raw
-  PROPERTY IMPORTED_SONAME ${_libname}
+  PROPERTY IMPORTED_SONAME "libraw_r.dylib"
 )
 IF(RV_TARGET_WINDOWS)
   SET_PROPERTY(
@@ -168,7 +149,7 @@ ENDIF()
 FILE(MAKE_DIRECTORY "${_include_dir}")
 TARGET_INCLUDE_DIRECTORIES(
   Raw::Raw
-  INTERFACE ${_include_dir}
+  INTERFACE ${_vcpkg_path}/packages/libraw_arm64-osx-dynamic/include
 )
 
 LIST(APPEND RV_DEPS_LIST Raw::Raw)
