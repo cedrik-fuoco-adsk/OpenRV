@@ -15,7 +15,7 @@ IF(APPLE)
   # If CMAKE_OSX_ARCHITECTURES is not set, set it to the host native build. (x86_64 or arm64)
   IF(NOT DEFINED CMAKE_OSX_ARCHITECTURES OR CMAKE_OSX_ARCHITECTURES STREQUAL "")
     SET(CMAKE_OSX_ARCHITECTURES
-        "${CMAKE_HOST_SYSTEM_PROCESSOR}"
+        "arm64"
         CACHE STRING "Force compilation for x86_64 or arm64 on Apple MacOS" FORCE
     )
   ENDIF()
