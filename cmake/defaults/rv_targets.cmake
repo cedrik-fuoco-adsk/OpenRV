@@ -11,17 +11,30 @@ SET(CMAKE_SKIP_RPATH
 IF(APPLE)
   # TODO: Need to check to value of CMAKE_HOST_SYSTEM_PROCESSOR on M2 and M3.
   #       It might returns only "arm".
+  SET(RV_DISABLE_APPLE_ARM64
+      OFF
+      CACHE BOOL "Prevent RV to be build for Apple ARM64 native build"
+  )
+
+  IF(RV_DISABLE_APPLE_ARM64)
+    # Force build to x86_64 even on Apple ARM because RV_DISABLE_APPLE_ARM64 is enabled.
+    SET(CMAKE_OSX_ARCHITECTURES
+        "x86_64"
+        CACHE STRING "Force compilation to x86_64" FORCE
+    )
+  ENDIF()
 
   # If CMAKE_OSX_ARCHITECTURES is not set, set it to the host native build. (x86_64 or arm64)
   IF(NOT DEFINED CMAKE_OSX_ARCHITECTURES OR CMAKE_OSX_ARCHITECTURES STREQUAL "")
     SET(CMAKE_OSX_ARCHITECTURES
         "${CMAKE_HOST_SYSTEM_PROCESSOR}"
-        CACHE STRING "Force compilation for x86_64 or arm64 on Apple MacOS" FORCE
+        CACHE STRING "Force compilation to the native architecture (${CMAKE_HOST_SYSTEM_PROCESSOR})" FORCE
     )
   ENDIF()
 
-  # Do some checks and set variable to identify the build architecture.
   # Universal build (x86_64;arm64) are not supported and not tested.
+  # Set a variable to easily check if the current build is for x86_64 or arm64. Used in cmake/dependencies/*.cmake.
+  # Set a compile option to be used as define in the code.
   IF(DEFINED CMAKE_OSX_ARCHITECTURES OR NOT CMAKE_OSX_ARCHITECTURES STREQUAL "")
     IF("${CMAKE_OSX_ARCHITECTURES}" STREQUAL "x86_64")
       SET(RV_TARGET_APPLE_X86_64
