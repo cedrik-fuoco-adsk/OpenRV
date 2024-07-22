@@ -4,6 +4,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# IMPORTANT: CMake minimum version need to be increased everytime Boost version is increased.
+#            e.g. CMake 3.27 is needed for Boost 1.82 to be found by FindBoost.cmake.
+#
+#            Starting from CMake 3.30, FindBoost.cmake has been removed in favor of BoostConfig.cmake (Boost 1.70+).
+#            This behavior is covered by CMake policy CMP0167.
+
 INCLUDE(ProcessorCount) # require CMake 3.15+
 PROCESSORCOUNT(_cpu_count)
 
@@ -326,13 +332,6 @@ ENDIF()
 ADD_CUSTOM_TARGET(
   ${_target}-stage-target ALL
   DEPENDS ${_boost_stage_output}
-)
-
-ADD_CUSTOM_TARGET(
-  clean-${_target}
-  COMMENT "Cleaning '${_target}' ..."
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${_base_dir}
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${RV_DEPS_BASE_DIR}/cmake/dependencies/${_target}-prefix
 )
 
 ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
