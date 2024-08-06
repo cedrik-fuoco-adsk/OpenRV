@@ -58,7 +58,7 @@ SET_PROPERTY(
 # Supported VFX platform.
 SET(RV_VFX_SUPPORTED_OPTIONS CY2023 CY2024)
 # Default option
-SET(_RV_VFX_PLATFORM "CY2023")
+SET(_RV_VFX_PLATFORM "CY2024")
 
 IF(DEFINED RV_VFX_PLATFORM)
   # Match lowercase and uppercase.
