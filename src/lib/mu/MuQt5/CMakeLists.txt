@@ -8,7 +8,7 @@ INCLUDE(cxx_defaults)
 INCLUDE(rv_sed)
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core
              Gui
              Network
@@ -20,12 +20,10 @@ FIND_PACKAGE(
              Test
              UiTools
              WebChannel
-             WebEngine
              WebEngineCore
              WebEngineWidgets
              Widgets
              Xml
-             XmlPatterns
   REQUIRED
 )
 
@@ -263,7 +261,7 @@ FOREACH(
   )
   ADD_CUSTOM_COMMAND(
     OUTPUT ${outfile}
-    COMMAND ${Qt5Core_MOC_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR} -o ${outfile} ${infile}
+    COMMAND ${Qt6Core_MOC_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR} -o ${outfile} ${infile}
     MAIN_DEPENDENCY ${infile}
     VERBATIM
   )
@@ -310,7 +308,7 @@ SET_PROPERTY(
 
 ADD_CUSTOM_COMMAND(
   OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/${_target}/generated/moc_SignalSpy.cpp
-  COMMAND ${RV_DEPS_QT5_LOCATION}/bin/moc -I ${CMAKE_CURRENT_SOURCE_DIR} -o ${CMAKE_CURRENT_SOURCE_DIR}/${_target}/generated/moc_SignalSpy.cpp
+  COMMAND ${RV_DEPS_QT6_LOCATION}/bin/moc -I ${CMAKE_CURRENT_SOURCE_DIR} -o ${CMAKE_CURRENT_SOURCE_DIR}/${_target}/generated/moc_SignalSpy.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/${_target}/SignalSpy.h
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/SignalSpy.cpp
   COMMENT "Generating SignalSpy moc file ..."
@@ -327,7 +325,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core
              Gui
              Network
@@ -339,12 +337,10 @@ FIND_PACKAGE(
              Test
              UiTools
              WebChannel
-             WebEngine
              WebEngineCore
              WebEngineWidgets
              Widgets
              Xml
-             XmlPatterns
   REQUIRED
 )
 TARGET_INCLUDE_DIRECTORIES(
@@ -354,24 +350,22 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PUBLIC Qt5::Core
-         Qt5::Gui
-         Qt5::Network
-         Qt5::OpenGL
-         Qt5::Qml
-         Qt5::Quick
-         Qt5::QuickWidgets
-         Qt5::Svg
-         Qt5::Test
-         Qt5::WebChannel
-         Qt5::WebEngine
-         Qt5::WebEngineCore
-         Qt5::WebEngineWidgets
-         Qt5::Widgets
-         Qt5::Xml
-         Qt5::XmlPatterns
+  PUBLIC Qt6::Core
+         Qt6::Gui
+         Qt6::Network
+         Qt6::OpenGL
+         Qt6::Qml
+         Qt6::Quick
+         Qt6::QuickWidgets
+         Qt6::Svg
+         Qt6::Test
+         Qt6::WebChannel
+         Qt6::WebEngineCore
+         Qt6::WebEngineWidgets
+         Qt6::Widgets
+         Qt6::Xml
          qtcolortriangle
-  PRIVATE Mu MuLang Qt5::UiTools TwkQtCoreUtil TwkUtil
+  PRIVATE Mu MuLang Qt6::UiTools TwkQtCoreUtil TwkUtil
 )
 
 IF(RV_TARGET_WINDOWS)

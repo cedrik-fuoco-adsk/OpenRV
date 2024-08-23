@@ -20,7 +20,7 @@ ADD_LIBRARY(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core
   REQUIRED
 )
@@ -32,7 +32,7 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PUBLIC Qt5::Core TwkMovie Boost::thread
+  PUBLIC Qt6::Core TwkMovie Boost::thread
   PRIVATE IOgto
           TwkExc
           TwkFB

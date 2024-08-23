@@ -11,7 +11,7 @@ SET(_target
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core
   REQUIRED
 )
@@ -62,7 +62,7 @@ TARGET_INCLUDE_DIRECTORIES(
 TARGET_LINK_LIBRARIES(
   ${_target}
   PUBLIC Boost::thread TwkExc TwkMath spdlog::spdlog
-  PRIVATE Boost::system Qt5::Core stl_ext
+  PRIVATE Boost::system Qt6::Core stl_ext
 )
 
 IF(RV_TARGET_LINUX)

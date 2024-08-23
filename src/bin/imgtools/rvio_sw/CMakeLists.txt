@@ -18,7 +18,7 @@ ADD_EXECUTABLE(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core Gui Widgets
   REQUIRED
 )
@@ -67,10 +67,10 @@ TARGET_LINK_LIBRARIES(
           arg
           stl_ext
           TwkMediaLibrary
-          Qt5::Core
+          Qt6::Core
           BDWGC::Gc
-          Qt5::Gui
-          Qt5::Widgets
+          Qt6::Gui
+          Qt6::Widgets
           QTBundle
           ${MESAGL_LIBRARY}
 )

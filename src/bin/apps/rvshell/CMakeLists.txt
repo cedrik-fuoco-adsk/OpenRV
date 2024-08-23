@@ -25,12 +25,12 @@ SET(_sources
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core Gui Network Widgets
   REQUIRED
 )
 
-QT5_WRAP_UI(_qt_ui_headers ShellDialog.ui)
+QT6_WRAP_UI(_qt_ui_headers ShellDialog.ui)
 
 ADD_EXECUTABLE(
   ${_target}
@@ -48,7 +48,7 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PRIVATE TwkQtChat Qt5::Core Qt5::Gui Qt5::Network Qt5::Widgets
+  PRIVATE TwkQtChat Qt6::Core Qt6::Gui Qt6::Network Qt6::Widgets
 )
 
 RV_STAGE(TYPE "EXECUTABLE_WITH_PLUGINS" TARGET ${_target})

@@ -35,7 +35,7 @@ ADD_EXECUTABLE(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core Gui OpenGL Widgets
   REQUIRED
 )
@@ -48,7 +48,7 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PRIVATE TwkMath TwkGLText OpenGL::GLU Qt5::Gui Qt5::OpenGL Qt5::Widgets
+  PRIVATE TwkMath TwkGLText OpenGL::GLU Qt6::Gui Qt6::OpenGL Qt6::Widgets
 )
 
 TARGET_COMPILE_OPTIONS(

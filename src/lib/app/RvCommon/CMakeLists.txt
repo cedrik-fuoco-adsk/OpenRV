@@ -24,8 +24,8 @@ SET(CMAKE_AUTORCC
 #
 # This find_package statement is also required to find QT's build tools like 'uic' required just below. Keep this line before 'qt5_wrap_ui'
 FIND_PACKAGE(
-  Qt5
-  COMPONENTS Core Gui OpenGL
+  Qt6
+  COMPONENTS Core Gui OpenGL Widgets
   REQUIRED
 )
 
@@ -91,7 +91,7 @@ FOREACH(
   )
   ADD_CUSTOM_COMMAND(
     OUTPUT ${outfile}
-    COMMAND ${Qt5Widgets_UIC_EXECUTABLE} ARGS ${ui_options} -o ${outfile} ${infile}
+    COMMAND ${Qt6Widgets_UIC_EXECUTABLE} ARGS ${ui_options} -o ${outfile} ${infile}
     MAIN_DEPENDENCY ${infile}
     VERBATIM
   )
@@ -131,7 +131,7 @@ FOREACH(
   )
   ADD_CUSTOM_COMMAND(
     OUTPUT ${outfile}
-    COMMAND ${Qt5Core_MOC_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR} -o ${outfile} ${infile}
+    COMMAND ${Qt6Core_MOC_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR} -o ${outfile} ${infile}
     MAIN_DEPENDENCY ${infile}
     VERBATIM
   )
@@ -176,10 +176,10 @@ TARGET_LINK_LIBRARIES(
          TwkQtChat
          TwkUtil
          Boost::thread
-         Qt5::Core
-         Qt5::Gui
-         Qt5::Widgets
-         Qt5::OpenGL
+         Qt6::Core
+         Qt6::Gui
+         Qt6::Widgets
+         Qt6::OpenGL
   PRIVATE Python::Python
           IPBaseNodes
           MuQt5
@@ -214,15 +214,28 @@ IF(RV_TARGET_DARWIN)
   )
 ENDIF()
 
+
+# https://doc.qt.io/qt-6/extras-changes-qt6.html
+#
+# The Qt X11 Extras module was removed in Qt 6.
+
+#     For QX11Info::connection(), use QNativeInterface::QX11Application::connection() instead.
+#     For QX11Info::display(), use QNativeInterface::QX11Application::display() instead.
+#     For QX11Info::isPlatformX11(), check QNativeInterface::QX11Application existence instead.
+#
+# Clients that still rely on the functionality in QX11Info class can include the private header 
+# <QtGui/private/qtx11extras_p.h> as a stopgap solution. 
+# To enable private headers use QT += gui-private with qmake, or add a project dependency to Qt::GuiPrivate with CMake.
+
 IF(RV_TARGET_LINUX)
   FIND_PACKAGE(
-    Qt5
-    COMPONENTS X11Extras
+    Qt6
+    COMPONENTS Gui
     REQUIRED
   )
   TARGET_LINK_LIBRARIES(
     ${_target}
-    PRIVATE X11 Qt5::X11Extras
+    PRIVATE X11 Qt::GuiPrivate
   )
 ENDIF()
 

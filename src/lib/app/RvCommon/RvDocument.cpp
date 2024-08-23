@@ -50,7 +50,7 @@
 #include <QtWidgets/QDesktopWidget>
 
 #ifdef PLATFORM_LINUX
-#include <QtX11Extras/QX11Info>
+#include <QtGui/private/qtx11extras_p.h>
 #include <X11/Xlib.h>
 #endif
 

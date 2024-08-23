@@ -17,7 +17,7 @@ ADD_LIBRARY(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core
   REQUIRED
 )
@@ -29,7 +29,7 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PUBLIC TwkApp Qt5::Core
+  PUBLIC TwkApp Qt6::Core
   PRIVATE stl_ext
 )
 

@@ -24,7 +24,7 @@ ADD_LIBRARY(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core Network
   REQUIRED
 )
@@ -36,7 +36,7 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PUBLIC Qt5::Core Qt5::Network
+  PUBLIC Qt6::Core Qt6::Network
 )
 
 RV_STAGE(TYPE "LIBRARY" TARGET ${_target})

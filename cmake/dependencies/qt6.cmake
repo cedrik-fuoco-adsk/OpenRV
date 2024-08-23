@@ -4,52 +4,92 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-SET(RV_DEPS_QT5_LOCATION
+# Get all propreties that cmake supports
+if(NOT CMAKE_PROPERTY_LIST)
+    execute_process(COMMAND cmake --help-property-list OUTPUT_VARIABLE CMAKE_PROPERTY_LIST)
+    
+    # Convert command output into a CMake list
+    string(REGEX REPLACE ";" "\\\\;" CMAKE_PROPERTY_LIST "${CMAKE_PROPERTY_LIST}")
+    string(REGEX REPLACE "\n" ";" CMAKE_PROPERTY_LIST "${CMAKE_PROPERTY_LIST}")
+    list(REMOVE_DUPLICATES CMAKE_PROPERTY_LIST)
+endif()
+    
+function(print_properties)
+    message("CMAKE_PROPERTY_LIST = ${CMAKE_PROPERTY_LIST}")
+endfunction()
+    
+function(print_target_properties target)
+    if(NOT TARGET ${target})
+      message(STATUS "There is no target named '${target}'")
+      return()
+    endif()
+
+    foreach(property ${CMAKE_PROPERTY_LIST})
+        string(REPLACE "<CONFIG>" "${CMAKE_BUILD_TYPE}" property ${property})
+
+        # Fix https://stackoverflow.com/questions/32197663/how-can-i-remove-the-the-location-property-may-not-be-read-from-target-error-i
+        if(property STREQUAL "LOCATION" OR property MATCHES "^LOCATION_" OR property MATCHES "_LOCATION$")
+            continue()
+        endif()
+
+        get_property(was_set TARGET ${target} PROPERTY ${property} SET)
+        if(was_set)
+            get_target_property(value ${target} ${property})
+            message("${target} ${property} = ${value}")
+        endif()
+    endforeach()
+endfunction()
+
+SET(RV_DEPS_QT6_LOCATION
     ""
-    CACHE STRING "Path to pre-compiled Qt5"
+    CACHE STRING "Path to pre-compiled Qt6"
 )
 SET(_target
-    RV_DEPS_QT5
+    RV_DEPS_QT6
 )
-IF(NOT RV_DEPS_QT5_LOCATION
-   OR RV_DEPS_QT5_LOCATION STREQUAL ""
+IF(NOT RV_DEPS_QT6_LOCATION
+   OR RV_DEPS_QT6_LOCATION STREQUAL ""
 )
   MESSAGE(
     FATAL_ERROR
-      "Unable to build without a RV_DEPS_QT5_LOCATION. It is required to provide a working Qt 5.15 root path to build. Example: cmake .. -DRV_DEPS_QT5_LOCATION=/Users/rv/Qt/5.15.11/clang_64"
+      "Unable to build without a RV_DEPS_QT6_LOCATION. It is required to provide a working Qt 5.15 root path to build. Example: cmake .. -DRV_DEPS_QT6_LOCATION=/Users/rv/Qt/5.15.11/clang_64"
   )
 ENDIF()
 
-SET(RV_DEPS_QT5_RESOURCES_FOLDER
-    "${RV_DEPS_QT5_LOCATION}/resources"
+#TODO : I think that the resources folder changed location
+SET(RV_DEPS_QT6_RESOURCES_FOLDER
+    "${RV_DEPS_QT6_LOCATION}/resources"
     CACHE STRING "Path to the Qt resources files folder"
 )
-SET(RV_DEPS_QT5_TRANSLATIONS_FOLDER
-    "${RV_DEPS_QT5_LOCATION}/translations"
+
+#TODO : I think that the translations folder changed location
+SET(RV_DEPS_QT6_TRANSLATIONS_FOLDER
+    "${RV_DEPS_QT6_LOCATION}/translations"
     CACHE STRING "Path to the Qt translations files folder"
 )
 
-FILE(GLOB QT5_CMAKE_DIRS ${RV_DEPS_QT5_LOCATION}/lib/cmake/*)
+FILE(GLOB QT6_CMAKE_DIRS ${RV_DEPS_QT6_LOCATION}/lib/cmake/*)
 FOREACH(
-  QT5_CMAKE_DIR
-  ${QT5_CMAKE_DIRS}
+  QT6_CMAKE_DIR
+  ${QT6_CMAKE_DIRS}
 )
-  IF(IS_DIRECTORY ${QT5_CMAKE_DIR})
-    GET_FILENAME_COMPONENT(QT_COMPONENT_NAME ${QT5_CMAKE_DIR} NAME)
+  IF(IS_DIRECTORY ${QT6_CMAKE_DIR})
+    GET_FILENAME_COMPONENT(QT_COMPONENT_NAME ${QT6_CMAKE_DIR} NAME)
     SET(CMAKE_PREFIX_PATH
-        ${CMAKE_PREFIX_PATH} ${QT5_CMAKE_DIR}
+        ${CMAKE_PREFIX_PATH} ${QT6_CMAKE_DIR}
     )
     SET(${QT_COMPONENT_NAME}_DIR
-        ${QT5_CMAKE_DIR}
+        ${QT6_CMAKE_DIR}
         CACHE INTERNAL "Path to ${QT_COMPONENT_NAME} CMake"
     )
   ENDIF()
 ENDFOREACH()
 
 # Testing if everything is alright.
+# In Qt6, QtWebEngine has been split into Qt6WebEngineCore and Qt6WebEngineWidgets.
 FIND_PACKAGE(
   Qt6
-  COMPONENTS Core WebEngineCore Widgets
+  COMPONENTS Core WebEngineCore WebEngineWidgets
   REQUIRED
 )
 
@@ -58,8 +98,9 @@ SET(_qt_copy_message
 )
 MESSAGE(STATUS "${_qt_copy_message}")
 
-SET(RV_DEPS_QT5_VERSION
-    ${Qt5Core_VERSION_STRING}
+print_target_properties(Qt6::Core)
+SET(RV_DEPS_QT6_VERSION
+    ${Qt6Core_VERSION}
     CACHE STRING "Qt Version String"
 )
 
@@ -69,15 +110,15 @@ IF(RV_TARGET_DARWIN
 )
   FILE(
     GLOB _qt_plugins_dirs
-    RELATIVE ${RV_DEPS_QT5_LOCATION}/plugins
-    ${RV_DEPS_QT5_LOCATION}/plugins/*
+    RELATIVE ${RV_DEPS_QT6_LOCATION}/plugins
+    ${RV_DEPS_QT6_LOCATION}/plugins/*
   )
   FOREACH(
     _qt_plugin_dir
     ${_qt_plugins_dirs}
   )
     FILE(
-      COPY ${RV_DEPS_QT5_LOCATION}/plugins/${_qt_plugin_dir}
+      COPY ${RV_DEPS_QT6_LOCATION}/plugins/${_qt_plugin_dir}
       DESTINATION ${RV_STAGE_PLUGINS_QT_DIR}
     )
   ENDFOREACH()
@@ -86,7 +127,7 @@ ENDIF()
 # Mac
 IF(RV_TARGET_DARWIN)
   SET(_qt5_lib_dir
-      ${RV_DEPS_QT5_LOCATION}/lib
+      ${RV_DEPS_QT6_LOCATION}/lib
   )
   FILE(
     GLOB libs_to_copy
@@ -108,39 +149,39 @@ ENDIF()
 
 # Linux
 IF(RV_TARGET_LINUX)
-  SET(RV_DEPS_QT5_LIB_DIR
-      ${RV_DEPS_QT5_LOCATION}/lib
+  SET(RV_DEPS_QT6_LIB_DIR
+      ${RV_DEPS_QT6_LOCATION}/lib
   )
   FILE(
     GLOB libs_to_copy
-    RELATIVE ${RV_DEPS_QT5_LIB_DIR}
-    CONFIGURE_DEPENDS ${RV_DEPS_QT5_LIB_DIR}/*
+    RELATIVE ${RV_DEPS_QT6_LIB_DIR}
+    CONFIGURE_DEPENDS ${RV_DEPS_QT6_LIB_DIR}/*
   )
   FOREACH(
     lib_to_copy
     ${libs_to_copy}
   )
     FILE(
-      COPY ${RV_DEPS_QT5_LIB_DIR}/${lib_to_copy}
+      COPY ${RV_DEPS_QT6_LIB_DIR}/${lib_to_copy}
       DESTINATION ${RV_STAGE_LIB_DIR}
     )
   ENDFOREACH()
 
   MESSAGE(STATUS "Copying Qt libexec files ...")
   FILE(
-    COPY "${RV_DEPS_QT5_LOCATION}/libexec"
+    COPY "${RV_DEPS_QT6_LOCATION}/libexec"
     DESTINATION "${RV_STAGE_ROOT_DIR}"
   )
 
   MESSAGE(STATUS "Copying Qt resources files ...")
   FILE(
-    COPY "${RV_DEPS_QT5_RESOURCES_FOLDER}"
+    COPY "${RV_DEPS_QT6_RESOURCES_FOLDER}"
     DESTINATION "${RV_STAGE_ROOT_DIR}"
   )
 
   MESSAGE(STATUS "Copying Qt translations files ...")
   FILE(
-    COPY "${RV_DEPS_QT5_TRANSLATIONS_FOLDER}"
+    COPY "${RV_DEPS_QT6_TRANSLATIONS_FOLDER}"
     DESTINATION "${RV_STAGE_ROOT_DIR}"
   )
 ENDIF()
@@ -179,7 +220,7 @@ IF(RV_TARGET_WINDOWS)
       LIST(REMOVE_ITEM _qt_debug_libs ${_d_lib})
     ENDFOREACH()
 
-    # Remove Qt5 executables that are not needed.
+    # Remove Qt6 executables that are not needed.
     FILE(
       GLOB _qt_executables
       RELATIVE ${SRC_DIR}
@@ -224,37 +265,37 @@ IF(RV_TARGET_WINDOWS)
   # Copy the Qt plugins
   FILE(
     GLOB _qt_plugins_dirs
-    RELATIVE ${RV_DEPS_QT5_LOCATION}/plugins
-    ${RV_DEPS_QT5_LOCATION}/plugins/*
+    RELATIVE ${RV_DEPS_QT6_LOCATION}/plugins
+    ${RV_DEPS_QT6_LOCATION}/plugins/*
   )
   FOREACH(
     _qt_plugin_dir
     ${_qt_plugins_dirs}
   )
-    COPY_ONLY_LIBS_MATCHING_BUILD_TYPE(${RV_DEPS_QT5_LOCATION}/plugins/${_qt_plugin_dir} ${RV_STAGE_PLUGINS_QT_DIR}/${_qt_plugin_dir})
+    COPY_ONLY_LIBS_MATCHING_BUILD_TYPE(${RV_DEPS_QT6_LOCATION}/plugins/${_qt_plugin_dir} ${RV_STAGE_PLUGINS_QT_DIR}/${_qt_plugin_dir})
   ENDFOREACH()
 
   # Copy the Qt import libs
-  SET(RV_DEPS_QT5_LIB_DIR
-      ${RV_DEPS_QT5_LOCATION}/lib
+  SET(RV_DEPS_QT6_LIB_DIR
+      ${RV_DEPS_QT6_LOCATION}/lib
   )
-  COPY_ONLY_LIBS_MATCHING_BUILD_TYPE(${RV_DEPS_QT5_LIB_DIR} ${RV_STAGE_LIB_DIR})
+  COPY_ONLY_LIBS_MATCHING_BUILD_TYPE(${RV_DEPS_QT6_LIB_DIR} ${RV_STAGE_LIB_DIR})
 
   # Copy the Qt dlls
-  SET(RV_DEPS_QT5_BIN_DIR
-      ${RV_DEPS_QT5_LOCATION}/bin
+  SET(RV_DEPS_QT6_BIN_DIR
+      ${RV_DEPS_QT6_LOCATION}/bin
   )
-  COPY_ONLY_LIBS_MATCHING_BUILD_TYPE(${RV_DEPS_QT5_BIN_DIR} ${RV_STAGE_BIN_DIR})
+  COPY_ONLY_LIBS_MATCHING_BUILD_TYPE(${RV_DEPS_QT6_BIN_DIR} ${RV_STAGE_BIN_DIR})
 
   MESSAGE(STATUS "Copying Qt translations files ...")
   FILE(
-    COPY "${RV_DEPS_QT5_LOCATION}/translations"
+    COPY "${RV_DEPS_QT6_LOCATION}/translations"
     DESTINATION "${RV_STAGE_ROOT_DIR}"
   )
 
   MESSAGE(STATUS "Copying Qt resources files ...")
   FILE(
-    COPY "${RV_DEPS_QT5_LOCATION}/resources"
+    COPY "${RV_DEPS_QT6_LOCATION}/resources"
     DESTINATION "${RV_STAGE_ROOT_DIR}"
   )
 ENDIF()

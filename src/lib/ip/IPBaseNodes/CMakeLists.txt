@@ -72,7 +72,7 @@ ADD_LIBRARY(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core
   REQUIRED
 )
@@ -84,7 +84,7 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PUBLIC TwkApp TwkFB TwkMovie Qt5::Core
+  PUBLIC TwkApp TwkFB TwkMovie Qt6::Core
   PRIVATE CDL
           IPCore
           OpenEXR::OpenEXR

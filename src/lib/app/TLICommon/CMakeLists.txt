@@ -23,7 +23,7 @@ SET_PROPERTY(
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core Gui OpenGL Widgets Core
   REQUIRED
 )
@@ -43,9 +43,9 @@ TARGET_LINK_LIBRARIES(
   TwkUtil
   stl_ext
   ZLIB::ZLIB
-  Qt5::Core
-  Qt5::Gui
-  Qt5::OpenGL
-  Qt5::Widgets
-  Qt5::Core
+  Qt6::Core
+  Qt6::Gui
+  Qt6::OpenGL
+  Qt6::Widgets
+  Qt6::Core
 )

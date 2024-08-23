@@ -11,7 +11,7 @@ SET(_target
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core Gui Widgets
   REQUIRED
 )
@@ -36,7 +36,7 @@ TARGET_COMPILE_OPTIONS(
 
 TARGET_LINK_LIBRARIES(
   ${_target}
-  PRIVATE Python::Python Boost::filesystem Boost::system Qt5::Core Qt5::Gui Qt5::Widgets
+  PRIVATE Python::Python Boost::filesystem Boost::system Qt6::Core Qt6::Gui Qt6::Widgets
 )
 
 IF(RV_TARGET_DARWIN)

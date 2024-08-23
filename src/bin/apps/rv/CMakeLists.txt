@@ -21,7 +21,7 @@ SET(CMAKE_AUTORCC
 )
 
 FIND_PACKAGE(
-  Qt5
+  Qt6
   COMPONENTS Core Gui Widgets OpenGL
   REQUIRED
 )
@@ -38,7 +38,7 @@ IF(RV_TARGET_WINDOWS)
   ENDIF()
 ENDIF()
 
-QT5_ADD_RESOURCES(_rv_qrc rv.qrc)
+QT6_ADD_RESOURCES(_rv_qrc rv.qrc)
 
 ADD_EXECUTABLE(
   ${_target}
