@@ -196,7 +196,7 @@ RvDocument::RvDocument()
     {
         RvSession* s = static_cast<RvSession*>(docs.front());
         RvDocument *rvDoc = (RvDocument*)s->opaquePointer();
-        m_glView = new GLView(this, rvDoc->view(), this,
+        m_glView = new GLView(this, rvDoc->view()->context(), this,
                               opts.stereoMode && !strcmp(opts.stereoMode, "hardware"),
                               opts.vsync != 0 && !m_vsyncDisabled,
                               true, // double buffer
@@ -212,7 +212,7 @@ RvDocument::RvDocument()
             delete m_glView;
             //cout << "ERROR: reverting to known GL state" << endl;
             //cout << "ERROR: check the rendering preferences" << endl;
-            m_glView = new GLView(this, rvDoc->view(), this);
+            m_glView = new GLView(this, rvDoc->view()->context(), this);
             resetGLPrefs = true;
         }
     }
@@ -755,7 +755,7 @@ RvDocument::rebuildGLView(bool stereo,
     Qt::KeyboardModifiers cur = m_glView->videoDevice()->translator().currentModifiers();
     oldGLView->stopProcessingEvents();
 
-    GLView* newGLView = new GLView(this, view(), this,
+    GLView* newGLView = new GLView(this, m_glView ? m_glView->context() : nullptr, this,
                                    stereo, vsync, doubleBuffer,
                                    red, green, blue, alpha);
 
@@ -773,7 +773,7 @@ RvDocument::rebuildGLView(bool stereo,
     if (!newGLView->isValid())
     {
         delete newGLView;
-        newGLView = new GLView(this, view(), this);
+        newGLView = new GLView(this, m_glView ? m_glView->context() : nullptr, this);
         resetGLPrefs = true;
     }
     
@@ -819,7 +819,8 @@ RvDocument::setStereo(bool b)
 {
     const bool vsync  = m_glView->format().swapInterval() == 1;
     const bool stereo = m_glView->format().stereo();
-    const bool dbl    = m_glView->format().doubleBuffer();
+    bool dbl = false;
+    if (m_glView->format().swapBehavior() == QSurfaceFormat::DoubleBuffer) dbl = true;
     const int  red    = m_glView->format().redBufferSize();
     const int  green  = m_glView->format().greenBufferSize();
     const int  blue   = m_glView->format().blueBufferSize();
@@ -833,7 +834,8 @@ RvDocument::setVSync(bool b)
     if (m_vsyncDisabled) return;
     const bool vsync = m_glView->format().swapInterval() == 1;
     const bool stereo = m_glView->format().stereo();
-    const bool dbl    = m_glView->format().doubleBuffer();
+    bool dbl = false;
+    if (m_glView->format().swapBehavior() == QSurfaceFormat::DoubleBuffer) dbl = true;
     const int  red    = m_glView->format().redBufferSize();
     const int  green  = m_glView->format().greenBufferSize();
     const int  blue   = m_glView->format().blueBufferSize();
@@ -861,7 +863,8 @@ RvDocument::setDisplayOutput(DisplayOutputType type)
 {
     const bool vsync = m_glView->format().swapInterval() == 1;
     const bool stereo = m_glView->format().stereo();
-    const bool dbl    = m_glView->format().doubleBuffer();
+    bool dbl = false;
+    if (m_glView->format().swapBehavior() == QSurfaceFormat::DoubleBuffer) dbl = true;
     int  red    = m_glView->format().redBufferSize();
     int  green  = m_glView->format().greenBufferSize();
     int  blue   = m_glView->format().blueBufferSize();

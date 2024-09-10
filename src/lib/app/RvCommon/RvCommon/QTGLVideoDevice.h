@@ -9,7 +9,7 @@
 #define __RvCommon__QTGLVideoDevice__h__
 #include <iostream>
 #include <TwkGLF/GLVideoDevice.h>
-#include <QtOpenGL/QGLWidget>
+#include <QOpenGLWidget>
 #include <QtWidgets/QWidget>
 #include <RvCommon/QTTranslator.h>
 
@@ -18,7 +18,7 @@ namespace Rv {
 //
 //  QTGLVideoDevice 
 //
-//  Wraps a QGLWidget as a TwkGLF::GLVideoDevice. This gives a handle
+//  Wraps a QOpenGLWidget as a TwkGLF::GLVideoDevice. This gives a handle
 //  on a concrete window system device. QTGLVideoDevice can generate
 //  events from the window system
 //
@@ -26,17 +26,17 @@ namespace Rv {
 class QTGLVideoDevice : public TwkGLF::GLVideoDevice
 {
   public:
-    QTGLVideoDevice(TwkApp::VideoModule*, const std::string& name, QGLWidget* view);
+    QTGLVideoDevice(TwkApp::VideoModule*, const std::string& name, QOpenGLWidget* view);
     QTGLVideoDevice(TwkApp::VideoModule*, const std::string& name);
     virtual ~QTGLVideoDevice();
     
-    void setWidget(QGLWidget*);
-    QGLWidget* widget() const { return m_view; }
+    void setWidget(QOpenGLWidget*);
+    QOpenGLWidget* widget() const { return m_view; }
 
-    virtual void makeCurrent() const;
+    virtual void makeCurrent() const override;
     const QTTranslator&  translator() const { return *m_translator; }
-    virtual void redraw() const;
-    virtual void redrawImmediately() const;
+    virtual void redraw() const override;
+    virtual void redrawImmediately() const override;
 
     void setAbsolutePosition(int x, int y);
 
@@ -44,31 +44,31 @@ class QTGLVideoDevice : public TwkGLF::GLVideoDevice
     //  VideoDevice API
     //
 
-    virtual GLVideoDevice* newSharedContextWorkerDevice() const;
-    virtual Resolution resolution() const;
-    virtual Offset offset() const;
-    virtual Timing timing() const;
-    virtual VideoFormat format() const;
+    virtual GLVideoDevice* newSharedContextWorkerDevice() const override;
+    virtual Resolution resolution() const override;
+    virtual Offset offset() const override;
+    virtual Timing timing() const override;
+    virtual VideoFormat format() const override;
 
-    virtual size_t width() const;
-    virtual size_t height() const;
+    virtual size_t width() const override;
+    virtual size_t height() const override;
 
-    virtual void open(const StringVector&);
-    virtual void close();
-    virtual bool isOpen() const;
+    virtual void open(const StringVector&) override;
+    virtual void close() override;
+    virtual bool isOpen() const override;
 
-    virtual void syncBuffers() const;
+    virtual void syncBuffers() const override;
 
     bool isWorkerDevice() const { return Capabilities(capabilities()) == NoCapabilities; }
 
   protected:
-    QTGLVideoDevice(const std::string& name, QGLWidget* view);
+    QTGLVideoDevice(const std::string& name, QOpenGLWidget* view);
 
   protected:
     int             m_x;
     int             m_y;
     float           m_refresh;
-    QGLWidget*      m_view;
+    QOpenGLWidget*  m_view;
     QTTranslator*   m_translator;
 };
 

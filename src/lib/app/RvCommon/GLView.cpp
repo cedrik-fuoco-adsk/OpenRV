@@ -111,9 +111,9 @@ class ThreadTrampoline
 }
 
 GLView::GLView(QWidget* parent,
-               const QGLWidget* share,
+               QOpenGLContext* shareContext,
                RvDocument* doc,
-               bool strereo,
+               bool stereo,
                bool vsync,
                bool doubleBuffer,
                int red,
@@ -121,9 +121,7 @@ GLView::GLView(QWidget* parent,
                int blue,
                int alpha,
                bool noResize)
-    : QGLWidget(GLView::rvGLFormat(strereo, vsync, doubleBuffer, red, green, blue, alpha), 
-                parent, 
-                share),
+    : QOpenGLWidget(parent),
       m_doc(doc),
       m_red(red),
       m_green(green),
@@ -140,6 +138,17 @@ GLView::GLView(QWidget* parent,
       m_stopProcessingEvents(false),
       m_syncThreadData(0)
 {
+    QSurfaceFormat format = rvSurfaceFormat(stereo, vsync, doubleBuffer, red, green, blue, alpha);
+    setFormat(format);
+
+    if (shareContext)
+    {
+        QOpenGLContext* ctx = new QOpenGLContext(this);
+        ctx->setFormat(format);
+        ctx->setShareContext(shareContext);
+        ctx->create();
+    }
+
     setObjectName((m_doc->session()) ?  m_doc->session()->name().c_str() : "no session");
     //m_frameBuffer = new QTFrameBuffer( this );
     ostringstream str;
@@ -149,12 +158,12 @@ GLView::GLView(QWidget* parent,
     setMouseTracking(true);
     setAcceptDrops(true);
     setFocusPolicy(Qt::StrongFocus);
-    setAutoBufferSwap(false);
+
+    // TODO_QT No need to manually buffer swap now.
+    //setAutoBufferSwap(false);
 
     m_eventProcessingTimer.setSingleShot(true);
     connect(&m_eventProcessingTimer, SIGNAL(timeout()), this, SLOT(eventProcessingTimeout()));
-
-    QGLFormat f = format();
 }
 
 GLView::~GLView()
@@ -204,24 +213,29 @@ GLView::absolutePosition(int& x, int& y) const
     y = gp.y();
 }
 
-QGLFormat 
-GLView::rvGLFormat(bool stereo,
-                   bool vsync,
-                   bool doubleBuffer,
-                   int red,
-                   int green,
-                   int blue,
-                   int alpha)
+QSurfaceFormat 
+GLView::rvSurfaceFormat(bool stereo,
+                        bool vsync,
+                        bool doubleBuffer,
+                        int red,
+                        int green,
+                        int blue,
+                        int alpha)
 {
     const Rv::Options& opts = Rv::Options::sharedOptions();
 
-    QGLFormat fmt;
+    QSurfaceFormat fmt;
     fmt.setDepthBufferSize(0);
-    fmt.setDoubleBuffer(doubleBuffer);
-    fmt.setStencilBufferSize(8);
-    fmt.setStencil(true);
-    fmt.setDepth(false);
-    fmt.setStereo(stereo);
+
+    if (doubleBuffer) 
+    {
+        fmt.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+    }
+    
+    if (stereo) 
+    {
+        fmt.setOption(QSurfaceFormat::StereoBuffers);
+    }
 
     //
     //  The default value for these buffer sizes is -1, but it is
@@ -233,11 +247,14 @@ GLView::rvGLFormat(bool stereo,
     if (blue  >  0) fmt.setBlueBufferSize(blue);
     if (alpha >= 0)
     {
-        fmt.setAlpha(alpha != 0);
+        // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the alpha buffer.
         fmt.setAlphaBufferSize(alpha);
     }
 
     fmt.setSwapInterval(vsync ? 1 : 0);
+
+    fmt.setVersion(2, 0); // default value, adjust according to your needs
+    fmt.setProfile(QSurfaceFormat::CoreProfile); // or CompatProfile, depending on your needs
 
     return fmt;
 }
@@ -251,8 +268,8 @@ GLView::initializeGL()
 
     if (isValid())
     {
-        QGLFormat f = context()->format();
-
+        QSurfaceFormat f = context()->format();
+// TODO: DARWIN
 #ifndef PLATFORM_DARWIN
         //
         //  Doesn't work on OS X
@@ -290,7 +307,7 @@ GLView::initializeGL()
         }
 #endif
 
-        if (!f.stencil())
+        if (!f.stencilBufferSize())
         {
             cout << "WARNING: no stencil buffer available" << endl;
         }
@@ -458,7 +475,11 @@ GLView::paintGL()
         }
         else
         {
-            swapBuffers();
+            QOpenGLContext* ctx = context();
+            if (ctx && ctx->isValid())
+            {
+                ctx->swapBuffers(ctx->surface());
+            }
         }
 
         trecord.swapEnd = session->profilingElapsedTime();
@@ -506,7 +527,11 @@ GLView::paintGL()
         }
         else
         {
-            swapBuffers();
+            QOpenGLContext* ctx = context();
+            if (ctx && ctx->isValid())
+            {
+                ctx->swapBuffers(ctx->surface());
+            }
         }
     }
 
@@ -670,7 +695,7 @@ GLView::event(QEvent* event)
                 session->userGenericEvent("view-resized", contents.str());
             }
         }
-        return QGLWidget::event(event);
+        return QOpenGLWidget::event(event);
     }
 
     if (session && session->outputVideoDevice() &&
@@ -736,7 +761,7 @@ GLView::event(QEvent* event)
     }
     else
     {
-        bool result = QGLWidget::event(event);
+        bool result = QOpenGLWidget::event(event);
 
         return result;
     }
