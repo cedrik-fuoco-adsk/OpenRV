@@ -59,20 +59,25 @@ GLState::deleteGLTexture(const GLuint& id)
 GLPipeline*
 GLState::useGLProgram(const GLProgram* p)
 {
+    TWK_GLDEBUG;
     // find
     PipelineMap::iterator it;
     int pid = p->programId();
+    std::cout<<"!!!GLState::useGLProgram-pid="<<pid<<std::endl;
     it = m_state.find(pid);
     if (it == m_state.end())
     {
+        TWK_GLDEBUG;
         // create one
         std::pair<PipelineMap::iterator, bool> result;
         result = m_state.insert(std::pair<unsigned int, GLPipeline>(pid, GLPipeline(p)));
         it = result.first;
+        TWK_GLDEBUG;
     }
     // use
     it->second.use();
     m_activeProgram = p;
+    TWK_GLDEBUG;
     return &(m_state[pid]);
 }
 

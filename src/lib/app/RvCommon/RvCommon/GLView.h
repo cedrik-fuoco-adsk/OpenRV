@@ -9,6 +9,7 @@
 #define __rv_qt__GLView__h__
 #include <TwkGLF/GL.h>
 #include <QOpenGLWidget>
+#include <QOpenGLShaderProgram>
 #include <QSurfaceFormat>
 #include <QOpenGLContext>
 #include <QtCore/QEvent>
@@ -73,9 +74,9 @@ public slots:
     void eventProcessingTimeout();
 
 protected:
-    void initializeGL();
-    void resizeGL(int w, int h);
-    void paintGL();
+    void initializeGL() override;
+    void resizeGL(int w, int h) override;
+    void paintGL() override;
     void swapBuffersNoSync();
 
 private:
@@ -101,6 +102,8 @@ private:
     bool             m_postFirstNonEmptyRender;
     bool             m_stopProcessingEvents;
     void*            m_syncThreadData;
+
+    QOpenGLShaderProgram *m_program1 = nullptr;
 };
 
 } // Rv

@@ -72,6 +72,7 @@ initGLSLVersion()
 {
     if (glslMajor == 0)
     {
+        std::cout<<"!!!initGLSLVersion()..."<<std::endl;
         //
         //  NOTE: its much better to have assigned 
         if (const char* glVersion = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION))
@@ -100,6 +101,7 @@ Function::useShadingLanguageVersion(const char* glVersion)
     {
         glslMajor = std::atoi(buffer[0].c_str());
         glslMinor = std::atoi(buffer[1].c_str());
+        std::cout<<"!!!Function::useShadingLanguageVersion-glslMajor="<<glslMajor<<", glslMinor="<<glslMinor<<std::endl;    
     }
     else
     {

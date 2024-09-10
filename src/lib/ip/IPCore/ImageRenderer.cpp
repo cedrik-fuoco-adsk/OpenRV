@@ -683,6 +683,21 @@ ImageRenderer::queryGLIntoContainer(IPNode* node)
 
     node->declareProperty<IntProperty>("opengl.glsl.majorVersion", glslMajor, 0, true);
     node->declareProperty<IntProperty>("opengl.glsl.minorVersion", glslMinor, 0, true);
+
+//!!!
+    std::cout << "opengl.GL_VERSION=" << glver << std::endl;
+    std::cout << "opengl.GL_SHADING_LANGUAGE_VERSION=" << glslver << std::endl;
+    std::cout << "opengl.GL_VENDOR=" << glven << std::endl;
+    std::cout << "opengl.GL_RENDERER=" << glren << std::endl;
+    std::cout << "opengl.GL_MAX_TEXTURE_SIZE=" << maxt << std::endl;
+    std::cout << "opengl.GL_MAX_TEXTURE_IMAGE_UNITS=" << iunits << std::endl;
+    std::cout << "opengl.GL_MAX_TEXTURE_UNITS=" << maxtu << std::endl;
+    std::cout << "opengl.GL_MAX_3D_TEXTURE_SIZE=" << max3d << std::endl;
+
+    GLint maxtiu; glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS_ARB, &maxtiu);TWK_GLDEBUG;
+    std::cout << "opengl.GL_MAX_TEXTURE_IMAGE_UNITS_ARB=" << maxtiu << std::endl;
+
+//!!!
 }
 
 void
@@ -1289,6 +1304,7 @@ ImageRenderer::setupContextFromDevice(InternalRenderContext& context) const
 void
 ImageRenderer::setControlDevice(const VideoDevice* d) 
 { 
+    //!!!std::cout<<"!!!ImageRenderer::setControlDevice-d="<<d<<std::endl;
     const size_t ringBufferSize  = m_defaultDeviceFBORingBufferSize;
     const size_t nviews          = 2;
 
@@ -1382,24 +1398,27 @@ ImageRenderer::setOutputDevice(const VideoDevice* d)
 
     if (device.glDevice) 
     {
+        //!!!std::cout<<"!!!ImageRenderer::setOutputDevice()-before device.glDevice->makeCurrent()"<<std::endl;
         device.glDevice->makeCurrent();
-
+        //!!!std::cout<<"!!!ImageRenderer::setOutputDevice()-after device.glDevice->makeCurrent()"<<std::endl;
+        
         //
         //  Initilaize a bunch of low level shaders
         //
-        
-        TwkGLF::textureRectGLProgram();
-        TwkGLF::defaultGLProgram();
-        TwkGLF::softPaintOldReplaceGLProgram();
-        TwkGLF::paintOldReplaceGLProgram();
-        TwkGLF::paintEraseGLProgram();
-        TwkGLF::softPaintEraseGLProgram();
-        TwkGLF::paintScaleGLProgram();
-        TwkGLF::softPaintScaleGLProgram();
-        TwkGLF::paintCloneGLProgram();
-        TwkGLF::softPaintCloneGLProgram();
-        TwkGLF::paintReplaceGLProgram();
-        TwkGLF::softPaintReplaceGLProgram();
+
+//!!!        
+        // TwkGLF::textureRectGLProgram();
+        // TwkGLF::defaultGLProgram();
+        // TwkGLF::softPaintOldReplaceGLProgram();
+        // TwkGLF::paintOldReplaceGLProgram();
+        // TwkGLF::paintEraseGLProgram();
+        // TwkGLF::softPaintEraseGLProgram();
+        // TwkGLF::paintScaleGLProgram();
+        // TwkGLF::softPaintScaleGLProgram();
+        // TwkGLF::paintCloneGLProgram();
+        // TwkGLF::softPaintCloneGLProgram();
+        // TwkGLF::paintReplaceGLProgram();
+        // TwkGLF::softPaintReplaceGLProgram();
     }
     
     m_outputDevice = device;
@@ -2689,13 +2708,33 @@ ImageRenderer::clearBackgroundToBlack(const GLFBO* target)
 void
 ImageRenderer::clearBackground(const GLFBO* target)
 {
+    TWK_GLDEBUG;
     target->bind();
-    if (m_bgpattern < Checker) m_glState->useGLProgram(defaultGLProgram());
-    else if (m_bgpattern == Checker) m_glState->useGLProgram(checkerBGGLProgram());
-    else m_glState->useGLProgram(crosshatchBGGLProgram());
-
+    TWK_GLDEBUG;
+    if (m_bgpattern < Checker)
+    {
+        //!!!std::cout<<"!!!ImageRenderer::clearBackground-<Checker-m_bgpattern="<<m_bgpattern<<std::endl;
+        m_glState->useGLProgram(defaultGLProgram());
+    }
+    else if (m_bgpattern == Checker) 
+    {
+        //!!!std::cout<<"!!!ImageRenderer::clearBackground-==Checker-m_bgpattern="<<m_bgpattern<<std::endl;
+        std::cout<<"!!!ImageRenderer::clearBackground-before useGLProgram"<<std::endl;
+        m_glState->useGLProgram(checkerBGGLProgram());
+        std::cout<<"!!!ImageRenderer::clearBackground-after useGLProgram"<<std::endl;
+    }
+    else 
+    {
+        //!!!std::cout<<"!!!ImageRenderer::clearBackground->Checker-m_bgpattern="<<m_bgpattern<<std::endl;
+        m_glState->useGLProgram(crosshatchBGGLProgram());
+    }
+    TWK_GLDEBUG;
     GLPipeline* glPipeline = m_glState->activeGLPipeline();
+    TWK_GLDEBUG;
+    //!!!std::cout<<"!!!ImageRenderer::clearBackground-before glPipeline->setViewport"<<std::endl;
     glPipeline->setViewport(0, 0, GLuint(target->width()), GLuint(target->height()));
+    //!!!std::cout<<"!!!ImageRenderer::clearBackground-after glPipeline->setViewport"<<std::endl;
+    TWK_GLDEBUG;
 
     float grey = 0.0;
     switch (m_bgpattern)
@@ -2708,9 +2747,16 @@ ImageRenderer::clearBackground(const GLFBO* target)
       case CrossHatch:  grey = .18f; break;
     }
 
-    glClearColor(grey, grey, grey, 0.0f); TWK_GLDEBUG;
-    glClear(GL_COLOR_BUFFER_BIT); TWK_GLDEBUG;
-    TWK_GLDEBUG;
+    if (m_bgpattern==Solid100)
+    {
+        glClearColor(0.0, 0.0, 1.0, 0.0f); TWK_GLDEBUG;
+        glClear(GL_COLOR_BUFFER_BIT); TWK_GLDEBUG;
+    }
+    else
+    {
+        glClearColor(grey, grey, grey, 0.0f); TWK_GLDEBUG;
+        glClear(GL_COLOR_BUFFER_BIT); TWK_GLDEBUG;
+    }
     //
     //  If you're seeing a GL error after glClear() on the mac only it
     //  might be because there's a Cocoa bug which causes the default
@@ -2720,6 +2766,11 @@ ImageRenderer::clearBackground(const GLFBO* target)
     //  This is supposedly an issue when using the 10.6 and 10.7 SDKs
     //
 
+    glFrontFace(GL_CW);
+    glCullFace(GL_FRONT);
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_DEPTH_TEST);
+
     if (m_bgpattern >= Checker)
     {
         Mat44f identity(1, 0, 0, 0,
@@ -2728,6 +2779,8 @@ ImageRenderer::clearBackground(const GLFBO* target)
                         0, 0, 0, 1);
         glPipeline->setModelview(identity);
         glPipeline->setProjection(identity);
+
+        std::cout<<"!!!ImageRenderer::clearBackground-target->width()="<<target->width()<<", target->height()="<<target->height()<<std::endl;
         
         float data[] = {-1.0, -1.0, 0, 0, 1.0, -1.0, 
                         static_cast<float>(target->width()), 0, 
@@ -3305,10 +3358,12 @@ ImageRenderer::drawImage(const InternalRenderContext& context)
     
     glPipeline->setProjection(PM);
     glPipeline->setModelview(MV);
+    //!!!std::cout<<"!!!ImageRenderer::drawImage-before glPipeline->setViewport"<<std::endl;
     glPipeline->setViewport(viewport.min.x,
                             viewport.min.y,
                             viewport.max.x - viewport.min.x,
                             viewport.max.y - viewport.min.y);
+    //!!!std::cout<<"!!!ImageRenderer::drawImage-after glPipeline->setViewport"<<std::endl;
     
     vector<float> data(16);
     ImagePlane&         plane = image->planes[0];

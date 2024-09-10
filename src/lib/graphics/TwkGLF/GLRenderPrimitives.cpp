@@ -117,6 +117,7 @@ RenderPrimitives::unbindBuffer() const
 void
 RenderPrimitives::render() const 
 {
+    glFinish();//!!!
     HOP_CALL( glFinish(); )
     HOP_PROF_FUNC();
 
@@ -149,6 +150,8 @@ RenderPrimitives::render() const
         }
     }
     TWK_GLDEBUG;
+
+    std::cout<<"!!!RenderPrimitives::render()-m_hasIndices="<<m_hasIndices<<",  m_attributeList.size()="<< m_attributeList.size()<<std::endl;
 
     if (m_hasIndices)
     {
@@ -186,7 +189,8 @@ RenderPrimitives::render() const
     }
     unbindBuffer();
     TWK_GLDEBUG;
-    HOP_CALL( glFinish(); )    
+    HOP_CALL( glFinish(); )   
+    glFinish();//!!! 
 }
 
 void 

@@ -521,6 +521,8 @@ Program::compile()
     }
 
     TWK_GLDEBUG;
+    std::cout << "!!!Program::compile()-1-m_programId="<<m_programId<<std::endl;
+
     glAttachShader(m_programId, vshader); 
     TWK_GLDEBUG;
 
@@ -627,6 +629,7 @@ Program::compile()
  
         if (!attachedFuncs.count(F)) 
         {
+            std::cout << "!!!Program::compile()-2-m_programId="<<m_programId<<std::endl;
             glAttachShader(m_programId, F->state()->shader);
             if (Shader::debuggingType() != Shader::NoDebugInfo) cout << "INFO: attached " << F->name() << endl;
             attachedFuncs.insert(F);
@@ -656,6 +659,7 @@ Program::compile()
         return false;
     }
 
+    std::cout << "!!!Program::compile()-3-m_programId="<<m_programId<<std::endl;
     glAttachShader(m_programId, m_main->state()->shader);
     glLinkProgram(m_programId);
 

@@ -95,9 +95,9 @@ struct GLPushMatrix
 //  DEBUG macro 
 //
 
-#ifdef NDEBUG
-#define TWK_GLDEBUG ;
-#else
+// #ifdef NDEBUG
+// #define TWK_GLDEBUG ;
+// #else
 //#define TWK_ABORT abort()
 #define TWK_ABORT 
 #define TWK_GLDEBUG                             \
@@ -114,7 +114,8 @@ struct GLPushMatrix
              << std::endl;                      \
         TWK_ABORT;                              \
     }
-#endif
+//#endif
+//!!!
 
 //----------------------------------------------------------------------
 //

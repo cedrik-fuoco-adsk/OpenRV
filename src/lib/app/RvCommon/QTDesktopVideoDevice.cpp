@@ -135,6 +135,8 @@ QTDesktopVideoDevice::syncBuffers() const
 void 
 QTDesktopVideoDevice::open(const StringVector& args)
 {
+    std::cout<<"!!!QTDesktopVideoDevice::open()..."<<std::endl;
+
     //
     //  always make the fullscreen device synced
     //

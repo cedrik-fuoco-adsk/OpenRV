@@ -698,6 +698,11 @@ RvApplication::newSessionFromFiles(const StringVector& files)
 
     doc->show();
 
+//!!!
+    // doc->session()->setControlVideoDevice(0);
+    // doc->session()->setControlVideoDevice(doc->view()->videoDevice());
+//!!!
+
 #ifndef PLATFORM_LINUX
     doc->raise();
 #endif

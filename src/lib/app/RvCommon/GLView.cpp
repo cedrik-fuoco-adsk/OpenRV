@@ -169,11 +169,15 @@ GLView::GLView(QWidget* parent,
 
     // TODO_QT What is this?
     QSurfaceFormat f = format();
+
+    std::cout<<"!!!GLView::GLView()-context()="<<context()<<std::endl;
 }
 
 GLView::~GLView()
 {
-    //delete m_frameBuffer;
+    makeCurrent();
+    delete m_program1;
+
     delete m_videoDevice;
 
     if (m_syncThreadData)
@@ -227,33 +231,11 @@ GLView::rvGLFormat(bool stereo,
                    int blue,
                    int alpha)
 {
-    const Rv::Options& opts = Rv::Options::sharedOptions();
-
     QSurfaceFormat fmt;
-
-    //fmt.setVersion(3, 2);
-    // fmt.setProfile(QSurfaceFormat::NoProfile);
-    // fmt.setRenderableType(QSurfaceFormat::OpenGL);
-
-    // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the depth buffer.
     fmt.setDepthBufferSize(0);
-
-    if (doubleBuffer) 
-    {
-        fmt.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
-    }
-    else 
-    {
-        fmt.setSwapBehavior(QSurfaceFormat::SingleBuffer);
-    }
-    
-    // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the stencil buffer.
+    fmt.setSwapBehavior(doubleBuffer ? QSurfaceFormat::DoubleBuffer : QSurfaceFormat::SingleBuffer);
     fmt.setStencilBufferSize(8);
-
-    if (stereo) 
-    {
-        fmt.setOption(QSurfaceFormat::StereoBuffers);
-    }
+    fmt.setStereo(stereo);
 
     //
     //  The default value for these buffer sizes is -1, but it is
@@ -265,11 +247,12 @@ GLView::rvGLFormat(bool stereo,
     if (blue  >  0) fmt.setBlueBufferSize(blue);
     if (alpha >= 0)
     {
-        // TODO_QT Assumptions: Setting a size/0 indirectly enables/disable the alpha buffer.
         fmt.setAlphaBufferSize(alpha);
     }
 
     fmt.setSwapInterval(vsync ? 1 : 0);
+
+    fmt.setRenderableType(QSurfaceFormat::OpenGL);
 
     return fmt;
 }
@@ -281,6 +264,9 @@ GLView::initializeGL()
     //  At this point the format is known. Can't do this in the constructor
     //
     std::cout << "INFO: GLView::initializeGL()" << endl;
+    std::cout<<"!!!GLView::initializeGL()-context()="<<context()<<std::endl;
+    std::cout<<"!!!GLView::initializeGL()-isValid()()="<<isValid()<<std::endl;
+
     if (isValid())
     {
         // initializeOpenGLFunctions();
@@ -403,8 +389,10 @@ GLView::paintGL()
 
     if (m_doc && session && m_videoDevice)
     {
+        std::cout<<"!!!GLView.cpp-m_doc && session && m_videoDevice" << std::endl;
+
         //m_frameBuffer->makeCurrent();
-        m_videoDevice->makeCurrent();
+        //!!!m_videoDevice->makeCurrent();
 
         if (m_userActive && m_activityTimer.elapsed() > 1.0)
         {
@@ -430,11 +418,12 @@ GLView::paintGL()
         // white which creates undesirable artifacts.
         // As a work around, we set the resulting alpha channel to 1 to make sure 
         // that the resulting texture is fully opaque.
-        glPushAttrib( GL_COLOR_BUFFER_BIT ); TWK_GLDEBUG;
-        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE); TWK_GLDEBUG;
-        glClearColor(0.f, 0.f, 0.f, 1.0f); TWK_GLDEBUG;
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); TWK_GLDEBUG;
-        glPopAttrib(); TWK_GLDEBUG;        
+        //!!!
+        // glPushAttrib( GL_COLOR_BUFFER_BIT ); TWK_GLDEBUG;
+        // glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE); TWK_GLDEBUG;
+        // glClearColor(0.f, 0.f, 0.f, 1.0f); TWK_GLDEBUG;
+        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); TWK_GLDEBUG;
+        // glPopAttrib(); TWK_GLDEBUG;        
     }
     else 
     {
@@ -507,6 +496,7 @@ GLView::paintGL()
     {
         if (session->outputVideoDevice() != videoDevice())
         {
+            std::cout<<"!!!GLView.cpp-session->outputVideoDevice() != videoDevice()" << std::endl;
 
 #ifdef PLATFORM_DARWIN
             if (!m_syncThreadData)
@@ -538,7 +528,11 @@ GLView::paintGL()
             makeCurrent();
             // TODO_QT swapBuffers is not part of QOpenGLWidget. It is now part of QOpenGLContext.
             // TODO_QT QOpenGLContext::swapBuffers needs a QSurface
-            //swapBuffers();
+            if (context())
+            {
+                context()->swapBuffers();
+            }
+            //!!!
 #else
             session->outputVideoDevice()->syncBuffers();
             
@@ -549,11 +543,26 @@ GLView::paintGL()
         }
         else
         {
+            std::cout<<"!!!GLView.cpp-session->outputVideoDevice() == videoDevice()" << std::endl;
             // TODO_QT swapBuffers is not part of QOpenGLWidget. It is now part of QOpenGLContext.
             // TODO_QT QOpenGLContext::swapBuffers needs a QSurface
             //swapBuffers();
+            //!!!makeCurrent();//!!!
+            //!!!swapBuffersNoSync();//!!!
+            // makeCurrent();
+            // if (context())
+            // {
+            //     context()->swapBuffers();
+            // }
+            //!!!
         }
     }
+
+    glPushAttrib( GL_COLOR_BUFFER_BIT ); TWK_GLDEBUG;
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE); TWK_GLDEBUG;
+    glClearColor(0.f, 0.f, 1.f, 1.0f); TWK_GLDEBUG;
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); TWK_GLDEBUG;
+    glPopAttrib(); TWK_GLDEBUG; 
 
     session->addSyncSample();
 

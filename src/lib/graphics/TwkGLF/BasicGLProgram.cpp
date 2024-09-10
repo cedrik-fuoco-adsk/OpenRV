@@ -93,6 +93,7 @@ BasicGLProgram::compile()
 {
     GLuint v,f;
     m_programId = glCreateProgram();
+    std::cout<<"!!!BasicGLProgram::compile()-m_programId="<<m_programId<<std::endl;
     v = glCreateShader(GL_VERTEX_SHADER);
     f = glCreateShader(GL_FRAGMENT_SHADER);
     const char* vcode = m_vertexCode.c_str();
@@ -139,6 +140,7 @@ BasicGLProgram::compile()
 
     TWK_GLDEBUG;
 
+    std::cout << "!!!BasicGLProgram::compile()-m_programId="<<m_programId<<std::endl;
     glAttachShader(m_programId, v);
     TWK_GLDEBUG;
 

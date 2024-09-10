@@ -57,6 +57,14 @@ GLPipeline::setViewport(const int x, const int y, const int w, const int h)
     //}
 }
 
+void GLPipeline::use() const 
+{ 
+    TWK_GLDEBUG;
+    std::cout<<"!!!GLPipeline::use()-programId="<<m_program->programId()<<std::endl;
+    glUseProgram(m_program->programId()); 
+    TWK_GLDEBUG;
+}
+
 //----------------------------------------------------------------------
 // these only exist for compatibility with fixed function pipeline
 void 

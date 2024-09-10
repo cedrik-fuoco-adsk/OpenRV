@@ -1001,6 +1001,7 @@ Session::setOutputVideoDevice(const VideoDevice* d)
         }
 
         m_outputVideoDevice = d;
+        std::cout<<"!!!Session::setOutputVideoDevice-before calling setOutputDevice-d="<<d<<std::endl;
         m_renderer->setOutputDevice(d);
 
         if (d)

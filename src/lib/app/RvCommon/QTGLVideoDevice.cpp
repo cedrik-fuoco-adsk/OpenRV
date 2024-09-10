@@ -69,6 +69,7 @@ QTGLVideoDevice::setWidget(QOpenGLWidget* widget)
 GLVideoDevice* 
 QTGLVideoDevice::newSharedContextWorkerDevice() const
 {
+    std::cout<<"!!!QTGLVideoDevice::newSharedContextWorkerDevice()..."<<std::endl;
     // QGLWidget* w = new QGLWidget(m_view->parentWidget(), m_view);
     // return new QTGLVideoDevice(name() + "-workerContextDevice", w);
     
@@ -82,6 +83,7 @@ QTGLVideoDevice::newSharedContextWorkerDevice() const
 void 
 QTGLVideoDevice::makeCurrent() const 
 { 
+    std::cout<<"!!!QTGLVideoDevice::makeCurrent()-m_view->isValid()="<<m_view->isValid()<<", m_view->context()="<<m_view->context()<<std::endl;
     // if (m_view->context()->contextHandle() && m_view->context()->isValid()) m_view->makeCurrent();
     // if (!isWorkerDevice()) GLVideoDevice::makeCurrent(); 
     if (m_view->context() && m_view->isValid()) m_view->makeCurrent();

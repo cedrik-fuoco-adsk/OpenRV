@@ -181,14 +181,16 @@ RvDocument::RvDocument()
                               );
 
         cout << "INFO: m_glView->isValid()=" << m_glView->isValid() << endl;
-        if (!m_glView->isValid())
-        {
-            delete m_glView;
-            //cout << "ERROR: reverting to known GL state" << endl;
-            //cout << "ERROR: check the rendering preferences" << endl;
-            m_glView = new GLView(this, 0, this);
-            resetGLPrefs = true;
-        }
+        // if (!m_glView->isValid())
+        // {
+        //     delete m_glView;
+        //     //cout << "ERROR: reverting to known GL state" << endl;
+        //     //cout << "ERROR: check the rendering preferences" << endl;
+        //     m_glView = new GLView(this, 0, this);
+        //     std::cout << "!!!Problemo-RvDocument.cpp-!m_glView->isValid()"
+        //     resetGLPrefs = true;
+        // }
+
     }
     else
     {
