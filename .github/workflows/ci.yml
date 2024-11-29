@@ -521,9 +521,16 @@ jobs:
           ls -al _build
           
       - name: Build OpenRV main executable
+        continue-on-error: true
         run: |
           cmake --build _build --config ${{ matrix.build-type }} --target main_executable --parallel=$(python -c 'import os; print(os.cpu_count())') -v
-      
+
+      - name: Step that will run anyway  
+        run: |
+          ls -al /Users/runner/work/OpenRV/OpenRV/_build/RV_DEPS_OPENEXR
+          ls -al /Users/runner/work/OpenRV/OpenRV/_build/RV_DEPS_OPENEXR/install
+          ls -al /Users/runner/work/OpenRV/OpenRV/_build/RV_DEPS_OPENEXR/install/lib
+
       - name: Tests
         run: |
           ctest --test-dir _build -C ${{ matrix.build-type }} --extra-verbose
