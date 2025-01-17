@@ -204,7 +204,7 @@ def build() -> None:
     pyside_build_args = python_interpreter_args + [
         os.path.join(SOURCE_DIR, "setup.py"),
         "install",
-        f"--qtpaths={os.path.join(QT_OUTPUT_DIR, 'bin', 'qtpaths' + ('.exe' if platform.system() == 'Windows' else ''))}",
+        f"--qt-target-path={QT_OUTPUT_DIR}",
         "--ignore-git",
         "--standalone",
         "--verbose",
@@ -222,8 +222,12 @@ def build() -> None:
         if VARIANT == "Debug":
             pyside_build_args.append("--debug")
 
-    print(f"Executing {pyside_build_args}")
-    subprocess.run(pyside_build_args).check_returncode()
+    subprocess_env = os.environ.copy()
+    if platform.system() == "Linux":
+        subprocess_env.update({"LD_LIBRARY_PATH": os.path.join(QT_OUTPUT_DIR, "lib")})
+
+    print(f"Executing {pyside_build_args}, LD_LIBRARY_PATH {subprocess_env}")
+    subprocess.run(pyside_build_args, env=subprocess_env).check_returncode()
 
     generator_cleanup_args = python_interpreter_args + [
         "-m",

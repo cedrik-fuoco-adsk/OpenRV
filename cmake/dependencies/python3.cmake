@@ -37,7 +37,7 @@ SET(_opentimelineio_version
     "0.15"
 )
 
-RV_VFX_SET_VARIABLE(_pyside_version CY2023 "5.15.10" CY2024 "6.5.3")
+RV_VFX_SET_VARIABLE(_pyside_version CY2023 "5.15.10" CY2024 "6.5.4")
 
 SET(_python3_download_url
     "https://github.com/python/cpython/archive/refs/tags/v${_python3_version}.zip"
@@ -56,10 +56,10 @@ RV_VFX_SET_VARIABLE(
   CY2023
   "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside2/PySide2-${_pyside_version}-src/pyside-setup-opensource-src-${_pyside_version}.zip"
   CY2024
-  "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside6/PySide6-${_pyside_version}-src/pyside-setup-everywhere-src-${_pyside_version}.zip"
+  "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside6/PySide6-${_pyside_version}-src/pyside-setup-opensource-src-${_pyside_version}.zip"
 )
 
-RV_VFX_SET_VARIABLE(_pyside_download_hash CY2023 "87841aaced763b6b52e9b549e31a493f" CY2024 "515d3249c6e743219ff0d7dd25b8c8d8")
+RV_VFX_SET_VARIABLE(_pyside_download_hash CY2023 "87841aaced763b6b52e9b549e31a493f" CY2024 "254539dccae74e11af611883d1240d66")
 
 SET(_install_dir
     ${RV_DEPS_BASE_DIR}/${_python3_target}/install
@@ -338,22 +338,29 @@ ENDIF()
 
 IF(RV_TARGET_WINDOWS)
   SET(_copy_commands
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/lib ${RV_STAGE_LIB_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/include ${RV_STAGE_INCLUDE_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/bin ${RV_STAGE_BIN_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/lib ${RV_STAGE_LIB_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/include
+      ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/bin ${RV_STAGE_BIN_DIR}
   )
 
   IF(RV_VFX_CY2024)
-    LIST(APPEND _copy_commands COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/DLLs ${RV_STAGE_ROOT_DIR}/DLLs)
+    LIST(
+      APPEND
+      _copy_commands
+      COMMAND
+      ${CMAKE_COMMAND}
+      -E
+      copy_directory
+      ${_install_dir}/DLLs
+      ${RV_STAGE_ROOT_DIR}/DLLs
+    )
   ENDIF()
 
   ADD_CUSTOM_COMMAND(
     COMMENT "Installing ${_python3_target}'s include and libs into ${RV_STAGE_LIB_DIR}"
-    OUTPUT ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
-    ${_copy_commands}
+    OUTPUT ${RV_STAGE_BIN_DIR}/${_python3_lib_name} ${_copy_commands}
     DEPENDS ${_python3_target} ${${_python3_target}-requirements-flag} ${_build_flag_depends}
   )
-  
+
   ADD_CUSTOM_TARGET(
     ${_python3_target}-stage-target ALL
     DEPENDS ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
