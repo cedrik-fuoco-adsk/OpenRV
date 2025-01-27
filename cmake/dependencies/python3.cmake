@@ -325,7 +325,7 @@ ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
   ADD_CUSTOM_COMMAND(
     COMMENT "Building PySide6 using ${_pyside_make_command_script}"
     OUTPUT ${${_pyside_target}-build-flag}
-    COMMAND ${_pyside_make_command} --prepare --build
+    COMMAND ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=$ENV{LD_LIBRARY_PATH}:${RV_DEPS_QT6_LOCATION}/lib" ${_pyside_make_command} --prepare --build
     COMMAND cmake -E touch ${${_pyside_target}-build-flag}
     DEPENDS ${_python3_target} ${_pyside_make_command_script} ${${_python3_target}-requirements-flag}
     USES_TERMINAL
