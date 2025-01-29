@@ -19,4 +19,13 @@ addSymbols( new Function(c, "findChild", findChild, None,
                          new Param(c, "value", "qt.QVariant"),
                          End),
 
+            new Function(c, "tr", _n_tr0, None, 
+                         Compiled, qt_QObject_tr_string_QObject_string_string_int, 
+                         Return, "string", 
+                         Parameters, 
+                         new Param(c, "sourceText", "string"), 
+                         new Param(c, "disambiguation", "string", Value(nullptr)), 
+                         new Param(c, "n", "int", Value((int)-1)), 
+                         End),
+
             EndArguments);
