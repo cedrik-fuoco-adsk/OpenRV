@@ -895,6 +895,22 @@ void qt_QMainWindow_removeToolBarBreak_void_QMainWindow_QToolBar(Mu::Thread& NOD
     arg0->removeToolBarBreak(arg1);
 }
 
+void qt_QMainWindow_resizeDock_void_QMainWindow_QDockWidget_int_int(Mu::Thread& NODE_THREAD, Pointer param_this, Pointer param_dockwidget, int param_size, int param_orientation)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    QMainWindow* arg0 = object<QMainWindow>(param_this);
+    QDockWidget * arg1 = object<QDockWidget>(param_dockwidget);
+    int arg2 = (int)(param_size);
+    Qt::Orientation arg3 = (Qt::Orientation)(param_orientation);
+
+    QList<QDockWidget *> dockWidgets;
+    dockWidgets.append(arg1);
+    QList<int> sizes;
+    sizes.append(arg2);
+
+    arg0->resizeDocks(dockWidgets, sizes, arg3);
+}
+
 bool qt_QMainWindow_restoreDockWidget_bool_QMainWindow_QDockWidget(Mu::Thread& NODE_THREAD, Pointer param_this, Pointer param_dockwidget)
 {
     MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
@@ -1386,6 +1402,11 @@ static NODE_IMPLEMENTATION(_n_removeToolBarBreak0, void)
     qt_QMainWindow_removeToolBarBreak_void_QMainWindow_QToolBar(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer));
 }
 
+static NODE_IMPLEMENTATION(_n_resizeDock0, void)
+{
+    qt_QMainWindow_resizeDock_void_QMainWindow_QDockWidget_int_int(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer), NODE_ARG(2, int), NODE_ARG(3, int));
+}
+
 static NODE_IMPLEMENTATION(_n_restoreDockWidget0, bool)
 {
     NODE_RETURN(qt_QMainWindow_restoreDockWidget_bool_QMainWindow_QDockWidget(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer)));
@@ -1687,6 +1708,7 @@ addSymbols(
     new Function(c, "removeDockWidget", _n_removeDockWidget0, None, Compiled, qt_QMainWindow_removeDockWidget_void_QMainWindow_QDockWidget, Return, "void", Parameters, new Param(c, "this", "qt.QMainWindow"), new Param(c, "dockwidget", "qt.QDockWidget"), End),
     new Function(c, "removeToolBar", _n_removeToolBar0, None, Compiled, qt_QMainWindow_removeToolBar_void_QMainWindow_QToolBar, Return, "void", Parameters, new Param(c, "this", "qt.QMainWindow"), new Param(c, "toolbar", "qt.QToolBar"), End),
     new Function(c, "removeToolBarBreak", _n_removeToolBarBreak0, None, Compiled, qt_QMainWindow_removeToolBarBreak_void_QMainWindow_QToolBar, Return, "void", Parameters, new Param(c, "this", "qt.QMainWindow"), new Param(c, "before", "qt.QToolBar"), End),
+    new Function(c, "resizeDock", _n_resizeDock0, None, Compiled, qt_QMainWindow_resizeDock_void_QMainWindow_QDockWidget_int_int, Return, "void", Parameters, new Param(c, "this", "qt.QMainWindow"), new Param(c, "dockwidget", "qt.QDockWidget"), new Param(c, "size", "int"), new Param(c, "orientation", "int"), End),
     // MISSING: resizeDocks (void; QMainWindow this, "const QList<QDockWidget * > &" docks, "const QList<int> &" sizes, flags Qt::Orientation orientation)
     new Function(c, "restoreDockWidget", _n_restoreDockWidget0, None, Compiled, qt_QMainWindow_restoreDockWidget_bool_QMainWindow_QDockWidget, Return, "bool", Parameters, new Param(c, "this", "qt.QMainWindow"), new Param(c, "dockwidget", "qt.QDockWidget"), End),
     new Function(c, "restoreState", _n_restoreState0, None, Compiled, qt_QMainWindow_restoreState_bool_QMainWindow_QByteArray_int, Return, "bool", Parameters, new Param(c, "this", "qt.QMainWindow"), new Param(c, "state", "qt.QByteArray"), new Param(c, "version", "int", Value((int)0)), End),
