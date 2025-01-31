@@ -361,15 +361,6 @@ void qt_QObject_timerEvent_void_QObject_QTimerEvent(Mu::Thread& NODE_THREAD, Poi
     else ((MuQt_QObject*)arg0)->timerEvent_pub(arg1);
 }
 
-Pointer qt_QObject_tr_string_QObject_string_string_int(Mu::Thread& NODE_THREAD, Pointer sourceText, Pointer disambiguation, int n)
-{
-    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
-    QString arg0 = qstring(sourceText);
-    QString arg1 = qstring(disambiguation);
-    int arg2 = n;
-    return makestring(c, QObject::tr(arg0.toStdString().c_str(), arg1.toStdString().c_str(),arg2));
-}
-
 
 static NODE_IMPLEMENTATION(_n_QObject0, Pointer)
 {
@@ -476,10 +467,6 @@ static NODE_IMPLEMENTATION(_n_timerEvent0, void)
     qt_QObject_timerEvent_void_QObject_QTimerEvent(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer));
 }
 
-static NODE_IMPLEMENTATION(_n_tr0, Pointer)
-{
-    NODE_RETURN(qt_QObject_tr_string_QObject_string_string_int(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer),NODE_ARG(2, int)));
-}
 
 //
 // Copyright (C) 2023  Autodesk, Inc. All Rights Reserved. 
@@ -498,11 +485,25 @@ findChild_Object_string(Thread& NODE_THREAD, Pointer obj, Pointer p)
     return rval;
 }
 
+Pointer qt_QObject_tr_string_QObject_string_string_int(Mu::Thread& NODE_THREAD, Pointer sourceText, Pointer disambiguation, int n)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    QString arg0 = qstring(sourceText);
+    QString arg1 = qstring(disambiguation);
+    int arg2 = n;
+    return makestring(c, QObject::tr(arg0.toStdString().c_str(), arg1.toStdString().c_str(),arg2));
+}
+
 static NODE_IMPLEMENTATION(findChild, Pointer)
 {
     NODE_RETURN( findChild_Object_string(NODE_THREAD,
                                          NODE_ARG(0, Pointer),
                                          NODE_ARG(1, Pointer)) );
+}
+
+static NODE_IMPLEMENTATION(_n_tr0, Pointer)
+{
+    NODE_RETURN(qt_QObject_tr_string_QObject_string_string_int(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer),NODE_ARG(2, int)));
 }
 
 #include <MuQt6/QVariantType.h>
@@ -622,7 +623,7 @@ addSymbols(
     // MISSING: connect (flags QMetaObject::Connection; QObject sender, "PointerToMemberFunction" signal, QObject receiver, "PointerToMemberFunction" method, flags Qt::ConnectionType type)
     // MISSING: connect (flags QMetaObject::Connection; QObject sender, "PointerToMemberFunction" signal, "Functor" functor)
     // MISSING: connect (flags QMetaObject::Connection; QObject sender, "PointerToMemberFunction" signal, QObject context, "Functor" functor, flags Qt::ConnectionType type)
-    new Function(c, "tr", _n_tr0, None, Compiled, qt_QObject_tr_string_QObject_string_string_int, Return, "string", Parameters, new Param(c, "sourceText", "string"), new Param(c, "disambiguation", "string", Value(nullptr)), new Param(c, "n", "int", Value((int)-1)), End),
+    // MISSING: tr (string; "const char *" sourceText, "const char *" disambiguation, int n)
     EndArguments);
 globalScope()->addSymbols(
     EndArguments);
@@ -648,6 +649,15 @@ addSymbols( new Function(c, "findChild", findChild, None,
                          new Param(c, "this", ftn),
                          new Param(c, "name", "string"),
                          new Param(c, "value", "qt.QVariant"),
+                         End),
+
+            new Function(c, "tr", _n_tr0, None, 
+                         Compiled, qt_QObject_tr_string_QObject_string_string_int, 
+                         Return, "string", 
+                         Parameters, 
+                         new Param(c, "sourceText", "string"), 
+                         new Param(c, "disambiguation", "string", Value(nullptr)), 
+                         new Param(c, "n", "int", Value((int)-1)), 
                          End),
 
             EndArguments);

@@ -35,6 +35,7 @@
 #include <QSvgWidget>
 #include <QtNetwork/QtNetwork>
 #include <MuQt6/QDateTimeType.h>
+#include <MuQt6/QTimeZoneType.h>
 
 namespace Mu {
 using namespace std;
@@ -159,6 +160,14 @@ int64 qt_QDate_daysTo_int64_QDate_QDate(Mu::Thread& NODE_THREAD, Pointer param_t
     return arg0.daysTo(arg1);
 }
 
+Pointer qt_QDate_endOfDay_QDateTime_QDate_QTimeZone(Mu::Thread& NODE_THREAD, Pointer param_this, Pointer param_zone)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    QDate arg0 = getqtype<QDateType>(param_this);
+    const QTimeZone  arg1 = getqtype<QTimeZoneType>(param_zone);
+    return makeqtype<QDateTimeType>(c,arg0.endOfDay(arg1),"qt.QDateTime");
+}
+
 Pointer qt_QDate_endOfDay_QDateTime_QDate(Mu::Thread& NODE_THREAD, Pointer param_this)
 {
     MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
@@ -195,6 +204,14 @@ bool qt_QDate_setDate_bool_QDate_int_int_int(Mu::Thread& NODE_THREAD, Pointer pa
     int arg2 = (int)(param_month);
     int arg3 = (int)(param_day);
     return arg0.setDate(arg1, arg2, arg3);
+}
+
+Pointer qt_QDate_startOfDay_QDateTime_QDate_QTimeZone(Mu::Thread& NODE_THREAD, Pointer param_this, Pointer param_zone)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    QDate arg0 = getqtype<QDateType>(param_this);
+    const QTimeZone  arg1 = getqtype<QTimeZoneType>(param_zone);
+    return makeqtype<QDateTimeType>(c,arg0.startOfDay(arg1),"qt.QDateTime");
 }
 
 Pointer qt_QDate_startOfDay_QDateTime_QDate(Mu::Thread& NODE_THREAD, Pointer param_this)
@@ -319,6 +336,11 @@ static NODE_IMPLEMENTATION(_n_daysTo0, int64)
     NODE_RETURN(qt_QDate_daysTo_int64_QDate_QDate(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer)));
 }
 
+static NODE_IMPLEMENTATION(_n_endOfDay0, Pointer)
+{
+    NODE_RETURN(qt_QDate_endOfDay_QDateTime_QDate_QTimeZone(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer)));
+}
+
 static NODE_IMPLEMENTATION(_n_endOfDay1, Pointer)
 {
     NODE_RETURN(qt_QDate_endOfDay_QDateTime_QDate(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer)));
@@ -342,6 +364,11 @@ static NODE_IMPLEMENTATION(_n_month1, int)
 static NODE_IMPLEMENTATION(_n_setDate0, bool)
 {
     NODE_RETURN(qt_QDate_setDate_bool_QDate_int_int_int(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, int), NODE_ARG(2, int), NODE_ARG(3, int)));
+}
+
+static NODE_IMPLEMENTATION(_n_startOfDay0, Pointer)
+{
+    NODE_RETURN(qt_QDate_startOfDay_QDateTime_QDate_QTimeZone(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer)));
 }
 
 static NODE_IMPLEMENTATION(_n_startOfDay1, Pointer)
@@ -390,6 +417,30 @@ static NODE_IMPLEMENTATION(_n_isValid1, bool)
 }
 
 
+//
+// Copyright (C) 2024  Autodesk, Inc. All Rights Reserved. 
+// 
+// SPDX-License-Identifier: Apache-2.0 
+//
+
+Pointer qt_QDateTime_fromString_QDateTime_string_string(Mu::Thread& NODE_THREAD, Pointer param_string, Pointer param_format)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    const QString  arg0 = qstring(param_string);
+    const QString  arg1 = qstring(param_format);
+
+    QStringList parts = arg1.split(" ");
+    QDate date = QDate::fromString(parts[0], "yyyy-MM-dd");
+    QTime time = QTime::fromString(parts[1], "hh:mm:ss");
+
+    QDateTime dt(date, time);
+    return makeqtype<QDateTimeType>(c,dt,"qt.QDateTime");
+}
+
+static NODE_IMPLEMENTATION(_n_fromString1, Pointer)
+{
+    NODE_RETURN(qt_QDateTime_fromString_QDateTime_string_string(NODE_THREAD, NODE_ARG(0, Pointer), NODE_ARG(1, Pointer)));
+}
 
 void
 QDateType::load()
@@ -445,7 +496,7 @@ addSymbols(
     // MISSING: daysInYear (int; QDate this, "QCalendar" cal)
     new Function(c, "daysInYear", _n_daysInYear1, None, Compiled, qt_QDate_daysInYear_int_QDate, Return, "int", Parameters, new Param(c, "this", "qt.QDate"), End),
     new Function(c, "daysTo", _n_daysTo0, None, Compiled, qt_QDate_daysTo_int64_QDate_QDate, Return, "int64", Parameters, new Param(c, "this", "qt.QDate"), new Param(c, "d", "qt.QDate"), End),
-    // MISSING: endOfDay (QDateTime; QDate this, "const QTimeZone &" zone)
+    new Function(c, "endOfDay", _n_endOfDay0, None, Compiled, qt_QDate_endOfDay_QDateTime_QDate_QTimeZone, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDate"), new Param(c, "zone", "qt.QTimeZone"), End),
     new Function(c, "endOfDay", _n_endOfDay1, None, Compiled, qt_QDate_endOfDay_QDateTime_QDate, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDate"), End),
     // MISSING: getDate (void; QDate this, "int *" year, "int *" month, "int *" day)
     new Function(c, "isNull", _n_isNull0, None, Compiled, qt_QDate_isNull_bool_QDate, Return, "bool", Parameters, new Param(c, "this", "qt.QDate"), End),
@@ -454,7 +505,7 @@ addSymbols(
     new Function(c, "month", _n_month1, None, Compiled, qt_QDate_month_int_QDate, Return, "int", Parameters, new Param(c, "this", "qt.QDate"), End),
     new Function(c, "setDate", _n_setDate0, None, Compiled, qt_QDate_setDate_bool_QDate_int_int_int, Return, "bool", Parameters, new Param(c, "this", "qt.QDate"), new Param(c, "year", "int"), new Param(c, "month", "int"), new Param(c, "day", "int"), End),
     // MISSING: setDate (bool; QDate this, int year, int month, int day, "QCalendar" cal)
-    // MISSING: startOfDay (QDateTime; QDate this, "const QTimeZone &" zone)
+    new Function(c, "startOfDay", _n_startOfDay0, None, Compiled, qt_QDate_startOfDay_QDateTime_QDate_QTimeZone, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDate"), new Param(c, "zone", "qt.QTimeZone"), End),
     new Function(c, "startOfDay", _n_startOfDay1, None, Compiled, qt_QDate_startOfDay_QDateTime_QDate, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDate"), End),
     new Function(c, "toJulianDay", _n_toJulianDay0, None, Compiled, qt_QDate_toJulianDay_int64_QDate, Return, "int64", Parameters, new Param(c, "this", "qt.QDate"), End),
     // MISSING: toString (string; QDate this, string format, "QCalendar" cal)
@@ -480,6 +531,19 @@ globalScope()->addSymbols(
 scope()->addSymbols(
     EndArguments);
 
+//
+// Copyright (C) 2024  Autodesk, Inc. All Rights Reserved. 
+// 
+// SPDX-License-Identifier: Apache-2.0 
+//
+
+addSymbols( new Function(c, "fromString", _n_fromString1, None, 
+                        Compiled, qt_QDateTime_fromString_QDateTime_string_string, 
+                        Return, "qt.QDateTime", 
+                        Parameters, 
+                        new Param(c, "string", "string"), new Param(c, "format", "string"), 
+                        End)
+        );
 }
 
 } // Mu

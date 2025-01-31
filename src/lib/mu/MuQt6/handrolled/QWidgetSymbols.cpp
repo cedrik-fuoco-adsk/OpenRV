@@ -38,6 +38,6 @@ addSymbols(
                          Parameters, 
                          new Param(c, "this", "qt.QWidget"), 
                          new Param(c, "index", "int"), 
-                         End),
+                         End)
           
-           EndArguments);
+        );

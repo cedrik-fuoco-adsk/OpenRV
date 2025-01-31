@@ -265,6 +265,7 @@ baseHTML = [
     "qtextbrowser",
     "qsinglepointevent",
     "qpointerevent",
+    "qtimezone",
 ]
 
 #
@@ -323,6 +324,7 @@ primitiveTypes = set(
         "QTextOption",
         "QTextBlock",
         "QCursor",
+        "QTimeZone",
     ]
 )
 
@@ -667,6 +669,7 @@ includeClasses = set(
         "QHostInfo",
         "QLocalSocket",
         "QTimer",
+        "QTimeZone",
         "QScreen",
         "QFileInfo",
         "QItemSelection",
@@ -1467,6 +1470,10 @@ exclusionMap = {
     "QFileInfo::filesystemSymLinkTarget": None,
     "QUrl::fromAce": None,
     "QUrl::toAce": None,
+    "QTimeZone::nextTransition": None,
+    "QTimeZone::offsetData": None,
+    "QTimeZone::previousTransition": None,
+    "QTimeZone::transitions": None,
 }
 
 customNativeFuncsHeader = {
@@ -2314,6 +2321,8 @@ class MuFunction:
                 )
                 mutype = '"%s"' % atype
             self.args.append((aname, mutype, aval))
+
+        self.iscopyconstructor = False
 
         if self.isconstructor:
             self.rtype = name
@@ -4249,6 +4258,7 @@ else:
     pickle.dump(api, open(qtapifile, "w"))
 
 if outputRawClass:
+    print("CED RAW CLASS", outputClasses)
     if len(outputClasses):
         for cname in outputClasses:
             api.showClass(cname)
