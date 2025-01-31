@@ -371,6 +371,20 @@ Pointer qt_QDateTime_fromString_QDateTime_string_int(Mu::Thread& NODE_THREAD, Po
     return makeqtype<QDateTimeType>(c,QDateTime::fromString(arg0, arg1),"qt.QDateTime");
 }
 
+Pointer qt_QDateTime_fromString_QDateTime_string_string(Mu::Thread& NODE_THREAD, Pointer param_string, Pointer param_format)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    const QString  arg0 = qstring(param_string);
+    const QString  arg1 = qstring(param_format);
+
+    QStringList parts = arg1.split(" ");
+    QDate date = QDate::fromString(parts[0], "yyyy-MM-dd");
+    QTime time = QTime::fromString(parts[1], "hh:mm:ss");
+
+    QDateTime dt(date, time);
+    return makeqtype<QDateTimeType>(c,dt,"qt.QDateTime");
+}
+
 
 static NODE_IMPLEMENTATION(_n_QDateTime0, Pointer)
 {
@@ -567,6 +581,10 @@ static NODE_IMPLEMENTATION(_n_fromString0, Pointer)
     NODE_RETURN(qt_QDateTime_fromString_QDateTime_string_int(NODE_THREAD, NODE_ARG(0, Pointer), NODE_ARG(1, int)));
 }
 
+static NODE_IMPLEMENTATION(_n_fromString1, Pointer)
+{
+    NODE_RETURN(qt_QDateTime_fromString_QDateTime_string_string(NODE_THREAD, NODE_ARG(0, Pointer), NODE_ARG(1, Pointer)));
+}
 
 
 void
@@ -662,6 +680,7 @@ addSymbols(
     // MISSING: fromSecsSinceEpoch (QDateTime; int64 secs, "const QTimeZone &" timeZone)
     new Function(c, "fromSecsSinceEpoch", _n_fromSecsSinceEpoch1, None, Compiled, qt_QDateTime_fromSecsSinceEpoch_QDateTime_int64, Return, "qt.QDateTime", Parameters, new Param(c, "secs", "int64"), End),
     new Function(c, "fromString", _n_fromString0, None, Compiled, qt_QDateTime_fromString_QDateTime_string_int, Return, "qt.QDateTime", Parameters, new Param(c, "string", "string"), new Param(c, "format", "int", Value((int)Qt::TextDate)), End),
+    new Function(c, "fromString", _n_fromString1, None, Compiled, qt_QDateTime_fromString_QDateTime_string_string, Return, "qt.QDateTime", Parameters, new Param(c, "string", "string"), new Param(c, "format", "string"), End),
     // MISSING: fromString (QDateTime; "QStringView" string, flags Qt::DateFormat format)
     // MISSING: fromString (QDateTime; "QStringView" string, "QStringView" format, "QCalendar" cal)
     // MISSING: fromString (QDateTime; string string, "QStringView" format, "QCalendar" cal)

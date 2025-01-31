@@ -814,6 +814,13 @@ Pointer qt_QWidget_QWidget_QWidget_QWidget_QWidget_int(Mu::Thread& NODE_THREAD, 
     return param_this;
 }
 
+Pointer qt_QWidget_action_QAction_QWidget_int(Mu::Thread& NODE_THREAD, Pointer param_this, int index)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    QWidget* arg0 = object<QWidget>(param_this);
+    return makeinstance<QActionType>(c, arg0->actions()[index], "qt.QAction");
+}
+
 void qt_QWidget_activateWindow_void_QWidget(Mu::Thread& NODE_THREAD, Pointer param_this)
 {
     MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
@@ -1971,6 +1978,11 @@ static NODE_IMPLEMENTATION(_n_QWidget0, Pointer)
     NODE_RETURN(qt_QWidget_QWidget_QWidget_QWidget_QWidget_int(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer), NODE_ARG(2, int)));
 }
 
+static NODE_IMPLEMENTATION(_n_action0, Pointer)
+{
+    NODE_RETURN(qt_QWidget_action_QAction_QWidget_int(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, int)));
+}
+
 static NODE_IMPLEMENTATION(_n_activateWindow0, void)
 {
     qt_QWidget_activateWindow_void_QWidget(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer));
@@ -2743,6 +2755,7 @@ addSymbols(
     // PROP: accessibleDescription (string; QWidget this)
     // PROP: accessibleName (string; QWidget this)
     // MISSING: actions ("QList<QAction * >"; QWidget this)
+    new Function(c, "action", _n_action0, None, Compiled, qt_QWidget_action_QAction_QWidget_int, Return, "qt.QAction", Parameters, new Param(c, "this", "qt.QWidget"), new Param(c, "index", "int"), End),
     new Function(c, "activateWindow", _n_activateWindow0, None, Compiled, qt_QWidget_activateWindow_void_QWidget, Return, "void", Parameters, new Param(c, "this", "qt.QWidget"), End),
     new Function(c, "addAction", _n_addAction0, None, Compiled, qt_QWidget_addAction_void_QWidget_QAction, Return, "void", Parameters, new Param(c, "this", "qt.QWidget"), new Param(c, "action", "qt.QAction"), End),
     new Function(c, "addAction", _n_addAction1, None, Compiled, qt_QWidget_addAction_QAction_QWidget_string, Return, "qt.QAction", Parameters, new Param(c, "this", "qt.QWidget"), new Param(c, "text", "string"), End),

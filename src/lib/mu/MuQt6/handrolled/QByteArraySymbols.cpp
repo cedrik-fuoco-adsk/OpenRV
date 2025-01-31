@@ -6,10 +6,17 @@
 
 c->arrayType(c->byteType(), 1, 0);
 
-addSymbol( new Function(c, "constData", constData, None,
+addSymbol(  new Function(c, "constData", constData, None,
                         Compiled, QByteArray_constData_QByteArray_byteECB_BSB__,
                         Return, "byte[]",
                         Parameters,
                         new Param(c, "this", "qt.QByteArray"),
-                        End) );
+                        End),
+            new Function(c, "append", _n_append4, None, 
+                         Compiled, qt_QByteArray_append_QByteArray_QByteArray_string, 
+                         Return, "qt.QByteArray", 
+                         Parameters, 
+                         new Param(c, "this", "qt.QByteArray"), new Param(c, "str", "string"), 
+                         End),
+        );
                         
