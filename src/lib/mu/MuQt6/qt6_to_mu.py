@@ -266,6 +266,7 @@ baseHTML = [
     "qsinglepointevent",
     "qpointerevent",
     "qtimezone",
+    "qcalendar",
 ]
 
 #
@@ -325,6 +326,7 @@ primitiveTypes = set(
         "QTextBlock",
         "QCursor",
         "QTimeZone",
+        "QCalendar",
     ]
 )
 
@@ -670,6 +672,7 @@ includeClasses = set(
         "QLocalSocket",
         "QTimer",
         "QTimeZone",
+        "QCalendar",
         "QScreen",
         "QFileInfo",
         "QItemSelection",
@@ -1474,6 +1477,9 @@ exclusionMap = {
     "QTimeZone::offsetData": None,
     "QTimeZone::previousTransition": None,
     "QTimeZone::transitions": None,
+    "QCalendar::dateFromParts": None,
+    "QCalendar::partsFromDate": None,
+    "QCalendar::daysInMonth": None,
 }
 
 customNativeFuncsHeader = {

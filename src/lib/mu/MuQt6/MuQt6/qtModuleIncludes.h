@@ -1,3 +1,4 @@
+#include <MuQt6/QCalendarType.h>
 #include <MuQt6/QIODeviceBaseType.h>
 #include <MuQt6/QPointerEventType.h>
 #include <MuQt6/QSinglePointEventType.h>

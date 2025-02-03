@@ -1,4 +1,5 @@
 python2 ./qt6_to_mu.py -o -v -mu -module -stdout -other -rawclass -demoted -f \
+QCalendar \
 QIODeviceBase \
 QPointerEvent \
 QSinglePointEvent \

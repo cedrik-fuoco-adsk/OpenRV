@@ -64,6 +64,7 @@ SET(_autotypes
     Variant
     Url
     UrlQuery
+    Calendar
     DateTime
     TimeZone
     Time

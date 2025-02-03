@@ -35,6 +35,7 @@
 #include <QSvgWidget>
 #include <QtNetwork/QtNetwork>
 #include <MuQt6/QTimeType.h>
+#include <MuQt6/QCalendarType.h>
 #include <MuQt6/QDateType.h>
 #include <MuQt6/QTimeZoneType.h>
 
@@ -328,6 +329,15 @@ int64 qt_QDateTime_toSecsSinceEpoch_int64_QDateTime(Mu::Thread& NODE_THREAD, Poi
     return arg0.toSecsSinceEpoch();
 }
 
+Pointer qt_QDateTime_toString_string_QDateTime_string_QCalendar(Mu::Thread& NODE_THREAD, Pointer param_this, Pointer param_format, Pointer param_cal)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    QDateTime arg0 = getqtype<QDateTimeType>(param_this);
+    const QString  arg1 = qstring(param_format);
+    QCalendar arg2 = getqtype<QCalendarType>(param_cal);
+    return makestring(c,arg0.toString(arg1, arg2));
+}
+
 Pointer qt_QDateTime_toString_string_QDateTime_int(Mu::Thread& NODE_THREAD, Pointer param_this, int param_format)
 {
     MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
@@ -434,6 +444,15 @@ Pointer qt_QDateTime_fromString_QDateTime_string_int(Mu::Thread& NODE_THREAD, Po
     const QString  arg0 = qstring(param_string);
     Qt::DateFormat arg1 = (Qt::DateFormat)(param_format);
     return makeqtype<QDateTimeType>(c,QDateTime::fromString(arg0, arg1),"qt.QDateTime");
+}
+
+Pointer qt_QDateTime_fromString_QDateTime_string_string_QCalendar(Mu::Thread& NODE_THREAD, Pointer param_string, Pointer param_format, Pointer param_cal)
+{
+    MuLangContext* c = static_cast<MuLangContext*>(NODE_THREAD.context());
+    const QString  arg0 = qstring(param_string);
+    const QString  arg1 = qstring(param_format);
+    QCalendar arg2 = getqtype<QCalendarType>(param_cal);
+    return makeqtype<QDateTimeType>(c,QDateTime::fromString(arg0, arg1, arg2),"qt.QDateTime");
 }
 
 
@@ -597,6 +616,11 @@ static NODE_IMPLEMENTATION(_n_toSecsSinceEpoch0, int64)
     NODE_RETURN(qt_QDateTime_toSecsSinceEpoch_int64_QDateTime(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer)));
 }
 
+static NODE_IMPLEMENTATION(_n_toString0, Pointer)
+{
+    NODE_RETURN(qt_QDateTime_toString_string_QDateTime_string_QCalendar(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, Pointer), NODE_ARG(2, Pointer)));
+}
+
 static NODE_IMPLEMENTATION(_n_toString1, Pointer)
 {
     NODE_RETURN(qt_QDateTime_toString_string_QDateTime_int(NODE_THREAD, NONNIL_NODE_ARG(0, Pointer), NODE_ARG(1, int)));
@@ -670,6 +694,11 @@ static NODE_IMPLEMENTATION(_n_fromSecsSinceEpoch1, Pointer)
 static NODE_IMPLEMENTATION(_n_fromString0, Pointer)
 {
     NODE_RETURN(qt_QDateTime_fromString_QDateTime_string_int(NODE_THREAD, NODE_ARG(0, Pointer), NODE_ARG(1, int)));
+}
+
+static NODE_IMPLEMENTATION(_n_fromString4, Pointer)
+{
+    NODE_RETURN(qt_QDateTime_fromString_QDateTime_string_string_QCalendar(NODE_THREAD, NODE_ARG(0, Pointer), NODE_ARG(1, Pointer), NODE_ARG(2, Pointer)));
 }
 
 
@@ -773,9 +802,9 @@ addSymbols(
     // MISSING: toNSDate ("NSDate *"; QDateTime this)
     new Function(c, "toOffsetFromUtc", _n_toOffsetFromUtc0, None, Compiled, qt_QDateTime_toOffsetFromUtc_QDateTime_QDateTime_int, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDateTime"), new Param(c, "offsetSeconds", "int"), End),
     new Function(c, "toSecsSinceEpoch", _n_toSecsSinceEpoch0, None, Compiled, qt_QDateTime_toSecsSinceEpoch_int64_QDateTime, Return, "int64", Parameters, new Param(c, "this", "qt.QDateTime"), End),
-    // MISSING: toString (string; QDateTime this, string format, "QCalendar" cal)
+    new Function(c, "toString", _n_toString0, None, Compiled, qt_QDateTime_toString_string_QDateTime_string_QCalendar, Return, "string", Parameters, new Param(c, "this", "qt.QDateTime"), new Param(c, "format", "string"), new Param(c, "cal", "qt.QCalendar"), End),
     new Function(c, "toString", _n_toString1, None, Compiled, qt_QDateTime_toString_string_QDateTime_int, Return, "string", Parameters, new Param(c, "this", "qt.QDateTime"), new Param(c, "format", "int", Value((int)Qt::TextDate)), End),
-    // MISSING: toString (string; QDateTime this, "QStringView" format, "QCalendar" cal)
+    // MISSING: toString (string; QDateTime this, "QStringView" format, QCalendar cal)
     new Function(c, "toTimeZone", _n_toTimeZone0, None, Compiled, qt_QDateTime_toTimeZone_QDateTime_QDateTime_QTimeZone, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDateTime"), new Param(c, "timeZone", "qt.QTimeZone"), End),
     new Function(c, "toUTC", _n_toUTC0, None, Compiled, qt_QDateTime_toUTC_QDateTime_QDateTime, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDateTime"), End),
     // static functions
@@ -792,9 +821,9 @@ addSymbols(
     new Function(c, "fromSecsSinceEpoch", _n_fromSecsSinceEpoch1, None, Compiled, qt_QDateTime_fromSecsSinceEpoch_QDateTime_int64, Return, "qt.QDateTime", Parameters, new Param(c, "secs", "int64"), End),
     new Function(c, "fromString", _n_fromString0, None, Compiled, qt_QDateTime_fromString_QDateTime_string_int, Return, "qt.QDateTime", Parameters, new Param(c, "string", "string"), new Param(c, "format", "int", Value((int)Qt::TextDate)), End),
     // MISSING: fromString (QDateTime; "QStringView" string, flags Qt::DateFormat format)
-    // MISSING: fromString (QDateTime; "QStringView" string, "QStringView" format, "QCalendar" cal)
-    // MISSING: fromString (QDateTime; string string, "QStringView" format, "QCalendar" cal)
-    // MISSING: fromString (QDateTime; string string, string format, "QCalendar" cal)
+    // MISSING: fromString (QDateTime; "QStringView" string, "QStringView" format, QCalendar cal)
+    // MISSING: fromString (QDateTime; string string, "QStringView" format, QCalendar cal)
+    new Function(c, "fromString", _n_fromString4, None, Compiled, qt_QDateTime_fromString_QDateTime_string_string_QCalendar, Return, "qt.QDateTime", Parameters, new Param(c, "string", "string"), new Param(c, "format", "string"), new Param(c, "cal", "qt.QCalendar"), End),
     EndArguments);
 globalScope()->addSymbols(
     new Function(c, "+=", _n_operatorPlus_EQ_0, Op, Compiled, qt_QDateTime_operatorPlus_EQ__QDateTime_QDateTime_int, Return, "qt.QDateTime", Parameters, new Param(c, "this", "qt.QDateTime"), new Param(c, "duration", "int"), End),
