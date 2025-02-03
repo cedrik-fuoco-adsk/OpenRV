@@ -776,7 +776,8 @@ addSymbols(
                          Parameters, 
                          new Param(c, "this", "qt.QByteArray"), 
                          new Param(c, "str", "string"), 
-                         End)
+                         End),
+            EndArguments
         );
                         
 }

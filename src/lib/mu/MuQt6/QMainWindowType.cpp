@@ -1789,7 +1789,7 @@ scope()->addSymbols(
 // SPDX-License-Identifier: Apache-2.0 
 //
 
-addSymbols( new Function(c, "resizeDock", _n_resizeDock0, None, 
+addSymbol( new Function(c, "resizeDock", _n_resizeDock0, None, 
                         Compiled, qt_QMainWindow_resizeDock_void_QMainWindow_QDockWidget_int_int, 
                         Return, "void", 
                         Parameters, 
