@@ -1056,22 +1056,18 @@ namespace TwkMovie
 
         m_threadSafe = false;
 
-#if DB_TIMING & DB_LEVEL
         m_timingDetails = new TimingDetails();
-#endif
     }
 
     MovieFFMpegReader::~MovieFFMpegReader() { close(); }
 
     void MovieFFMpegReader::close()
     {
-#if DB_TIMING & DB_LEVEL
         if (!m_cloning)
         {
             DBL(DB_TIMING, m_timingDetails->summary());
             delete m_timingDetails;
         }
-#endif
 
         //
         // Delete AudioTracks/VideoTracks and their data
@@ -3343,9 +3339,7 @@ namespace TwkMovie
                                         AVStream* videoStream,
                                         VideoTrack* track)
     {
-#if DB_TIMING & DB_LEVEL
         m_timingDetails->startTimer("seek");
-#endif
 
         // To make seeking a bit more robust, step back 3 frames from the
         // intended frame. This is because FFmpeg internally seeks with the dts
@@ -3385,10 +3379,9 @@ namespace TwkMovie
         track->lastDecodedVideo = -1;
         track->tsSet.clear();
 
-#if DB_TIMING & DB_LEVEL
         double seekDuration = m_timingDetails->pauseTimer("seek");
-        DBL(DB_TIMING, "frame: " << inframe << " seekTime: " << seekDuration);
-#endif
+        std::cout << "frame: " << inframe << " seekTime: " << seekDuration
+                  << std::endl;
     }
 
     bool MovieFFMpegReader::readPacketFromStream(const int inframe,
@@ -3602,12 +3595,12 @@ namespace TwkMovie
         // videoCodecContext->gop_size because it is initialized by default by
         // FFmpeg with a default value of 12 even for intra-frame compression
         // codecs (such as Apple Pro Res for example).
-        const int nearFrameThreshold =
-            (m_info.slowRandomAccess && videoCodecContext->gop_size != 0)
-                ? videoCodecContext->gop_size
-                : 1;
+        const int nearFrameThreshold = (videoCodecContext->gop_size != 0)
+                                           ? videoCodecContext->gop_size
+                                           : 1;
         if (track->lastDecodedVideo == -1 || track->lastDecodedVideo >= inframe
-            || track->lastDecodedVideo < (inframe - nearFrameThreshold))
+            || (track->lastDecodedVideo < (inframe - nearFrameThreshold)
+                && !m_info.slowRandomAccess))
         {
             seekToFrame(inframe, frameDur, videoStream, track);
         }
@@ -3616,9 +3609,7 @@ namespace TwkMovie
         // Find the best suitable frame
         //
 
-#if DB_TIMING & DB_LEVEL
         m_timingDetails->startTimer("decode");
-#endif
 
         const bool frameFinished =
             findImageWithBestTimestamp(inframe, frameDur, videoStream, track);
@@ -3638,11 +3629,9 @@ namespace TwkMovie
         }
         track->tsSet.erase(track->tsSet.begin(), pruneIT);
 
-#if DB_TIMING & DB_LEVEL
         double decodeDuration = m_timingDetails->pauseTimer("decode");
-        DBL(DB_TIMING,
-            "frame: " << inframe << " decodeTime: " << decodeDuration);
-#endif
+        std::cout << "frame: " << inframe << " decodeTime: " << decodeDuration
+                  << std::endl;
 
         const int width = (track->rotate) ? m_info.height : m_info.width;
         const int height = (track->rotate) ? m_info.width : m_info.height;
@@ -4245,6 +4234,7 @@ namespace TwkMovie
         {
             avStream->time_base.num = m_duration;
             avStream->time_base.den = m_timeScale;
+            avStream->avg_frame_rate = av_d2q(m_info.fps, INT_MAX);
             avCodecContext->time_base.num = m_duration;
             avCodecContext->time_base.den = m_timeScale;
             avCodecContext->codec_id = avCodec->id;
@@ -4253,6 +4243,7 @@ namespace TwkMovie
             avCodecContext->width = m_info.width;
             avCodecContext->height = m_info.height;
             avCodecContext->color_primaries = AVCOL_PRI_BT709; // 1
+            avCodecContext->framerate = avStream->avg_frame_rate;
             //
             //  XXX should come back to this.  should transfer function also be
             //  something else for mjpeg ?  Maybe need user control.
