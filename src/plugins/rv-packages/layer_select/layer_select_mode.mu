@@ -264,14 +264,21 @@ class: LayerSelect : Widget
             {
                 activelayer = "";
             }
+
+            print("active layers...");
+            print(activelayer);
+            print("\n");
         }
         catch (exception exc)
         {
             print(exc);
         }
 
+        print("listing layers...");
         for(int i = layers.size() - 1; i >= 0; i--)
         {
+            print(layers[i]);
+            print(" ");
             attrs.push_back(("        ", layers[i]));
             if(activelayer == layers[i])
             {
@@ -279,6 +286,7 @@ class: LayerSelect : Widget
                _activeLayerIndex = i;
             }
         }
+        print("\n");
 
         if (activelayer == "")
         {

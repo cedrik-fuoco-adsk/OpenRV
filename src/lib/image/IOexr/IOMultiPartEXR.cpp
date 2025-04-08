@@ -1114,7 +1114,9 @@ namespace TwkFB
         const int numOfParts = file.parts();
 
         // Determine if the requestedView has conflicting channel names.
-        bool viewHasChannelConflict = false;
+        // When "nuke/full_layer_names" attribute is set to 0, we want RV to treat the file as having
+        // conflicting layer names. This is resolved by processing layer names using their full names.
+        bool viewHasChannelConflict = !isNukeFullLayerNames(file);
         {
             set<string> channelNamesInView;
             for (int p = 0; p < numOfParts; ++p)
@@ -1370,6 +1372,12 @@ namespace TwkFB
         LOG.log("***numOfParts = %d", numOfParts);
 #endif
 
+
+        // Search for "nuke/full_layer_names" attribute.
+        bool nukeFullLayerNames = isNukeFullLayerNames(file);
+        multimap<string, string> conflictedChannelNames;
+        std::map<std::string, int> channelNameCount;
+
         // Determine the total number of channels.
         // Determine which view's have channel conflicts
         fbi.numChannels = 0;
@@ -1384,7 +1392,7 @@ namespace TwkFB
             const Imf::ChannelList& cl = header.channels();
             fbi.numChannels += channelListSize(cl);
 #ifdef DEBUG_IOEXR
-            LOG.log("***fbi.numChannels for part %d = %d", p,
+            LOG.log("***Part %d: fbi.numChannels=%d channels", p,
                     channelListSize(cl));
 #endif
 
@@ -1392,9 +1400,19 @@ namespace TwkFB
             const string& view =
                 (header.hasView() ? header.view() : viewLessPartName);
             views.insert(view);
+            LOG.log("***Part %d: view=%s", p, view.c_str());
             if (viewChannelConflictTable.count(view) == 0)
             {
                 viewChannelConflictTable[view] = false;
+            }
+
+            if (!nukeFullLayerNames)
+            {
+                const Imf::ChannelList& channelsList = file.header(p).channels();
+                for (Imf::ChannelList::ConstIterator cli = channelsList.begin(); cli != channelsList.end(); ++cli) {
+                    std::string channelName = cli.name();
+                    channelNameCount[channelName]++;
+                }
             }
 
             for (Imf::ChannelList::ConstIterator ci = cl.begin();
@@ -1407,15 +1425,35 @@ namespace TwkFB
                 fbi.channelInfos.push_back(
                     cinfo); // ***CBB: This should really be a set.
 #ifdef DEBUG_IOEXR
-                LOG.log("***fbi.ChannelInfo.name = %s",
-                        fbi.channelInfos.back().name.c_str());
+                LOG.log("***Part %d: view=%s, fbi.ChannelInfo.name=%s", p, view.c_str(), fbi.channelInfos.back().name.c_str());
 #endif
-                if (!viewChannelConflictTable[view]
-                    && viewChannelListTable[view].findChannel(ci.name()) != 0)
+
+                if (!nukeFullLayerNames)
                 {
-                    // Found a channel conflict in 'view'.
-                    viewChannelConflictTable[view] = true;
+                    // Channels name does not follow the layer.channel convention.
+                    // Check for conflicting channels name using a case sensitive compare.
+
+                    // Manually search for conflicted channels.
+                    // Search will be case sensitive because nuke/full_layer_names is set to 0.
+                    const Imf::ChannelList& channelsList = header.channels();
+                    for (Imf::ChannelList::ConstIterator cli = channelsList.begin(); cli != channelsList.end(); ++cli) {
+                        std::string channelName = cli.name();
+                        if (channelNameCount[channelName] > 1) {
+                            viewChannelConflictTable[view] = true;
+                            conflictedChannelNames.insert({view, channelName});
+                        }
+                    }
                 }
+                else
+                {
+                    if (!viewChannelConflictTable[view]
+                        && viewChannelListTable[view].findChannel(ci.name()) != 0)
+                    {
+                        // Found a channel conflict in 'view'.
+                        viewChannelConflictTable[view] = true;
+                    }
+                }
+
                 viewChannelListTable[view].insert(ci.name(), ci.channel());
             }
         }
@@ -1479,11 +1517,32 @@ namespace TwkFB
                 for (Imf::ChannelList::ConstIterator ci = cl.begin();
                      ci != cl.end(); ++ci)
                 {
-                    string partNamedChannel = viewStrippedPartQualifiedName(
-                        doViewStrip, file, p, view, ci.name());
+                    // Check if the channel name is in conflict.
+                    bool channelConflicted = false;
+                    auto conflictedChannels = conflictedChannelNames.equal_range(view);
+                    for (auto it = conflictedChannels.first; it != conflictedChannels.second; ++it)
+                    {
+                        if (it->second.compare(ci.name()) == 0)
+                        {
+                            channelConflicted = true;
+                            break;
+                        }
+                    }
 
-                    viewPartNamedChannelListTable[view].insert(partNamedChannel,
-                                                               ci.channel());
+                    if (channelConflicted)
+                    {
+                        string partNamedChannel = viewStrippedPartQualifiedName(
+                            doViewStrip, file, p, view, ci.name());
+                        
+                        LOG.log("***INSERT partNamedChannel %s", partNamedChannel.c_str());
+                        viewPartNamedChannelListTable[view].insert(partNamedChannel,
+                                                                ci.channel());
+                    }
+                    else
+                    {
+                        LOG.log("***INSERT channel %s", ci.name());
+                        viewPartNamedChannelListTable[view].insert(ci.name(), ci.channel());
+                    }
                 }
             }
         }
@@ -1492,6 +1551,7 @@ namespace TwkFB
         //  Get or derived RV layers from multipart info that was
         //  read in earlier.
         //
+        LOG.log("********** Get or derived RV layers from multipart info **********");
         fbi.viewInfos.resize(views.size());
         int vindex = 0;
         for (set<string>::const_iterator v = views.begin(); v != views.end();
@@ -1502,13 +1562,13 @@ namespace TwkFB
             {
                 fbi.views.push_back(view);
 #ifdef DEBUG_IOEXR
-                LOG.log("***fbi.views = %s", fbi.views.back().c_str());
+                LOG.log("   ***fbi.views = %s", fbi.views.back().c_str());
 #endif
             }
             FBInfo::ViewInfo& vinfo = fbi.viewInfos[vindex];
             vinfo.name = view;
 #ifdef DEBUG_IOEXR
-            LOG.log("***fbi.ViewInfo.name = %s", view.c_str());
+            LOG.log("   ***fbi.ViewInfo.name = %s", view.c_str());
 #endif
 
             const Imf::ChannelList& vcl =
@@ -1522,16 +1582,17 @@ namespace TwkFB
             {
                 if (viewChannelConflictTable[view])
                 {
-                    LOG.log("***view=%s  partnamedchannel=%s", view.c_str(),
+                    LOG.log("   ***view=%s  partnamedchannel=%s", view.c_str(),
                             ci.name());
                 }
                 else
                 {
-                    LOG.log("***view=%s  channel=%s", view.c_str(), ci.name());
+                    LOG.log("   ***view=%s  channel=%s", view.c_str(), ci.name());
                 }
             }
 #endif
             // Determine what the layers are per view.
+            LOG.log("   ********** Determine what the layers are per view **********");
             set<string> exrLayers;
             vcl.layers(exrLayers);
             exrLayers.insert(""); // Add a default layer
@@ -1540,8 +1601,8 @@ namespace TwkFB
             {
                 fbi.layers.push_back(*li);
 #ifdef DEBUG_IOEXR
-                LOG.log("***view=%s  layer=%s", view.c_str(), li->c_str());
-                LOG.log("***fbi.layers = %s", fbi.layers.back().c_str());
+                LOG.log("   ***Processing view=%s  layer=%s", view.c_str(), li->c_str());
+                //LOG.log("   ***fbi.layers = %s", fbi.layers.back().c_str());
 #endif
                 Imf::ChannelList::ConstIterator cb;
                 Imf::ChannelList::ConstIterator ce;
@@ -1560,12 +1621,15 @@ namespace TwkFB
                 {
                     string baseName, layerName;
                     channelSplit(ci.name(), baseName, layerName);
+                    LOG.log("       ***channel name=%s baseName=%s "
+                            "layerName=%s",
+                            ci.name(), baseName.c_str(), layerName.c_str());
                     if ((*li) == layerName)
                     {
                         string baseName = baseChannelName(ci.name());
                         cl.insert(baseName.c_str(), ci.channel());
 #ifdef DEBUG_IOEXR
-                        LOG.log("***view=%s  layer=%s  channel=%s",
+                        LOG.log("       ***view=%s  layer=%s  channel=%s",
                                 view.c_str(), li->c_str(), baseName.c_str());
 #endif
                     }
@@ -1578,7 +1642,7 @@ namespace TwkFB
                     linfo.name = (*li);
                     vinfo.layers.push_back(linfo);
 #ifdef DEBUG_IOEXR
-                    LOG.log("***fbi.ViewInfo.LayerInfo.name = %s",
+                    LOG.log("       ***fbi.ViewInfo.LayerInfo.name = %s",
                             vinfo.layers.back().name.c_str());
 #endif
                     vinfo.layers.back().channels.resize(channelListSize(cl));
@@ -1591,7 +1655,7 @@ namespace TwkFB
                         setChannelInfo(ci, cinfo);
 #ifdef DEBUG_IOEXR
                         LOG.log(
-                            "***fbi.ViewInfo.LayerInfo.ChannelInfo.name = %s",
+                            "       ***fbi.ViewInfo.LayerInfo.ChannelInfo.name = %s",
                             cinfo.name.c_str());
 #endif
                     }
@@ -1604,6 +1668,7 @@ namespace TwkFB
         //  Check if there is an exrAttribute first, if there isnt then
         //  use the "view" of part zero.
         //
+        LOG.log("********** Set the default view **********");
         {
             const Imf::Header& header = file.header(0);
             if (const Imf::StringAttribute* sAttr =

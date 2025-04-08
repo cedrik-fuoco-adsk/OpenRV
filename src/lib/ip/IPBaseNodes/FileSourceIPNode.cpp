@@ -2835,6 +2835,28 @@ namespace IPCore
             }
         }
 
+
+        // Print view information
+        for (const auto & view : mov->info().views)
+        {
+            std::cout << "View: " << view << std::endl;
+            std::cout << "------------------------" << std::endl;
+        }
+
+        // Print layer information
+        for (const auto & layer : mov->info().layers)
+        {
+            std::cout << "Layer: " << layer << std::endl;
+            std::cout << "------------------------" << std::endl;
+        }
+
+        // Print channel information
+        for (const auto & channel : mov->info().channelInfos)
+        {
+            std::cout << "Channel: " << channel.name << std::endl;
+            std::cout << "------------------------" << std::endl;
+        }
+
         SharedMediaPointer sharedMedia(
             newSharedMedia(mov, true /*hasValidRange*/));
         addMedia(sharedMedia, proxySharedMedia);

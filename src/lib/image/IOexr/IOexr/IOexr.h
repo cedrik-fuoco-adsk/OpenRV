@@ -200,7 +200,7 @@ namespace TwkFB
         static int blueIndex(const std::vector<std::string>& channelNames);
         static int blueIndex(const std::vector<MultiPartChannel>& channelsMP);
 
-        static bool channelIsRGB(const std::string& channelName);
+        static bool channelIsRGB(const std::string_view channelName);
 
         static std::string findAnAlpha(const Imf::MultiPartInputFile& file,
                                        int partNum, const std::string& layer,
@@ -212,6 +212,8 @@ namespace TwkFB
                                       const std::string& view,
                                       const std::string& partName,
                                       MultiPartChannel& alpha);
+
+        static bool isNukeFullLayerNames(const Imf::MultiPartInputFile& file);
 
         static std::string baseChannelName(const std::string& name);
 

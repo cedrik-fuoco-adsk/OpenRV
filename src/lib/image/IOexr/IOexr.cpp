@@ -42,11 +42,13 @@
 #include <TwkFB/Exception.h>
 #include <TwkFB/Operations.h>
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <iterator>
 #include <sstream>
 #include <stl_ext/string_algo.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <IOexr/Logger.h>
@@ -218,19 +220,22 @@ namespace TwkFB
         return indexOfChannelName(channelsMP, names);
     }
 
-    bool IOexr::channelIsRGB(const string& channelName)
+    bool IOexr::channelIsRGB(const std::string_view channelName)
     {
-        static const char* names[] = {"r",    "R",     "red",   "Red", "g",
-                                      "G",    "green", "Green", "b",   "B",
-                                      "blue", "Blue",  NULL};
-        string name = channelName;
-        string::size_type index = name.rfind(".");
-        if (index != string::npos)
+        static constexpr std::array names = {
+            "r"sv, "R"sv, "red"sv, "Red"sv, "g"sv,
+            "G"sv, "green"sv, "Green"sv, "b"sv, "B"sv,
+            "blue"sv, "Blue"sv
+        };
+
+        std::string_view name = channelName;
+        std::string::size_type index = name.rfind(".");
+        if (index != std::string::npos)
             name = name.substr(index + 1, name.size() - index);
 
-        for (const char** p = names; *p; p++)
+        for (const std::string_view& p : names)
         {
-            if (name == *p)
+            if (name == p)
                 return true;
         }
         return false;
@@ -356,6 +361,29 @@ namespace TwkFB
         {
             alpha.fullname = fullChannelName(alpha);
         }
+    }
+
+    bool IOexr::isNukeFullLayerNames(const Imf::MultiPartInputFile& file)
+    {
+        // Search for "nuke/full_layer_names" attribute
+        // Only part 0 has the property.
+        const int numOfParts = file.parts();
+        std::cout << "numOfParts = " << numOfParts << std::endl;
+        if (numOfParts < 1)
+            return false;
+            
+        const Imf::Header& header = file.header(0);
+        const Imf::Attribute* attr = header.findTypedAttribute<Imf::IntAttribute>("nuke/full_layer_names");
+        if (attr)
+        {
+            const Imf::IntAttribute* intAttr = dynamic_cast<const Imf::IntAttribute*>(attr);
+            if (intAttr)
+            {
+                return intAttr->value();
+            }
+        }
+
+        return false;
     }
 
     string IOexr::baseChannelName(const string& name)
@@ -846,7 +874,7 @@ namespace TwkFB
                 string name = hasSlash ? "" : metaDataPrefix.str();
                 name += i.name();
 
-#if 0
+#if 1
             cout << attr->typeName() << " " << name 
                  << " (" << typeid(*attr).name() << ")"
                  << endl;

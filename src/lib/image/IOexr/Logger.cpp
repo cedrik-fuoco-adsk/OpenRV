@@ -15,7 +15,7 @@
 
 #ifndef NDEBUG
 #ifndef DEBUG_IOEXR
-// #define DEBUG_IOEXR
+    #define DEBUG_IOEXR
 #endif
 #endif
 

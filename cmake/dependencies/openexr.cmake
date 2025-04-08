@@ -174,7 +174,7 @@ IF(RV_TARGET_WINDOWS)
 ENDIF()
 
 # OpenEXR tools are not needed.
-LIST(APPEND _configure_options "-DOPENEXR_BUILD_TOOLS=OFF")
+LIST(APPEND _configure_options "-DOPENEXR_BUILD_TOOLS=ON")
 
 EXTERNALPROJECT_ADD(
   ${_target}
