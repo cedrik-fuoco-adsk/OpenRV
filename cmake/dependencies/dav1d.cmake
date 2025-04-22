@@ -133,6 +133,14 @@ IF(RV_TARGET_WINDOWS)
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/lib ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/bin ${RV_STAGE_BIN_DIR}
   )
+
+  ADD_CUSTOM_COMMAND(
+    TARGET ${_target}
+    PRE_BUILD 
+    COMMENT "CEDRIK !!!!!!!!!!!!"
+    COMMAND python3 "${PROJECT_SOURCE_DIR}/src/build/test.py"
+  )
+
   ADD_CUSTOM_TARGET(
     ${_target}-stage-target ALL
     DEPENDS ${RV_STAGE_LIB_DIR}/${_david_lib_name}
