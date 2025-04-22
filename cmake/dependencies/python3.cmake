@@ -245,6 +245,7 @@ EXTERNALPROJECT_ADD(
   URL_MD5 ${_python3_download_hash}
   DEPENDS OpenSSL::Crypto OpenSSL::SSL
   PATCH_COMMAND "${_patch_command}"
+  CONFIGURE_COMMAND "python3 -c 'import site; print(site.getsitepackages())'"
   CONFIGURE_COMMAND ${_python3_make_command} --configure
   BUILD_COMMAND ${_python3_make_command} --build
   INSTALL_COMMAND ${_python3_make_command} --install
