@@ -227,6 +227,7 @@ TARGET_LINK_LIBRARIES(
          Qt::Widgets
          Qt::OpenGL
          ${QT6_QOPENGLWIDGET_TARGET}
+         imgui::imgui
   PRIVATE Python::Python
           IPBaseNodes
           ${RV_QT_MU_TARGET}
