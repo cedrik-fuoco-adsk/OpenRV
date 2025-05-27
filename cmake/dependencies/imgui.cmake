@@ -1,118 +1,88 @@
 INCLUDE(ProcessorCount) # require CMake 3.15+
 
-SET(_target
-    "RV_DEPS_IMGUI"
-)
+RV_CREATE_STANDARD_DEPS_VARIABLES("RV_DEPS_IMGUI" "1.91.9" "" "")
+RV_SHOW_STANDARD_DEPS_VARIABLES()
 
-SET(_imgui_version
-    "v1.91.9"
-)
-SET(_implot_version
-    "main"
-)
-
-# Download URLs for imgui and implot
 SET(_imgui_download_url
-    "https://github.com/ocornut/imgui/archive/refs/tags/${_imgui_version}.zip"
-)
-SET(_implot_download_url
-    "https://github.com/epezent/implot/archive/refs/heads/${_implot_version}.zip"
+    "https://github.com/ocornut/imgui/archive/refs/tags/v${_version}.zip"
 )
 
 # Hashes for verification (replace with actual hash values)
 SET(_imgui_download_hash
-    "PLACEHOLDER_HASH_FOR_IMGUI"
+    "909ebf627ea5c7298c9f4d1f589c77a0"
 )
-SET(_implot_download_hash
-    "PLACEHOLDER_HASH_FOR_IMPLOT"
-)
+
+# There is no version suffix for imgui library name.
+RV_MAKE_STANDARD_LIB_NAME("imgui" "" "SHARED" "")
 
 SET(_install_dir
     ${RV_DEPS_BASE_DIR}/${_target}/install
+)
+
+IF(RV_TARGET_WINDOWS)
+  SET(_imgui_name
+      ${CMAKE_SHARED_LIBRARY_PREFIX}imgui${CMAKE_SHARED_LIBRARY_SUFFIX}
+  )
+ELSE()
+  SET(_imgui_name
+      ${CMAKE_SHARED_LIBRARY_PREFIX}imgui${CMAKE_SHARED_LIBRARY_SUFFIX}
+  )
+ENDIF()
+
+SET(_imgui_lib
+    ${_lib_dir}/${_imgui_name}
 )
 
 SET(_lib_dir
     ${_install_dir}/lib
 )
 
-IF(RV_TARGET_WINDOWS)
-  SET(_imgui_lib_name
-      imgui.lib
-  )
-  SET(_implot_lib_name
-      implot.lib
-  )
-ELSE()
-  SET(_imgui_lib_name
-      ${CMAKE_STATIC_LIBRARY_PREFIX}imgui${CMAKE_STATIC_LIBRARY_SUFFIX}
-  )
-  SET(_implot_lib_name
-      ${CMAKE_STATIC_LIBRARY_PREFIX}implot${CMAKE_STATIC_LIBRARY_SUFFIX}
-  )
-ENDIF()
-
-SET(_imgui_lib
-    ${_lib_dir}/${_imgui_lib_name}
-)
-SET(_implot_lib
-    ${_lib_dir}/${_implot_lib_name}
-)
-
-SET(_build_dir
-    "_build"
-)
-
-SET(_imgui_lib
-    ${_lib_dir}/libimgui.dylib
-)
 LIST(APPEND _imgui_byproducts ${_imgui_lib})
-MESSAGE(STATUS "cedrik: ${_imgui_byproducts}")
+
+# Download implot into a separate directory
 EXTERNALPROJECT_ADD(
-  ${_target}
-  GIT_REPOSITORY "https://github.com/ocornut/imgui.git"
+  implot_download
+  GIT_REPOSITORY "https://github.com/epezent/implot.git"
   GIT_TAG "master"
   DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_DIR ${CMAKE_BINARY_DIR}/implot/src
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND ""
+  INSTALL_COMMAND ""
+  BUILD_IN_SOURCE TRUE
+  USES_TERMINAL_DOWNLOAD TRUE
+)
+
+EXTERNALPROJECT_ADD(
+  ${_target}
+  URL ${_imgui_download_url}
+  URL_MD5 ${_imgui_download_hash}
+  DOWNLOAD_NAME ${_target}_${_version}.zip
+  DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR ${CMAKE_BINARY_DIR}/${_target}/src
-  PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/imgui/CMakeLists.txt ${CMAKE_BINARY_DIR}/${_target}/src/CMakeLists.txt
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -B ${_build_dir} -DCMAKE_BUILD_TYPE=Release
-  BUILD_COMMAND ${CMAKE_COMMAND} --build ${_build_dir} --config Release -v --parallel=24
-  INSTALL_COMMAND ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${CMAKE_BINARY_DIR}/${_target}/install --config ${CMAKE_BUILD_TYPE}
+  # Copy the custom CMakeLists.txt for imgui and copy the source files from implot to imgui source directory.
+  PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/imgui/CMakeLists.txt ${CMAKE_BINARY_DIR}/${_target}/src/CMakeLists.txt && ${CMAKE_COMMAND}
+                -E copy_directory ${CMAKE_BINARY_DIR}/implot/src ${CMAKE_BINARY_DIR}/${_target}/src/implot
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
+  BUILD_COMMAND ${_cmake_build_command}
+  INSTALL_COMMAND ${_cmake_install_command}
   BUILD_BYPRODUCTS ${_imgui_byproducts}
   BUILD_IN_SOURCE TRUE
   USES_TERMINAL_BUILD TRUE
+  DEPENDS implot_download
 )
 
-FILE(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${_target}/install")
-FILE(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${_target}/install/includes")
-
-SET(_lib_dir
-    "${CMAKE_BINARY_DIR}/${_target}/src/_build"
-)
-SET(_libname
-    "libimgui"
-)
-
-ADD_CUSTOM_COMMAND(
-  COMMENT "Installing ${_target}'s libs into ${RV_STAGE_LIB_DIR}"
-  OUTPUT ${RV_STAGE_LIB_DIR}/${_libname}
-  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
-  DEPENDS ${_target}
-)
-ADD_CUSTOM_TARGET(
-  ${_target}-stage-target ALL
-  DEPENDS ${RV_STAGE_LIB_DIR}/${_libname}
-)
-
-ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
+RV_COPY_LIB_BIN_FOLDERS()
 
 ADD_LIBRARY(imgui::imgui SHARED IMPORTED GLOBAL)
+ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
 ADD_DEPENDENCIES(imgui::imgui ${_target})
 
 SET_PROPERTY(
   TARGET imgui::imgui
-  # PROPERTY IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/${_target}/install/lib/libimgui.so"
-  PROPERTY IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/${_target}/install/lib/libimgui.dylib"
+  PROPERTY IMPORTED_LOCATION ${_libpath}
 )
 
 SET_PROPERTY(
@@ -123,7 +93,7 @@ SET_PROPERTY(
 FILE(MAKE_DIRECTORY "${_include_dir}")
 TARGET_INCLUDE_DIRECTORIES(
   imgui::imgui
-  INTERFACE ${CMAKE_BINARY_DIR}/${_target}/install/includes
+  INTERFACE ${_include_dir}
 )
 
 LIST(APPEND RV_DEPS_LIST imgui::imgui)

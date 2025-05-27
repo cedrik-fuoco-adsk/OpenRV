@@ -26,9 +26,6 @@
 
 #include <QtWidgets/QMenu>
 
-#include <imgui.h>
-#include <imgui_impl_opengl2.h>
-
 namespace Rv
 {
     using namespace boost;
@@ -163,16 +160,6 @@ namespace Rv
         m_eventProcessingTimer.setSingleShot(true);
         connect(&m_eventProcessingTimer, SIGNAL(timeout()), this,
                 SLOT(eventProcessingTimeout()));
-
-
-
-        // Setup Dear ImGui context
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
-        // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-        // io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-        // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // IF using Docking Branch
     }
 
     GLView::~GLView()
@@ -278,8 +265,6 @@ namespace Rv
             {
                 context()->setShareContext(m_sharedContext);
             }
-
-            ImGui_ImplOpenGL2_Init();
 
             if (m_doc)
             {
@@ -451,17 +436,9 @@ namespace Rv
             absolutePosition(x, y);
             m_videoDevice->setAbsolutePosition(x, y);
 
-
-            //ImGui_ImplOpenGL2_NewFrame();
-
             TWK_GLDEBUG;
             session->render();
             TWK_GLDEBUG;
-
-            ImGui::NewFrame();
-            ImGui::ShowDemoWindow();
-            ImGui::Render();
-            ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 
             m_firstPaintCompleted = true;
 

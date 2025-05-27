@@ -24,12 +24,23 @@ SET(IMGUI_HEADERS
     # Add/remove headers as needed
 )
 
+SET(IMPLOT_SOURCES
+    implot/implot.cpp implot/implot_items.cpp implot/implot_demo.cpp
+    # Add/remove files as needed
+)
+
+SET(IMPLOT_HEADERS
+    implot/implot.h implot/implot_internal.h
+    # Add/remove headers as needed
+)
+
 FIND_PACKAGE(OpenGL REQUIRED)
 
 ADD_LIBRARY(
   imgui SHARED
-  ${IMGUI_SOURCES}
+  ${IMGUI_SOURCES} ${IMPLOT_SOURCES}
 )
+
 TARGET_COMPILE_FEATURES(
   imgui
   PUBLIC cxx_std_11
@@ -48,6 +59,6 @@ INSTALL(
   LIBRARY DESTINATION lib
 )
 INSTALL(
-  FILES ${IMGUI_HEADERS}
-  DESTINATION includes
+  FILES ${IMGUI_HEADERS} ${IMPLOT_HEADERS}
+  DESTINATION include
 )
