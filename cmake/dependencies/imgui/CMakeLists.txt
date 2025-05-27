@@ -1,8 +1,8 @@
 # imgui/CMakeLists.txt
-cmake_minimum_required(VERSION 3.27)
-project(imgui)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.27)
+PROJECT(imgui)
 
-set(IMGUI_SOURCES
+SET(IMGUI_SOURCES
     imgui.cpp
     imgui_draw.cpp
     imgui_tables.cpp
@@ -13,7 +13,7 @@ set(IMGUI_SOURCES
     # Add/remove files as needed
 )
 
-set(IMGUI_HEADERS
+SET(IMGUI_HEADERS
     imgui.h
     backends/imgui_impl_opengl2.h
     misc/cpp/imgui_stdlib.h
@@ -24,9 +24,30 @@ set(IMGUI_HEADERS
     # Add/remove headers as needed
 )
 
-add_library(imgui SHARED ${IMGUI_SOURCES})
+FIND_PACKAGE(OpenGL REQUIRED)
 
-target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+ADD_LIBRARY(
+  imgui SHARED
+  ${IMGUI_SOURCES}
+)
+TARGET_COMPILE_FEATURES(
+  imgui
+  PUBLIC cxx_std_11
+)
+TARGET_LINK_LIBRARIES(
+  imgui
+  PRIVATE OpenGL::GL OpenGL::GLU
+)
+TARGET_INCLUDE_DIRECTORIES(
+  imgui
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
-install(TARGETS imgui LIBRARY DESTINATION lib)
-install(FILES ${IMGUI_HEADERS} DESTINATION includes)
+INSTALL(
+  TARGETS imgui
+  LIBRARY DESTINATION lib
+)
+INSTALL(
+  FILES ${IMGUI_HEADERS}
+  DESTINATION includes
+)

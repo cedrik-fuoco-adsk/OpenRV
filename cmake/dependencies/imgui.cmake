@@ -58,37 +58,51 @@ SET(_implot_lib
     ${_lib_dir}/${_implot_lib_name}
 )
 
-SET(_build_dir "_build")
-
-EXTERNALPROJECT_ADD(
-    ${_target}
-    GIT_REPOSITORY "https://github.com/ocornut/imgui.git"
-    GIT_TAG "master"
-    DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    SOURCE_DIR ${CMAKE_BINARY_DIR}/${_target}/src
-    PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/imgui/CMakeLists.txt ${CMAKE_BINARY_DIR}/${_target}/src/CMakeLists.txt
-    CONFIGURE_COMMAND ${CMAKE_COMMAND} -B ${_build_dir} -DCMAKE_BUILD_TYPE=Release
-    BUILD_COMMAND ${CMAKE_COMMAND} --build ${_build_dir}  --config Release -v --parallel=24
-    INSTALL_COMMAND ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${CMAKE_BINARY_DIR}/${_target}/install --config ${CMAKE_BUILD_TYPE}
-    BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/imgui.h
-    BUILD_IN_SOURCE TRUE
-    USES_TERMINAL_BUILD TRUE
+SET(_build_dir
+    "_build"
 )
 
-SET(_lib_dir "${CMAKE_BINARY_DIR}/${_target}/src/_build")
-SET(_libname "libimgui")
+SET(_imgui_lib
+    ${_lib_dir}/libimgui.dylib
+)
+LIST(APPEND _imgui_byproducts ${_imgui_lib})
+MESSAGE(STATUS "cedrik: ${_imgui_byproducts}")
+EXTERNALPROJECT_ADD(
+  ${_target}
+  GIT_REPOSITORY "https://github.com/ocornut/imgui.git"
+  GIT_TAG "master"
+  DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_DIR ${CMAKE_BINARY_DIR}/${_target}/src
+  PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/imgui/CMakeLists.txt ${CMAKE_BINARY_DIR}/${_target}/src/CMakeLists.txt
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -B ${_build_dir} -DCMAKE_BUILD_TYPE=Release
+  BUILD_COMMAND ${CMAKE_COMMAND} --build ${_build_dir} --config Release -v --parallel=24
+  INSTALL_COMMAND ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${CMAKE_BINARY_DIR}/${_target}/install --config ${CMAKE_BUILD_TYPE}
+  BUILD_BYPRODUCTS ${_imgui_byproducts}
+  BUILD_IN_SOURCE TRUE
+  USES_TERMINAL_BUILD TRUE
+)
+
+FILE(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${_target}/install")
+FILE(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${_target}/install/includes")
+
+SET(_lib_dir
+    "${CMAKE_BINARY_DIR}/${_target}/src/_build"
+)
+SET(_libname
+    "libimgui"
+)
 
 ADD_CUSTOM_COMMAND(
-    COMMENT "Installing ${_target}'s libs into ${RV_STAGE_LIB_DIR}"
-    OUTPUT ${RV_STAGE_LIB_DIR}/${_libname}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
-    DEPENDS ${_target}
-  )
-  ADD_CUSTOM_TARGET(
-    ${_target}-stage-target ALL
-    DEPENDS ${RV_STAGE_LIB_DIR}/${_libname}
-  )
+  COMMENT "Installing ${_target}'s libs into ${RV_STAGE_LIB_DIR}"
+  OUTPUT ${RV_STAGE_LIB_DIR}/${_libname}
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
+  DEPENDS ${_target}
+)
+ADD_CUSTOM_TARGET(
+  ${_target}-stage-target ALL
+  DEPENDS ${RV_STAGE_LIB_DIR}/${_libname}
+)
 
 ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
 
@@ -96,8 +110,14 @@ ADD_LIBRARY(imgui::imgui SHARED IMPORTED GLOBAL)
 ADD_DEPENDENCIES(imgui::imgui ${_target})
 
 SET_PROPERTY(
-    TARGET imgui::imgui
-    PROPERTY IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/${_target}/install/lib/libimgui.so"
+  TARGET imgui::imgui
+  # PROPERTY IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/${_target}/install/lib/libimgui.so"
+  PROPERTY IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/${_target}/install/lib/libimgui.dylib"
+)
+
+SET_PROPERTY(
+  TARGET imgui::imgui
+  PROPERTY IMPORTED_SONAME ${_libname}
 )
 
 FILE(MAKE_DIRECTORY "${_include_dir}")
