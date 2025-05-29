@@ -46,13 +46,30 @@ EXTERNALPROJECT_ADD(
   GIT_TAG "master"
   DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  SOURCE_DIR ${CMAKE_BINARY_DIR}/implot/src
+  SOURCE_DIR ${CMAKE_BINARY_DIR}/${_target}/deps/implot
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
   BUILD_IN_SOURCE TRUE
   USES_TERMINAL_DOWNLOAD TRUE
 )
+
+# Download implot into a separate directory
+EXTERNALPROJECT_ADD(
+  imgui_backend_qt_download
+  GIT_REPOSITORY "https://github.com/dpaulat/imgui-backend-qt.git"
+  GIT_TAG "main"
+  DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_DIR ${CMAKE_BINARY_DIR}/${_target}/deps/imgui-backend-qt
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND ""
+  INSTALL_COMMAND ""
+  BUILD_IN_SOURCE TRUE
+  USES_TERMINAL_DOWNLOAD TRUE
+)
+
+MESSAGE(STATUS "Using Qt6 from: ${RV_DEPS_QT_LOCATION}")
 
 EXTERNALPROJECT_ADD(
   ${_target}
@@ -63,15 +80,17 @@ EXTERNALPROJECT_ADD(
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR ${CMAKE_BINARY_DIR}/${_target}/src
   # Copy the custom CMakeLists.txt for imgui and copy the source files from implot to imgui source directory.
-  PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/imgui/CMakeLists.txt ${CMAKE_BINARY_DIR}/${_target}/src/CMakeLists.txt && ${CMAKE_COMMAND}
-                -E copy_directory ${CMAKE_BINARY_DIR}/implot/src ${CMAKE_BINARY_DIR}/${_target}/src/implot
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
+  PATCH_COMMAND
+    ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/imgui/CMakeLists.txt ${CMAKE_BINARY_DIR}/${_target}/src/CMakeLists.txt && ${CMAKE_COMMAND} -E
+    copy_directory ${CMAKE_BINARY_DIR}/${_target}/deps/implot ${CMAKE_BINARY_DIR}/${_target}/src/implot && ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_BINARY_DIR}/${_target}/deps/imgui-backend-qt/backends ${CMAKE_BINARY_DIR}/${_target}/src/backends
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options} -DCMAKE_PREFIX_PATH=$ENV{QT_HOME}/lib/cmake
   BUILD_COMMAND ${_cmake_build_command}
   INSTALL_COMMAND ${_cmake_install_command}
   BUILD_BYPRODUCTS ${_imgui_byproducts}
   BUILD_IN_SOURCE TRUE
   USES_TERMINAL_BUILD TRUE
-  DEPENDS implot_download
+  DEPENDS implot_download imgui_backend_qt_download
 )
 
 RV_COPY_LIB_BIN_FOLDERS()

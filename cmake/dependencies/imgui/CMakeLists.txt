@@ -10,12 +10,14 @@ SET(IMGUI_SOURCES
     imgui_demo.cpp # for testing
     misc/cpp/imgui_stdlib.cpp
     backends/imgui_impl_opengl2.cpp
+    backends/imgui_impl_qt.cpp
     # Add/remove files as needed
 )
 
 SET(IMGUI_HEADERS
     imgui.h
     backends/imgui_impl_opengl2.h
+    backends/imgui_impl_qt.hpp
     misc/cpp/imgui_stdlib.h
     imconfig.h
     imstb_rectpack.h
@@ -36,6 +38,12 @@ SET(IMPLOT_HEADERS
 
 FIND_PACKAGE(OpenGL REQUIRED)
 
+FIND_PACKAGE(
+  Qt6
+  COMPONENTS Core Gui OpenGL Widgets
+  REQUIRED
+)
+
 ADD_LIBRARY(
   imgui SHARED
   ${IMGUI_SOURCES} ${IMPLOT_SOURCES}
@@ -47,7 +55,7 @@ TARGET_COMPILE_FEATURES(
 )
 TARGET_LINK_LIBRARIES(
   imgui
-  PRIVATE OpenGL::GL OpenGL::GLU
+  PRIVATE OpenGL::GL OpenGL::GLU Qt::Core Qt::Gui Qt::Widgets Qt::OpenGL
 )
 TARGET_INCLUDE_DIRECTORIES(
   imgui
