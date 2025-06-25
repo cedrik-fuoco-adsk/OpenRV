@@ -450,9 +450,13 @@ def configure() -> None:
 
         if platform.system() == "Darwin":
             readline_prefix_proc = subprocess.run(
-                ["brew", "--prefix", "readline"], capture_output=True
+                ["brew", "--prefix", "readline"], capture_output=True, text=True
             )
-            readline_prefix_proc.check_returncode()
+            if readline_prefix_proc.returncode != 0:
+                print("Error running 'brew --prefix readline':")
+                print("stdout:", readline_prefix_proc.stdout)
+                print("stderr:", readline_prefix_proc.stderr)
+                readline_prefix_proc.check_returncode()
 
             tcl_prefix_proc = subprocess.run(
                 ["brew", "--prefix", "tcl-tk"], capture_output=True
