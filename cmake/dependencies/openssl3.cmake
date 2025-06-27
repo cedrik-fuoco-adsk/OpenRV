@@ -1,10 +1,17 @@
-# Get imported targets before find_package
-GET_DIRECTORY_PROPERTY(imported_before IMPORTED_TARGETS)
+#
+# Copyright (C) 2022  Autodesk, Inc. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
-FIND_PACKAGE(OpenSSL 3.5.0 CONFIG REQUIRED)
+SET(_target
+    "RV_DEPS_OPENSSL"
+)
 
-# Get imported targets after find_package
-GET_DIRECTORY_PROPERTY(imported_after IMPORTED_TARGETS)
+IF(RV_TARGET_IS_RHEL8
+   AND RV_VFX_PLATFORM STREQUAL CY2023
+)
+  # VFX2023: Rocky Linux 8
 
   FIND_PACKAGE(OpenSSL 1.1.1 REQUIRED)
 
@@ -248,7 +255,7 @@ ELSE()
     )
     ADD_CUSTOM_COMMAND(
       COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
-      OUTPUT ${RV_STAGE_BIN_DIR}/${_crypto_lib_name} ${RV_STAGE_BIN_DIR}/${_ssl_lib_name}
+      OUTPUT ${RV_STAGE_LIB_DIR}/${_crypto_lib_name} ${RV_STAGE_LIB_DIR}/${_ssl_lib_name}
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
       COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_crypto_lib_name} ${RV_STAGE_BIN_DIR}
       COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_ssl_lib_name} ${RV_STAGE_BIN_DIR}
@@ -296,11 +303,22 @@ ELSE()
   )
 ENDIF()
 
-MESSAGE(STATUS "cedrik ${openssl_INCLUDE_DIRS_RELEASE}")
-
-IF(imported_after)
-  LIST(GET imported_after 0 discovered_target)
-  MESSAGE(STATUS "Found imported target: ${discovered_target}")
+SET_PROPERTY(
+  GLOBAL APPEND
+  PROPERTY "RV_FFMPEG_EXTRA_C_OPTIONS" "--extra-cflags=-I${_include_dir}"
+)
+IF(RV_TARGET_WINDOWS)
+  SET_PROPERTY(
+    GLOBAL APPEND
+    PROPERTY "RV_FFMPEG_EXTRA_LIBPATH_OPTIONS" "--extra-ldflags=-LIBPATH:${_lib_dir}"
+  )
 ELSE()
-  MESSAGE(WARNING "No imported targets found")
+  SET_PROPERTY(
+    GLOBAL APPEND
+    PROPERTY "RV_FFMPEG_EXTRA_LIBPATH_OPTIONS" "--extra-ldflags=-L${_lib_dir}"
+  )
 ENDIF()
+SET_PROPERTY(
+  GLOBAL APPEND
+  PROPERTY "RV_FFMPEG_EXTERNAL_LIBS" "--enable-openssl"
+)
