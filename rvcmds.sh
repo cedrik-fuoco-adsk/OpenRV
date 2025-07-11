@@ -145,6 +145,12 @@ alias rvinstd="rvenv && cmake --install ${RV_BUILD_DEBUG} --prefix ${RV_INST_DEB
 alias rvclean="rm -rf ${RV_BUILD} && rm -rf .venv"
 alias rvcleand="rm -rf ${RV_BUILD_DEBUG} && rm -rf .venv"
 
+
+alias cbuild='conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8'
+alias cinstall='conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8'
+alias export_openrvcore='conan export openrvcore-conanfile.py'
+alias fbuild="conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing"
+
 # ALIASES: Config and Build
 
 alias rvmk="rvcfg && rvbuild"

@@ -51,13 +51,12 @@ GET_TARGET_PROPERTY(zlib_include_dir ZLIB::ZLIB INTERFACE_INCLUDE_DIRECTORIES)
 LIST(APPEND _configure_options "-DZLIB_INCLUDE_DIR=${zlib_include_dir}")
 LIST(APPEND _configure_options "-DZLIB_LIBRARY=${zlib_library}")
 
-
 IF(RV_TARGET_WINDOWS)
-  GET_TARGET_PROPERTY(jpeg_library jpeg-turbo::jpeg IMPORTED_IMPLIB)
+  GET_TARGET_PROPERTY(jpeg_library libjpeg-turbo::jpeg IMPORTED_IMPLIB)
 ELSE()
-  GET_TARGET_PROPERTY(jpeg_library jpeg-turbo::jpeg IMPORTED_LOCATION)
+  GET_TARGET_PROPERTY(jpeg_library libjpeg-turbo::jpeg IMPORTED_LOCATION)
 ENDIF()
-GET_TARGET_PROPERTY(jpeg_include_dir jpeg-turbo::jpeg INTERFACE_INCLUDE_DIRECTORIES)
+GET_TARGET_PROPERTY(jpeg_include_dir libjpeg-turbo::jpeg INTERFACE_INCLUDE_DIRECTORIES)
 LIST(APPEND _configure_options "-DJPEG_INCLUDE_DIR=${jpeg_include_dir}")
 LIST(APPEND _configure_options "-DJPEG_LIBRARY=${jpeg_library}")
 
@@ -79,7 +78,7 @@ EXTERNALPROJECT_ADD(
   SOURCE_DIR ${_source_dir}
   BINARY_DIR ${_build_dir}
   INSTALL_DIR ${_install_dir}
-  DEPENDS ZLIB::ZLIB jpeg-turbo::jpeg
+  DEPENDS ZLIB::ZLIB libjpeg-turbo::jpeg
   CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
   BUILD_COMMAND ${_cmake_build_command}
   INSTALL_COMMAND ${_cmake_install_command}
@@ -110,9 +109,13 @@ SET_PROPERTY(
 )
 IF(RV_TARGET_WINDOWS)
   IF(${CMAKE_BUILD_TYPE} STREQUAL "Release")
-    SET(_tiff_lib_name "tiff.lib")
+    SET(_tiff_lib_name
+        "tiff.lib"
+    )
   ELSEIF(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-    SET(_tiff_lib_name "tiffd.lib")
+    SET(_tiff_lib_name
+        "tiffd.lib"
+    )
   ENDIF()
 
   SET_PROPERTY(
@@ -135,7 +138,7 @@ TARGET_INCLUDE_DIRECTORIES(
 
 TARGET_LINK_LIBRARIES(
   Tiff::Tiff
-  INTERFACE ZLIB::ZLIB jpeg-turbo::jpeg
+  INTERFACE ZLIB::ZLIB libjpeg-turbo::jpeg
 )
 
 LIST(APPEND RV_DEPS_LIST Tiff::Tiff)

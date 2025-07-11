@@ -2,13 +2,7 @@
 arch=x86_64
 build_type=Release
 compiler=gcc
-compiler.cppstd=gnu17
+compiler.cppstd=17
 compiler.libcxx=libstdc++11
 compiler.version=11
 os=Linux
-
-[buildenv]
-# Pre-append Python location to MSYS2's PATH environment variable.
-# Using Python from MSYS2 could lead to unnecessary builds of Python packages and the needs of more
-# MSYS2 packages.
-PATH=+(path)/c/Program Files/Python310

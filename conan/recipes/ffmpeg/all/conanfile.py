@@ -330,7 +330,7 @@ class FFMpegConan(ConanFile):
             self.requires("libwebp/1.3.2")
         # OpenRV
         if self.options.with_libdav1d:
-            self.requires("dav1d/1.2.1")
+            self.requires("dav1d/1.4.3")
         if self.options.with_ssl == "openssl":
             self.requires("openssl/[>=1.1 <4]")
         if self.options.get_safe("with_libalsa"):
