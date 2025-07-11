@@ -58,15 +58,38 @@ class OpenRVBase:
             self.tool_requires("ninja/1.11.1")
 
     def requirements(self):
+
+        self.requires("zlib/1.3.1", force=True)
+
         # Version 7.7.7 not available in conan center.
-        self.requires("libatomic_ops/7.8.0")
+        self.requires("libatomic_ops/7.8.0", options={"shared": False})
 
         # Version conflict: ffmpeg/4.4.3->libwebp/1.3.2, ->libwebp/1.2.1
         # Webp >=1.3.0 depends on sharpyuv and it causes issues with OIIO.
-        self.requires("libwebp/1.2.1", force=True)
+        self.requires("libwebp/1.2.1", force=True, options={"shared": False})
+
+        self.requires("dav1d/1.4.3", force=True, options={"shared": False})
+
+        self.requires(
+            "libjpeg-turbo/2.1.4",
+            force=True,
+            options={
+                "shared": True,
+            },
+        )
 
         # Override openssl version for ffmpeg, but do not use it for OpenRV right now.
-        self.requires("openssl/3.5.0", options={"no_zlib": True})
+        self.requires("openssl/3.5.0", options={"shared": True, "no_zlib": True})
+
+        # Override boost version for other dependencies.
+        self.requires(
+            "boost/1.82.0#7053477b271b8c39e046f784405b402f",
+            force=True,
+            options={"shared": True, "extra_b2_flags": "-d+0 -s NO_LZMA=1"},
+        )
+
+        # Override imath version for other dependencies.
+        self.requires("imath/3.1.6", force=True, options={"shared": True})
 
     def generate(self):
         buildenv = VirtualBuildEnv(self)
@@ -112,6 +135,8 @@ class OpenRVBase:
         # It seems needed on Windows for MS Visual Studio (multi-config generator).
         tc.cache_variables["CMAKE_BUILD_TYPE"] = str(self.settings.build_type)
 
+        tc.cache_variables["CMAKE_FIND_PACKAGE_TARGETS_GLOBAL"] = "ON"
+
         # Generate the CMake's toolchain and preset files.
         tc.generate()
 
@@ -125,7 +150,7 @@ class OpenRVBase:
 
         cmake = CMake(self)
         cmake.configure()
-        cmake.build(target="RV_DEPS_OPENSSL")
+        cmake.build(target="main_executable")
 
 
 class PyReq(ConanFile):

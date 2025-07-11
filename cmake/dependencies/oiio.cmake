@@ -54,10 +54,11 @@ LIST(APPEND _configure_options "-DOpenEXR_ROOT=${RV_DEPS_OPENEXR_ROOT_DIR}")
 IF(NOT RV_TARGET_WINDOWS)
   GET_TARGET_PROPERTY(_imath_library Imath::Imath IMPORTED_LOCATION)
   GET_TARGET_PROPERTY(_imath_include_dir Imath::Imath INTERFACE_INCLUDE_DIRECTORIES)
-  LIST(APPEND _configure_options "-DImath_LIBRARY=${_imath_library}")
-  LIST(APPEND _configure_options "-DImath_INCLUDE_DIR=${_imath_include_dir}/..")
+  # LIST(APPEND _configure_options "-DImath_LIBRARY=${_imath_library}") LIST(APPEND _configure_options "-DImath_INCLUDE_DIR=${_imath_include_dir}/..")
   GET_FILENAME_COMPONENT(_imath_library_path ${_imath_library} DIRECTORY)
-  LIST(APPEND _configure_options "-DImath_DIR=${_imath_library_path}/cmake/Imath")
+  LIST(APPEND _configure_options "-DImath_DIR=${CMAKE_BINARY_DIR}/generators")
+  LIST(APPEND _configure_options "-DImath_INCLUDE_DIR=${_imath_include_dir}/..")
+  LIST(APPEND _configure_options "-DImath_ROOT=${_imath_include_dir}/../..")
 ELSE()
   # Must point to the IMath-config.cmake file which is a 'FindIMath.cmake' type of file.
   LIST(APPEND _configure_options "-DImath_DIR=${RV_DEPS_IMATH_ROOT_DIR}/lib/cmake/Imath")
@@ -69,18 +70,20 @@ LIST(APPEND _configure_options "-DPNG_LIBRARY=${_png_library}")
 LIST(APPEND _configure_options "-DPNG_PNG_INCLUDE_DIR=${_png_include_dir}")
 
 IF(RV_TARGET_WINDOWS)
-  GET_TARGET_PROPERTY(_jpeg_library jpeg-turbo::jpeg IMPORTED_IMPLIB)
+  GET_TARGET_PROPERTY(_jpeg_library libjpeg-turbo::jpeg IMPORTED_IMPLIB)
 ELSE()
-  GET_TARGET_PROPERTY(_jpeg_library jpeg-turbo::jpeg IMPORTED_LOCATION)
+  GET_TARGET_PROPERTY(_jpeg_library libjpeg-turbo::jpeg IMPORTED_LOCATION)
 ENDIF()
-GET_TARGET_PROPERTY(_jpeg_include_dir jpeg-turbo::jpeg INTERFACE_INCLUDE_DIRECTORIES)
+MESSAGE(STATUS "IMPORTED LOCATION = ${_jpeg_library}")
+GET_TARGET_PROPERTY(_jpeg_include_dir libjpeg-turbo::jpeg INTERFACE_INCLUDE_DIRECTORIES)
 LIST(APPEND _configure_options "-DJPEG_LIBRARY=${_jpeg_library}")
 LIST(APPEND _configure_options "-DJPEG_INCLUDE_DIR=${_jpeg_include_dir}")
 
-GET_TARGET_PROPERTY(_jpegturbo_library jpeg-turbo::turbojpeg IMPORTED_LOCATION)
-GET_TARGET_PROPERTY(_jpegturbo_include_dir jpeg-turbo::turbojpeg INTERFACE_INCLUDE_DIRECTORIES)
-LIST(APPEND _configure_options "-DJPEGTURBO_LIBRARY=${_jpegturbo_library}")
-LIST(APPEND _configure_options "-DJPEGTURBO_INCLUDE_DIR=${_jpegturbo_include_dir}")
+GET_TARGET_PROPERTY(_jpegturbo_library libjpeg-turbo::turbojpeg IMPORTED_LOCATION)
+GET_TARGET_PROPERTY(_jpegturbo_include_dir libjpeg-turbo::turbojpeg INTERFACE_INCLUDE_DIRECTORIES)
+# LIST(APPEND _configure_options "-DJPEGTURBO_LIBRARY=${_jpegturbo_library}") LIST(APPEND _configure_options
+# "-DJPEGTURBO_INCLUDE_DIR=${_jpegturbo_include_dir}")
+LIST(APPEND _configure_options "-DJPEGTURBO_ROOT=${_jpegturbo_include_dir}/..")
 
 LIST(APPEND _configure_options "-DOpenJPEG_ROOT=${RV_DEPS_OPENJPEG_ROOT_DIR}")
 GET_TARGET_PROPERTY(_openjpeg_library OpenJpeg::OpenJpeg IMPORTED_LOCATION)
@@ -155,11 +158,11 @@ IF(NOT RV_TARGET_WINDOWS)
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
     DEPENDS ${_depends_freetype}
-            jpeg-turbo::jpeg
+            libjpeg-turbo::jpeg
             Tiff::Tiff
             OpenEXR::OpenEXR
             OpenJpeg::OpenJpeg
-            jpeg-turbo::turbojpeg
+            libjpeg-turbo::turbojpeg
             PNG::PNG
             Boost::headers
             Boost::thread
@@ -213,11 +216,11 @@ ELSE()
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
     DEPENDS ${_depends_freetype}
-            jpeg-turbo::jpeg
+            libjpeg-turbo::jpeg
             Tiff::Tiff
             OpenEXR::OpenEXR
             OpenJpeg::OpenJpeg
-            jpeg-turbo::turbojpeg
+            libjpeg-turbo::turbojpeg
             PNG::PNG
             Boost::headers
             Boost::thread
