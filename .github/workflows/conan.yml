@@ -53,59 +53,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: "ubuntu-latest"
-            rocky-version: "8"
-            image: "amd64/rockylinux:8"
-            arch-type: "x86_64"
-            build-type: "Release"
-            qt-version: "5.15.2"
-            cmake-version: "3.31.6"
-            python-version: "3.10"
-            vfx-platform: "CY2023"
-            extra_repo: "powertools"
-          - os: "ubuntu-latest"
-            rocky-version: "9"
-            image: "amd64/rockylinux:9"
-            arch-type: "x86_64"
-            build-type: "Release"
-            qt-version: "5.15.2"
-            cmake-version: "3.31.6"
-            python-version: "3.10"
-            vfx-platform: "CY2023"
-            extra_repo: "crb"
-          - os: "ubuntu-latest"
-            rocky-version: "8"
-            image: "amd64/rockylinux:8"
-            arch-type: "x86_64"
-            build-type: "Debug"
-            qt-version: "5.15.2"
-            cmake-version: "3.31.6"
-            python-version: "3.10"
-            vfx-platform: "CY2023"
-            extra_repo: "powertools"
-          - os: "ubuntu-latest"
-            rocky-version: "9"
-            image: "amd64/rockylinux:9"
-            arch-type: "x86_64"
-            build-type: "Debug"
-            qt-version: "5.15.2"
-            cmake-version: "3.31.6"
-            python-version: "3.10"
-            vfx-platform: "CY2023"
-            extra_repo: "crb"
-
           # CY2024
           - os: "ubuntu-latest"
-            rocky-version: "8"
-            image: "amd64/rockylinux:8"
-            arch-type: "x86_64"
-            build-type: "Release"
-            qt-version: "6.5.3"
-            cmake-version: "3.31.6"
-            python-version: "3.11.8"
-            vfx-platform: "CY2024"
-            extra_repo: "powertools"
-          - os: "ubuntu-latest"
             rocky-version: "9"
             image: "amd64/rockylinux:9"
             arch-type: "x86_64"
@@ -115,26 +64,7 @@ jobs:
             python-version: "3.11.8"
             vfx-platform: "CY2024"
             extra_repo: "crb"
-          - os: "ubuntu-latest"
-            rocky-version: "8"
-            image: "amd64/rockylinux:8"
-            arch-type: "x86_64"
-            build-type: "Debug"
-            qt-version: "6.5.3"
-            cmake-version: "3.31.6"
-            python-version: "3.11.8"
-            vfx-platform: "CY2024"
-            extra_repo: "powertools"
-          - os: "ubuntu-latest"
-            rocky-version: "9"
-            image: "amd64/rockylinux:9"
-            arch-type: "x86_64"
-            build-type: "Debug"
-            qt-version: "6.5.3"
-            cmake-version: "3.31.6"
-            python-version: "3.11.8"
-            vfx-platform: "CY2024"
-            extra_repo: "crb"
+            
     steps:
       - name: Display disk space
         run: |
@@ -264,6 +194,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python3 -m pip install --user --upgrade -r requirements.txt
+          python3 -m pip install --user conan
 
       # For Rocky Linux, we can't cache the dependencies of Open RV 
       # because there is not enough room in the cache (10GB limit) for all platforms.
@@ -278,27 +209,28 @@ jobs:
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
-          cmake --version
-          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
-          cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT6_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
+          conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing
+          conan export openrvcore-conanfile.py
    
       - name: Build OpenRV dependencies
         run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
+          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
       - name: Build OpenRV main executable
         run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target main_executable --parallel=$(python -c 'import os; print(os.cpu_count())') -v
+          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
       - name: Tests
         run: |
-          ctest --test-dir _build -C ${{ matrix.build-type }} --extra-verbose
+          ctest --test-dir build/Release -C ${{ matrix.build-type }} --extra-verbose
 
       - name: Free some spaces for the install steps
         run: |
-          rm -rf _build/RV_DEPS_*
-          rm -rf _build/_deps
+          rm -rf build/Release/RV_DEPS_*
+          rm -rf build/Release/_deps
 
       - name: Install OpenRV
         run: |
-          cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
+          cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
