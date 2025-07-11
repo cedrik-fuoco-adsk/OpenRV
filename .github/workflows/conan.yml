@@ -210,7 +210,8 @@ jobs:
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
           ls -al /github/home/.local/bin/
-          /github/home/.local/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
+          /github/home/.local/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8 || true
+          cat /github/home/.conan2/p/b/ffmpe512d83ad0759a/b/build-release/ffbuild/config.log
           /github/home/.local/bin/conan export openrvcore-conanfile.py
    
       - name: Build OpenRV dependencies
