@@ -355,6 +355,10 @@ if __name__ == "__main__":
     TEMP_DIR = args.temp
     VARIANT = args.variant
     ARCH = args.arch
+
+    files = os.listdir(SOURCE_DIR)
+    print(files)
+    
     OPENTIMELINEIO_SOURCE_DIR = args.otio_source_dir
     if platform.system() == "Windows":
         PYTHON_VERSION = args.python_version
