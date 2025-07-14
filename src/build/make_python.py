@@ -312,11 +312,16 @@ def install() -> None:
     # On non-Windows, create a `python` symlink to `python3` for convenience.
     if platform.system() != "Windows":
         bin_dir = os.path.join(OUTPUT_DIR, "bin")
-        python3_executable = os.path.join(bin_dir, "python3")
+        python3_executable = os.path.join(bin_dir, "python3.11")
         python_symlink = os.path.join(bin_dir, "python")
+        python3_symlink = os.path.join(bin_dir, "python3")
         if os.path.exists(python3_executable) and not os.path.lexists(python_symlink):
             print(f"Creating symlink: {python_symlink} -> python3")
-            os.symlink("python3", python_symlink)
+            os.symlink("python3.11", python_symlink)
+            os.symlink("python3.11", python3_symlink)
+
+    files = os.listdir(bin_dir)
+    print("cedrik", files)
 
     patch_python_distribution(OUTPUT_DIR)
     test_python_distribution(OUTPUT_DIR)
@@ -357,7 +362,7 @@ if __name__ == "__main__":
     ARCH = args.arch
 
     files = os.listdir(SOURCE_DIR)
-    print(files)
+    print("cedrik", files)
     
     OPENTIMELINEIO_SOURCE_DIR = args.otio_source_dir
     if platform.system() == "Windows":
