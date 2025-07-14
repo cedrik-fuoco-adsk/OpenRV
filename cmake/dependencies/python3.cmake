@@ -1,7 +1,11 @@
 #
-# Copyright (C) 2022  Autodesk, Inc. All Rights Reserved.
+# Copyright (C) 2022-2024 Autodesk, Inc. All Rights Reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
+#
+# This file has been refactored to use python-build-standalone instead of
+# building Python from source. This simplifies the build process, removes the
+# dependency on a separate OpenSSL build, and speeds up dependency resolution.
 #
 
 SET(_python3_target
@@ -39,10 +43,61 @@ SET(_opentimelineio_version
 
 RV_VFX_SET_VARIABLE(_pyside_version CY2023 "5.15.10" CY2024 "6.5.3")
 
-SET(_python3_download_url
-    "https://github.com/python/cpython/archive/refs/tags/v${_python3_version}.zip"
-)
-RV_VFX_SET_VARIABLE(_python3_download_hash CY2023 "21b32503f31386b37f0c42172dfe5637" CY2024 "392eccd4386936ffcc46ed08057db3e7")
+#
+# --- Python Build Standalone Configuration ---
+#
+# Construct the download URL for the pre-built Python from python-build-standalone.
+#
+RV_VFX_SET_VARIABLE(PBS_PYTHON_VERSION_WITH_TAG CY2023 "3.10.13+20240107" CY2024 "3.11.9+20240526")
+RV_VFX_SET_VARIABLE(PBS_DOWNLOAD_TAG CY2023 "20240107" CY2024 "20240526")
+
+# Determine platform string
+IF(RV_TARGET_WINDOWS)
+    SET(_pbs_platform "pc-windows-msvc")
+    SET(_pbs_ext "zip")
+    IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+        SET(_pbs_variant "debug")
+    ELSE()
+        SET(_pbs_variant "release")
+    ENDIF()
+ELSEIF(RV_TARGET_APPLE)
+    SET(_pbs_platform "apple-darwin")
+    SET(_pbs_ext "tar.zst")
+    IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+        SET(_pbs_variant "install_debug")
+    ELSE()
+        SET(_pbs_variant "install_only")
+    ENDIF()
+ELSE() # Linux
+    SET(_pbs_platform "unknown-linux-gnu")
+    SET(_pbs_ext "tar.zst")
+    IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+        SET(_pbs_variant "install_debug")
+    ELSE()
+        SET(_pbs_variant "install_only")
+    ENDIF()
+ENDIF()
+
+# Determine architecture string
+IF(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    SET(_pbs_arch "aarch64")
+ELSE()
+    SET(_pbs_arch "x86_64")
+ENDIF()
+
+# Construct final filename and URL
+SET(_pbs_filename "cpython-${PBS_PYTHON_VERSION_WITH_TAG}-${_pbs_arch}-${_pbs_platform}-${_pbs_variant}.${_pbs_ext}")
+SET(_python3_download_url "https://github.com/indygreg/python-build-standalone/releases/download/${PBS_DOWNLOAD_TAG}/${_pbs_filename}")
+
+# --- HASH CONFIGURATION ---
+# NOTE: python-build-standalone provides SHA256 hashes. You must find the correct hash
+# for the specific file artifact you are downloading and place it here.
+# Hashes can be found in the SHASUMS256.txt file in the GitHub release assets.
+# Example: https://github.com/indygreg/python-build-standalone/releases/download/20240526/SHASUMS256.txt
+#
+# This value MUST be updated from the placeholder.
+SET(_python3_download_hash "SHA256_HASH_PLACEHOLDER")
+# ---
 
 SET(_opentimelineio_download_url
     "https://github.com/AcademySoftwareFoundation/OpenTimelineIO"
@@ -93,6 +148,12 @@ FETCHCONTENT_DECLARE(
 
 FETCHCONTENT_MAKEAVAILABLE(${_pyside_target})
 
+#
+# --- Build Script Command ---
+#
+# This command calls our refactored python script. It no longer needs
+# --configure, --build, or --openssl-dir.
+#
 SET(_python3_make_command_script
     "${PROJECT_SOURCE_DIR}/src/build/make_python.py"
 )
@@ -112,10 +173,6 @@ LIST(APPEND _python3_make_command "--vfx_platform")
 RV_VFX_SET_VARIABLE(_vfx_platform_ CY2023 "2023" CY2024 "2024")
 LIST(APPEND _python3_make_command ${_vfx_platform_})
 
-IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
-  LIST(APPEND _python3_make_command "--openssl-dir")
-  LIST(APPEND _python3_make_command ${RV_DEPS_OPENSSL_INSTALL_DIR})
-ENDIF()
 IF(RV_TARGET_WINDOWS)
   LIST(APPEND _python3_make_command "--opentimelineio-source-dir")
   LIST(APPEND _python3_make_command ${rv_deps_opentimelineio_SOURCE_DIR})
@@ -140,12 +197,6 @@ IF(RV_VFX_PLATFORM STREQUAL CY2023)
   LIST(APPEND _pyside_make_command ${_install_dir})
   LIST(APPEND _pyside_make_command "--temp-dir")
   LIST(APPEND _pyside_make_command ${_build_dir})
-
-  IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
-    LIST(APPEND _pyside_make_command "--openssl-dir")
-    LIST(APPEND _pyside_make_command ${RV_DEPS_OPENSSL_INSTALL_DIR})
-  ENDIF()
-
   LIST(APPEND _pyside_make_command "--python-dir")
   LIST(APPEND _pyside_make_command ${_install_dir})
   LIST(APPEND _pyside_make_command "--qt-dir")
@@ -168,12 +219,6 @@ ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
   LIST(APPEND _pyside_make_command ${_install_dir})
   LIST(APPEND _pyside_make_command "--temp-dir")
   LIST(APPEND _pyside_make_command ${_build_dir})
-
-  IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
-    LIST(APPEND _pyside_make_command "--openssl-dir")
-    LIST(APPEND _pyside_make_command ${RV_DEPS_OPENSSL_INSTALL_DIR})
-  ENDIF()
-
   LIST(APPEND _pyside_make_command "--python-dir")
   LIST(APPEND _pyside_make_command ${_install_dir})
   LIST(APPEND _pyside_make_command "--qt-dir")
@@ -232,8 +277,10 @@ ELSE() # Not WINDOWS
   SET(_python_name
       python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}
   )
+  # The include directory for python-build-standalone is directly under install/include,
+  # not in a versioned subdirectory like source builds.
   SET(_include_dir
-      ${_install_dir}/include/${_python_name}
+      ${_install_dir}/include
   )
   SET(_lib_dir
       ${_install_dir}/lib
@@ -256,39 +303,30 @@ SET(_requirements_install_command
     "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
 )
 
-IF(RV_TARGET_WINDOWS)
-  SET(_patch_python3_11_command
-      "patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/patch/python.3.11.openssl.props.patch &&\
-       patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/patch/python.3.11.python.props.patch &&\
-       patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/patch/python.3.11.get_externals.bat.patch"
-  )
-
-  RV_VFX_SET_VARIABLE(_patch_command CY2023 "" CY2024 "${_patch_python3_11_command}")
-  # Split the command into a semi-colon separated list.
-  SEPARATE_ARGUMENTS(_patch_command)
-  STRING(
-    REGEX
-    REPLACE ";+" ";" _patch_command "${_patch_command}"
-  )
-ENDIF()
-
+#
+# --- External Project Definition ---
+#
+# This now downloads and extracts the pre-built python-build-standalone package.
+# The CONFIGURE and BUILD steps are removed. The INSTALL step calls our script.
+#
 EXTERNALPROJECT_ADD(
   ${_python3_target}
-  DOWNLOAD_NAME ${_python3_target}_${_python3_version}.zip
+  DOWNLOAD_NAME ${_pbs_filename}
   DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR ${_source_dir}
   INSTALL_DIR ${_install_dir}
   URL ${_python3_download_url}
-  URL_MD5 ${_python3_download_hash}
-  DEPENDS OpenSSL::Crypto OpenSSL::SSL
-  CONFIGURE_COMMAND ${_python3_make_command} --configure
-  BUILD_COMMAND ${_python3_make_command} --build
+  URL_HASH SHA256=${_python3_download_hash}
+  # No dependency on OpenSSL, it's included in the standalone build.
+  # No configure or build commands are needed for a pre-built package.
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND ""
   INSTALL_COMMAND ${_python3_make_command} --install
   BUILD_BYPRODUCTS ${_python3_executable} ${_python3_lib} ${_python3_implib}
   BUILD_IN_SOURCE TRUE
   BUILD_ALWAYS FALSE
-  USES_TERMINAL_BUILD TRUE
+  USES_TERMINAL_INSTALL TRUE
 )
 
 # ##############################################################################################################################################################
