@@ -96,7 +96,7 @@ SET(_python3_download_url "https://github.com/indygreg/python-build-standalone/r
 # Example: https://github.com/indygreg/python-build-standalone/releases/download/20240526/SHASUMS256.txt
 #
 # This value MUST be updated from the placeholder.
-SET(_python3_download_hash "SHA256_HASH_PLACEHOLDER")
+SET(_python3_download_hash "3963656c8672522789f41656b9c2c62c4c810f635293452445b530f7b0284414")
 # ---
 
 SET(_opentimelineio_download_url
