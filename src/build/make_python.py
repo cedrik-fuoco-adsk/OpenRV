@@ -299,7 +299,7 @@ def install() -> None:
     os.makedirs(OUTPUT_DIR)
 
     # python-build-standalone archives extract their contents into a 'python' subdirectory.
-    extracted_python_dir = os.path.join(SOURCE_DIR, "python")
+    extracted_python_dir = SOURCE_DIR
     if not os.path.exists(extracted_python_dir):
         raise FileNotFoundError(
             f"Could not find the extracted 'python' directory in {SOURCE_DIR}. "
