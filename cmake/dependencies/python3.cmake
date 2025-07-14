@@ -48,8 +48,8 @@ RV_VFX_SET_VARIABLE(_pyside_version CY2023 "5.15.10" CY2024 "6.5.3")
 #
 # Construct the download URL for the pre-built Python from python-build-standalone.
 #
-RV_VFX_SET_VARIABLE(PBS_PYTHON_VERSION_WITH_TAG CY2023 "3.10.13+20240107" CY2024 "3.11.9+20240526")
-RV_VFX_SET_VARIABLE(PBS_DOWNLOAD_TAG CY2023 "20240107" CY2024 "20240526")
+RV_VFX_SET_VARIABLE(PBS_PYTHON_VERSION_WITH_TAG CY2023 "3.10.14+20240415" CY2024 "3.11.9+20240415")
+RV_VFX_SET_VARIABLE(PBS_DOWNLOAD_TAG CY2023 "20240415" CY2024 "20240415")
 
 # Determine platform string
 IF(RV_TARGET_WINDOWS)
@@ -96,7 +96,7 @@ SET(_python3_download_url "https://github.com/indygreg/python-build-standalone/r
 # Example: https://github.com/indygreg/python-build-standalone/releases/download/20240526/SHASUMS256.txt
 #
 # This value MUST be updated from the placeholder.
-SET(_python3_download_hash "3963656c8672522789f41656b9c2c62c4c810f635293452445b530f7b0284414")
+SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
 # ---
 
 SET(_opentimelineio_download_url
