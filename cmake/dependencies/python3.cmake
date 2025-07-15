@@ -249,11 +249,16 @@ ELSE() # Not WINDOWS
   )
 ENDIF()
 
+RV_VFX_SET_VARIABLE(_numpy_install_version CY2023 "numpy<1.23" CY2024 "numpy==1.26.3") 
+
 SET(_requirements_file
     "${PROJECT_SOURCE_DIR}/src/build/requirements.txt"
 )
 SET(_requirements_install_command
     "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
+)
+SET(_numpy_install_command
+    "${_python3_executable}" -m pip install ${_numpy_install_version}"
 )
 
 IF(RV_TARGET_WINDOWS)
@@ -334,6 +339,7 @@ ADD_CUSTOM_COMMAND(
   COMMENT "Installing requirements from ${_requirements_file}"
   OUTPUT ${${_python3_target}-requirements-flag}
   COMMAND ${_requirements_install_command}
+  COMMAND ${_numpy_install_command}
   COMMAND cmake -E touch ${${_python3_target}-requirements-flag}
   DEPENDS ${_python3_target} ${_requirements_file}
 )
