@@ -86,7 +86,7 @@ EXTERNALPROJECT_ADD(
   UPDATE_COMMAND ""
   PATCH_COMMAND ${_patch_command_nanobind_windows_debug}
   CONFIGURE_COMMAND 
-    ${CMAKE_COMMAND} ${_configure_options} -DPython_ROOT=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install -DPython_EXECUTABLE=${_nanobind_python_executable}
+    ${CMAKE_COMMAND} -DNB_TEST=OFF ${_configure_options} -DPython_ROOT=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install -DPython_EXECUTABLE=${_nanobind_python_executable}
   BUILD_COMMAND ${_cmake_build_command}
   INSTALL_COMMAND ${_cmake_install_command}
   BUILD_IN_SOURCE FALSE
