@@ -258,7 +258,7 @@ SET(_requirements_install_command
     "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
 )
 SET(_numpy_install_command
-    "${_python3_executable}" -m pip install ${_numpy_install_version}"
+    "${_python3_executable}" -m pip install "${_numpy_install_version}"
 )
 
 IF(RV_TARGET_WINDOWS)
