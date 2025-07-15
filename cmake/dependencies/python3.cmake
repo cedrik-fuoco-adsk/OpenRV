@@ -335,7 +335,7 @@ SET(${_python3_target}-requirements-flag
     ${_install_dir}/${_python3_target}-requirements-flag
 )
 
-message(STATUS "cedrik: ${_numpy_install_command")
+message(STATUS "cedrik: ${_numpy_install_command}")
 ADD_CUSTOM_COMMAND(
   COMMENT "Installing requirements from ${_requirements_file}"
   OUTPUT ${${_python3_target}-requirements-flag}
