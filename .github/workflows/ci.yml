@@ -2,9 +2,6 @@ name: OpenRV
 
 on:
   push:
-    branches:
-      # This will run when PR is merged or direct pushes to main.
-      - main
 
   pull_request: # This handles PR creation and subsequent commits.
 
@@ -36,7 +33,7 @@ env:
 
 jobs:
   rocky-linux:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    if : ${{ github.repository_owner == 'cedrik-fuoco-adsk' }}
     name: 'Rocky Linux ${{ matrix.rocky-version }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -313,7 +310,7 @@ jobs:
           cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   macos:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    if : ${{ github.repository_owner == 'cedrik-fuoco-adsk' }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -548,7 +545,7 @@ jobs:
           cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    if : ${{ github.repository_owner == 'cedrik-fuoco-adsk' }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
@@ -573,7 +570,7 @@ jobs:
             msvc-compiler: "14.40.33807"
           - os: "windows-2022"
             arch-type: "x86_64"
-            build-type: "Debug"
+            build-type: "RelWithDebInfo"
             qt-version: "5.15.2"
             python-version: "3.10"
             cmake-version: "3.31.6"
@@ -593,7 +590,7 @@ jobs:
             msvc-compiler: "14.40.33807"
           - os: "windows-2022"
             arch-type: "x86_64"
-            build-type: "Debug"
+            build-type: "RelWithDebInfo"
             qt-version: "6.5.3"
             python-version: "3.11"
             cmake-version: "3.31.6"
