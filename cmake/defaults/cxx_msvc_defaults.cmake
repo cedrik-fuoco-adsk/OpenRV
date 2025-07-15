@@ -70,3 +70,28 @@ ADD_LINK_OPTIONS("/STACK:8388608")
 # Enable parallel builds Note that in theory we should be able to specify just /MP here but when we do cmake sets /MP1 instead. So in order to parellize the
 # build, we must set the number of processors.
 ADD_DEFINITIONS(/MP${_cpu_count})
+
+
+if (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    message(STATUS "Configuring global RelWithDebInfo")
+
+    if (MSVC)
+        # Replace /MDd with /MD, remove /DNDEBUG, keep /Zi, and optionally lower optimization
+        string(REPLACE "/MDd" "/MD" CMAKE_C_FLAGS_RELWITHDEBINFO     "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+        string(REPLACE "/MDd" "/MD" CMAKE_CXX_FLAGS_RELWITHDEBINFO   "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+        string(REPLACE "/DNDEBUG" "" CMAKE_C_FLAGS_RELWITHDEBINFO   "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+        string(REPLACE "/DNDEBUG" "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+        # Ensure /Zi is present
+        string(FIND "${CMAKE_C_FLAGS_RELWITHDEBINFO}" "/Zi" zi_pos_c)
+        if(zi_pos_c EQUAL -1)
+            set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /Zi")
+        endif()
+        string(FIND "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}" "/Zi" zi_pos_cxx)
+        if(zi_pos_cxx EQUAL -1)
+            set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Zi")
+        endif()
+        # Optional: reduce optimization
+        string(REGEX REPLACE "/O[0123sxy]" "/Od" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+        string(REGEX REPLACE "/O[0123sxy]" "/Od" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+    endif()
+endif()
