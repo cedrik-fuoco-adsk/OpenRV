@@ -72,7 +72,7 @@ ADD_LINK_OPTIONS("/STACK:8388608")
 ADD_DEFINITIONS(/MP${_cpu_count})
 
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+if (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     message(STATUS "Configuring global")
 
     if (MSVC)
