@@ -70,7 +70,7 @@ PROJECT(
 )
 
 SET(CMAKE_CONFIGURATION_TYPES
-    "Debug;Release"
+    "Debug;Release;RelWithDebInfo"
     CACHE STRING "" FORCE
 )
 
