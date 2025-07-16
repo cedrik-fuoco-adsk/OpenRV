@@ -32,9 +32,12 @@ SET(_build_dir "${RV_DEPS_BASE_DIR}/${_python3_target}/build")
 
 # Define PySide download URLs and hashes based on VFX platform
 # Re-using the pattern to set these variables as they were likely in the original file.
-RV_VFX_SET_VARIABLE(_pyside_archive_url
-  CY2023 "https://download.qt.io/official_releases/pyside/PySide2-${_pyside_version}-src.zip"
-  CY2024 "https://download.qt.io/official_releases/pyside/PySide6-${_pyside_version}-src.zip"
+RV_VFX_SET_VARIABLE(
+  _pyside_archive_url
+  CY2023
+  "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside2/PySide2-${_pyside_version}-src/pyside-setup-opensource-src-${_pyside_version}.zip"
+  CY2024
+  "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside6/PySide6-${_pyside_version}-src/pyside-setup-everywhere-src-${_pyside_version}.zip"
 )
 RV_VFX_SET_VARIABLE(_pyside_download_hash
   CY2023 "87841aaced763b6b52e9b549e31a493f" # Updated hash
