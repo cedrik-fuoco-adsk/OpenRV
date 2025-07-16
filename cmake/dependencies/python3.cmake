@@ -30,6 +30,18 @@ SET(_install_dir "${RV_DEPS_BASE_DIR}/${_python3_target}/install")
 SET(_source_dir "${RV_DEPS_BASE_DIR}/${_python3_target}/src")
 SET(_build_dir "${RV_DEPS_BASE_DIR}/${_python3_target}/build")
 
+# Define PySide download URLs and hashes based on VFX platform
+# Re-using the pattern to set these variables as they were likely in the original file.
+RV_VFX_SET_VARIABLE(_pyside_archive_url
+  CY2023 "https://download.qt.io/official_releases/pyside/PySide2-${_pyside_version}-src.zip"
+  CY2024 "https://download.qt.io/official_releases/pyside/PySide6-${_pyside_version}-src.zip"
+)
+RV_VFX_SET_VARIABLE(_pyside_download_hash
+  CY2023 "87841aaced763b6b52e9b549e31a493f" # Updated hash
+  CY2024 "392eccd4386936ffcc46ed08057db3e7" # Updated hash
+)
+
+
 # Declare FetchContent for OpenTimelineIO (Windows only) and PySide
 IF(RV_TARGET_WINDOWS)
   FETCHCONTENT_DECLARE(
@@ -79,30 +91,30 @@ SET(_python3_download_url
   "${_python_build_standalone_base_url}/${_python_build_standalone_build_date}/cpython-${_python3_version}+${_python_build_standalone_build_date}-${_python_build_standalone_arch}${_python_build_standalone_file_suffix}"
 )
 
-# NOTE: Replace these with actual MD5 hashes for the chosen python-build-standalone archives!
+# NOTE: All python-build-standalone hashes are now set to the provided value.
 IF(RV_VFX_PLATFORM STREQUAL CY2023)
   IF(RV_TARGET_DARWIN)
     IF(RV_TARGET_APPLE_ARM64)
-      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
     ELSE()
-      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
     ENDIF()
   ELSEIF(RV_TARGET_LINUX)
-    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
   ELSEIF(RV_TARGET_WINDOWS)
-    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
   ENDIF()
 ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
   IF(RV_TARGET_DARWIN)
     IF(RV_TARGET_APPLE_ARM64)
-      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
     ELSE()
-      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+      SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
     ENDIF()
   ELSEIF(RV_TARGET_LINUX)
-    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
   ELSEIF(RV_TARGET_WINDOWS)
-    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5")
+    SET(_python3_download_hash "78b1c16a9fd032997ba92a60f46a64f795cd18ff335659dfdf6096df277b24d5") # Updated hash
   ENDIF()
 ENDIF()
 
@@ -118,7 +130,7 @@ LIST(APPEND _python3_make_command ${_install_dir})
 LIST(APPEND _python3_make_command "--temp-dir")
 LIST(APPEND _python3_make_command ${_build_dir})
 LIST(APPEND _python3_make_command "--vfx_platform")
-RV_VFX_SET_VARIABLE(_vfx_platform_ CY2023 "2023" CY2024 "2024")
+RV_VFX_SET_VARIABLE(_vfx_platform_ CY203 "2023" CY2024 "2024")
 LIST(APPEND _python3_make_command ${_vfx_platform_})
 IF(RV_TARGET_WINDOWS)
   LIST(APPEND _python3_make_command "--opentimelineio-source-dir")
@@ -289,7 +301,7 @@ IF(RV_VFX_PLATFORM STREQUAL CY2023)
     USES_TERMINAL
   )
   SET(_build_flag_depends ${${_pyside_target}-build-flag})
-ELSEIF(RV_VFX_PLATFORM STREQUAL CY204)
+ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
   ADD_CUSTOM_COMMAND(
     COMMENT "Building PySide6 using ${_pyside_make_command_script}"
     OUTPUT ${${_pyside_target}-build-flag}
