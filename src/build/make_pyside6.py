@@ -263,7 +263,7 @@ def build() -> None:
     print(f"Executing {pyside_build_args}")
     subprocess_env = {**os.environ}
     print("cedrik456", python_home)
-    subprocess_env["Python_INCLUDE_DIR"] = python_home / include
+    subprocess_env["Python_INCLUDE_DIR"] = python_home / "include"
     subprocess.run(pyside_build_args, env=subprocess_env).check_returncode()
 
     generator_cleanup_args = python_interpreter_args + [
