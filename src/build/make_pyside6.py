@@ -40,6 +40,203 @@ OPENSSL_OUTPUT_DIR = ""
 LIBCLANG_URL_BASE = "https://mirrors.ocf.berkeley.edu/qt/development_releases/prebuilt/libclang/libclang-release_"
 
 
+def get_cmake_generator():
+    """Get the appropriate CMake generator for the current platform."""
+    system = platform.system()
+    if system == "Windows":
+        return "Ninja"
+    elif system == "Darwin":
+        return "Ninja"
+    else:  # Linux
+        return "Ninja"
+
+
+def get_python_executable():
+    """Get the Python executable path."""
+    python_interpreter_args = get_python_interpreter_args(PYTHON_OUTPUT_DIR, VARIANT)
+    return python_interpreter_args[0]
+
+
+def get_python_cmake_variables():
+    """Get comprehensive Python CMake variables for FindPython."""
+    python_exe = get_python_executable()
+    python_home = PYTHON_OUTPUT_DIR
+    
+    # Get Python version info
+    version_cmd = [python_exe, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"]
+    python_version = subprocess.check_output(version_cmd, text=True).strip()
+    
+    # Get Python library path
+    if platform.system() == "Windows":
+        lib_name = f"python{python_version.replace('.', '')}.lib"
+        lib_path = os.path.join(python_home, "libs", lib_name)
+        dll_name = f"python{python_version.replace('.', '')}.dll"
+        dll_path = os.path.join(python_home, dll_name)
+    else:
+        lib_name = f"libpython{python_version}.so" if platform.system() == "Linux" else f"libpython{python_version}.dylib"
+        lib_path = os.path.join(python_home, "lib", lib_name)
+        dll_path = lib_path
+    
+    # Get Python include directory
+    include_dir = os.path.join(python_home, "include")
+    if platform.system() == "Windows":
+        include_dir = python_home  # On Windows, headers are in the root
+    else:
+        # Try to find the correct include directory
+        python_include = os.path.join(python_home, "include", f"python{python_version}")
+        if os.path.exists(python_include):
+            include_dir = python_include
+    
+    # Get site-packages directory
+    site_packages_cmd = [python_exe, "-c", "import site; print(site.getsitepackages()[0])"]
+    try:
+        site_packages = subprocess.check_output(site_packages_cmd, text=True).strip()
+    except:
+        site_packages = os.path.join(python_home, "lib", f"python{python_version}", "site-packages")
+    
+    cmake_vars = [
+        # Primary Python executable
+        f"-DPython_EXECUTABLE={python_exe}",
+        
+        # Python version
+        f"-DPython_VERSION={python_version}",
+        f"-DPython_VERSION_MAJOR={python_version.split('.')[0]}",
+        f"-DPython_VERSION_MINOR={python_version.split('.')[1]}",
+        
+        # Python library
+        f"-DPython_LIBRARY={lib_path}",
+        f"-DPython_LIBRARIES={lib_path}",
+        
+        # Python include directory
+        f"-DPython_INCLUDE_DIR={include_dir}",
+        f"-DPython_INCLUDE_DIRS={include_dir}",
+        
+        # Python root directory
+        f"-DPython_ROOT_DIR={python_home}",
+        f"-DPython_ROOT={python_home}",
+        
+        # Site packages
+        f"-DPython_SITEARCH={site_packages}",
+        f"-DPython_SITELIB={site_packages}",
+        
+        # Additional Python paths
+        f"-DPYTHON_EXECUTABLE={python_exe}",  # Legacy variable
+        f"-DPYTHON_LIBRARY={lib_path}",       # Legacy variable
+        f"-DPYTHON_INCLUDE_DIR={include_dir}", # Legacy variable
+        
+        # PySide-specific variables
+        f"-DQFP_PYTHON_TARGET_PATH={python_home}",
+        f"-DPYSIDE_PYTHON_PATH={python_home}",
+    ]
+    
+    # Add Windows-specific variables
+    if platform.system() == "Windows":
+        cmake_vars.extend([
+            f"-DPython_LIBRARY_RELEASE={lib_path}",
+            f"-DPython_RUNTIME_LIBRARY_DIRS={python_home}",
+        ])
+        # Add DLL path if it exists
+        if os.path.exists(dll_path):
+            cmake_vars.append(f"-DPython_RUNTIME_LIBRARY={dll_path}")
+    
+    return cmake_vars
+
+
+def get_qt_cmake_path():
+    """Get the Qt CMake path."""
+    return os.path.join(QT_OUTPUT_DIR, "lib", "cmake")
+
+
+def get_cmake_build_type():
+    """Get the CMake build type based on variant."""
+    return "Debug" if VARIANT == "Debug" else "Release"
+
+
+def configure_cmake():
+    """Configure PySide6 using CMake directly."""
+    build_dir = os.path.join(TEMP_DIR, "pyside6_build")
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    os.makedirs(build_dir)
+    
+    # Determine platform-specific executable extension
+    exe_ext = ".exe" if platform.system() == "Windows" else ""
+    
+    cmake_args = [
+        "cmake",
+        SOURCE_DIR,
+        "-G", get_cmake_generator(),
+        f"-DCMAKE_BUILD_TYPE={get_cmake_build_type()}",
+        f"-DCMAKE_INSTALL_PREFIX={OUTPUT_DIR}",
+        f"-DCMAKE_PREFIX_PATH={get_qt_cmake_path()}",
+        f"-DQT_HOST_PATH={QT_OUTPUT_DIR}",
+        f"-DQFP_QT_HOST_PATH={QT_OUTPUT_DIR}",
+        "-DPYSIDE_STANDALONE=ON",
+        "-DSETUPTOOLS_IGNORE_GIT=ON",
+        "-DCMAKE_VERBOSE_MAKEFILE=ON",
+        "-DLOG_LEVEL=VERBOSE",
+        f"-DCMAKE_JOB_POOLS=all={os.cpu_count() or 1}",
+    ]
+    
+    # Add comprehensive Python variables
+    python_cmake_vars = get_python_cmake_variables()
+    cmake_args.extend(python_cmake_vars)
+    
+    # Add OpenSSL support if available
+    if OPENSSL_OUTPUT_DIR:
+        cmake_args.extend([
+            f"-DOPENSSL_ROOT_DIR={OPENSSL_OUTPUT_DIR}",
+            f"-DOPENSSL_LIBRARIES={os.path.join(OPENSSL_OUTPUT_DIR, 'lib')}",
+            f"-DOPENSSL_INCLUDE_DIR={os.path.join(OPENSSL_OUTPUT_DIR, 'include')}",
+        ])
+    
+    # Platform-specific configurations
+    if platform.system() == "Windows":
+        cmake_args.extend([
+            "-DCMAKE_CXX_COMPILER=cl",
+            "-DCMAKE_C_COMPILER=cl",
+        ])
+    
+    print(f"Configuring with CMake: {' '.join(cmake_args)}")
+    
+    # Change to build directory and run cmake
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(build_dir)
+        subprocess.run(cmake_args).check_returncode()
+    finally:
+        os.chdir(original_cwd)
+    
+    return build_dir
+
+
+def build_cmake(build_dir):
+    """Build PySide6 using CMake."""
+    cmake_build_args = [
+        "cmake",
+        "--build", build_dir,
+        "--config", get_cmake_build_type(),
+        "--parallel", str(os.cpu_count() or 1),
+        "--verbose"
+    ]
+    
+    print(f"Building with CMake: {' '.join(cmake_build_args)}")
+    subprocess.run(cmake_build_args).check_returncode()
+
+
+def install_cmake(build_dir):
+    """Install PySide6 using CMake."""
+    cmake_install_args = [
+        "cmake",
+        "--install", build_dir,
+        "--config", get_cmake_build_type(),
+        "--verbose"
+    ]
+    
+    print(f"Installing with CMake: {' '.join(cmake_install_args)}")
+    subprocess.run(cmake_install_args).check_returncode()
+
+
 def test_python_distribution(python_home: str) -> None:
     """
     Test the Python distribution.
@@ -177,6 +374,7 @@ def prepare() -> None:
     print(f"Installing numpy with {install_numpy_args}")
     subprocess.run(install_numpy_args).check_returncode()
 
+    # Patch CMakeLists.txt to disable libxslt
     cmakelist_path = os.path.join(
         SOURCE_DIR, "sources", "shiboken6", "ApiExtractor", "CMakeLists.txt"
     )
@@ -194,7 +392,6 @@ def prepare() -> None:
                     " set(HAS_LIBXSLT 1)",
                     " #set(HAS_LIBXSLT 1)",
                 )
-
                 cmakelist.write(new_line)
 
 
@@ -208,65 +405,36 @@ def remove_broken_shortcuts(python_home: str) -> None:
     previous steps of the build pipeline.
 
     :param str python_home: Path to the Python folder.
-    :param int version: Version of the python executable.
     """
     if platform.system() == "Windows":
         # All executables inside Scripts have a hardcoded
         # absolute path to the python, which can't be relied
         # upon, so remove all scripts.
-        shutil.rmtree(os.path.join(python_home, "Scripts"))
+        scripts_dir = os.path.join(python_home, "Scripts")
+        if os.path.exists(scripts_dir):
+            shutil.rmtree(scripts_dir)
     else:
         # Aside from the python executables, every other file
         # in the build is a script that does not support
         bin_dir = os.path.join(python_home, "bin")
-        for filename in os.listdir(bin_dir):
-            filepath = os.path.join(bin_dir, filename)
-            if filename not in [
-                "python",
-                "python3",
-                f"python{PYTHON_VERSION}",
-            ]:
-                print(f"Removing {filepath}...")
-                os.remove(filepath)
-            else:
-                print(f"Keeping {filepath}...")
+        if os.path.exists(bin_dir):
+            for filename in os.listdir(bin_dir):
+                filepath = os.path.join(bin_dir, filename)
+                if filename not in [
+                    "python",
+                    "python3",
+                    f"python{PYTHON_VERSION}",
+                ]:
+                    print(f"Removing {filepath}...")
+                    os.remove(filepath)
+                else:
+                    print(f"Keeping {filepath}...")
 
 
-def build() -> None:
-    """
-    Run the build step of the build. It compile every target of the project.
-    """
-    python_home = PYTHON_OUTPUT_DIR
-    python_interpreter_args = get_python_interpreter_args(python_home, VARIANT)
-
-    pyside_build_args = python_interpreter_args + [
-        os.path.join(SOURCE_DIR, "setup.py"),
-        "install",
-        f"--qtpaths={os.path.join(QT_OUTPUT_DIR, 'bin', 'qtpaths' + ('.exe' if platform.system() == 'Windows' else ''))}",
-        "--ignore-git",
-        "--standalone",
-        "--verbose",
-        "--verbose-build",
-        "--log-level=verbose",
-        f"--parallel={os.cpu_count() or 1}",
-    ]
-
-    if OPENSSL_OUTPUT_DIR:
-        pyside_build_args.append(f"--openssl={os.path.join(OPENSSL_OUTPUT_DIR, 'bin')}")
-
-    if platform.system() == "Windows":
-        # Add the debug switch to match build type but only on Windows
-        # (on other platforms, PySide6 is built in release)
-        if VARIANT == "Debug":
-            pyside_build_args.append("--debug")
-
-    print(f"Executing {pyside_build_args}")
-    subprocess_env = {**os.environ}
-    print("cedrik456", python_home)
-    subprocess_env["Python_INCLUDE_DIRS"] = python_home / "include"
-    subprocess_env["Python_ROOT"] = python_home
-    subprocess.run(pyside_build_args, env=subprocess_env).check_returncode()
-
+def cleanup_shiboken_generator():
+    """Remove shiboken6_generator after build."""
+    python_interpreter_args = get_python_interpreter_args(PYTHON_OUTPUT_DIR, VARIANT)
+    
     generator_cleanup_args = python_interpreter_args + [
         "-m",
         "pip",
@@ -278,7 +446,7 @@ def build() -> None:
     print(f"Executing {generator_cleanup_args}")
     subprocess.run(generator_cleanup_args).check_returncode()
 
-    # Even if we remove shiboken6_generator from pip, the files stays... for some reasons
+    # Even if we remove shiboken6_generator from pip, the files stay... for some reasons
     generator_cleanup_args = python_interpreter_args + [
         "-c",
         "\n".join(
@@ -296,18 +464,42 @@ def build() -> None:
     print(f"Executing {generator_cleanup_args}")
     subprocess.run(generator_cleanup_args).check_returncode()
 
+
+def copy_openssl_libraries():
+    """Copy OpenSSL libraries to PySide6 folder on Windows."""
     if OPENSSL_OUTPUT_DIR and platform.system() == "Windows":
-        pyside_folder = glob.glob(
-            os.path.join(python_home, "**", "site-packages", "PySide6"), recursive=True
-        )[0]
-        openssl_libs = glob.glob(os.path.join(OPENSSL_OUTPUT_DIR, "bin", "lib*"))
+        pyside_folders = glob.glob(
+            os.path.join(PYTHON_OUTPUT_DIR, "**", "site-packages", "PySide6"), recursive=True
+        )
+        if pyside_folders:
+            pyside_folder = pyside_folders[0]
+            openssl_libs = glob.glob(os.path.join(OPENSSL_OUTPUT_DIR, "bin", "lib*"))
 
-        for lib in openssl_libs:
-            print(f"Copying {lib} into {pyside_folder}")
-            shutil.copy(lib, pyside_folder)
+            for lib in openssl_libs:
+                print(f"Copying {lib} into {pyside_folder}")
+                shutil.copy(lib, pyside_folder)
 
-    remove_broken_shortcuts(python_home)
-    test_python_distribution(python_home)
+
+def build() -> None:
+    """
+    Run the build step using CMake directly instead of setup.py.
+    """
+    # Configure CMake
+    build_dir = configure_cmake()
+    
+    # Build with CMake
+    build_cmake(build_dir)
+    
+    # Install with CMake
+    install_cmake(build_dir)
+    
+    # Post-build cleanup
+    cleanup_shiboken_generator()
+    copy_openssl_libraries()
+    remove_broken_shortcuts(PYTHON_OUTPUT_DIR)
+    
+    # Test the distribution
+    test_python_distribution(PYTHON_OUTPUT_DIR)
 
 
 if __name__ == "__main__":
