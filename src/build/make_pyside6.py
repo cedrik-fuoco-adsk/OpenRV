@@ -53,14 +53,14 @@ def get_cmake_generator():
 
 def get_python_executable():
     """Get the Python executable path."""
-    python_interpreter_args = get_python_interpreter_args(PYTHON_OUTPUT_DIR, VARIANT)
+    python_interpreter_args = get_python_interpreter_args(str(PYTHON_OUTPUT_DIR), VARIANT)
     return python_interpreter_args[0]
 
 
 def get_python_cmake_variables():
     """Get comprehensive Python CMake variables for FindPython."""
     python_exe = get_python_executable()
-    python_home = PYTHON_OUTPUT_DIR
+    python_home = str(PYTHON_OUTPUT_DIR)
     
     # Get Python version info
     version_cmd = [python_exe, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"]
@@ -144,7 +144,7 @@ def get_python_cmake_variables():
 
 def get_qt_cmake_path():
     """Get the Qt CMake path."""
-    return os.path.join(QT_OUTPUT_DIR, "lib", "cmake")
+    return os.path.join(str(QT_OUTPUT_DIR), "lib", "cmake")
 
 
 def get_cmake_build_type():
@@ -164,7 +164,7 @@ def configure_cmake():
     
     cmake_args = [
         "cmake",
-        SOURCE_DIR,
+        str(SOURCE_DIR),  # Convert PosixPath to string
         "-G", get_cmake_generator(),
         f"-DCMAKE_BUILD_TYPE={get_cmake_build_type()}",
         f"-DCMAKE_INSTALL_PREFIX={OUTPUT_DIR}",
@@ -186,8 +186,8 @@ def configure_cmake():
     if OPENSSL_OUTPUT_DIR:
         cmake_args.extend([
             f"-DOPENSSL_ROOT_DIR={OPENSSL_OUTPUT_DIR}",
-            f"-DOPENSSL_LIBRARIES={os.path.join(OPENSSL_OUTPUT_DIR, 'lib')}",
-            f"-DOPENSSL_INCLUDE_DIR={os.path.join(OPENSSL_OUTPUT_DIR, 'include')}",
+            f"-DOPENSSL_LIBRARIES={os.path.join(str(OPENSSL_OUTPUT_DIR), 'lib')}",
+            f"-DOPENSSL_INCLUDE_DIR={os.path.join(str(OPENSSL_OUTPUT_DIR), 'include')}",
         ])
     
     # Platform-specific configurations
@@ -433,7 +433,7 @@ def remove_broken_shortcuts(python_home: str) -> None:
 
 def cleanup_shiboken_generator():
     """Remove shiboken6_generator after build."""
-    python_interpreter_args = get_python_interpreter_args(PYTHON_OUTPUT_DIR, VARIANT)
+    python_interpreter_args = get_python_interpreter_args(str(PYTHON_OUTPUT_DIR), VARIANT)
     
     generator_cleanup_args = python_interpreter_args + [
         "-m",
@@ -469,11 +469,11 @@ def copy_openssl_libraries():
     """Copy OpenSSL libraries to PySide6 folder on Windows."""
     if OPENSSL_OUTPUT_DIR and platform.system() == "Windows":
         pyside_folders = glob.glob(
-            os.path.join(PYTHON_OUTPUT_DIR, "**", "site-packages", "PySide6"), recursive=True
+            os.path.join(str(PYTHON_OUTPUT_DIR), "**", "site-packages", "PySide6"), recursive=True
         )
         if pyside_folders:
             pyside_folder = pyside_folders[0]
-            openssl_libs = glob.glob(os.path.join(OPENSSL_OUTPUT_DIR, "bin", "lib*"))
+            openssl_libs = glob.glob(os.path.join(str(OPENSSL_OUTPUT_DIR), "bin", "lib*"))
 
             for lib in openssl_libs:
                 print(f"Copying {lib} into {pyside_folder}")
@@ -496,10 +496,10 @@ def build() -> None:
     # Post-build cleanup
     cleanup_shiboken_generator()
     copy_openssl_libraries()
-    remove_broken_shortcuts(PYTHON_OUTPUT_DIR)
+    remove_broken_shortcuts(str(PYTHON_OUTPUT_DIR))
     
     # Test the distribution
-    test_python_distribution(PYTHON_OUTPUT_DIR)
+    test_python_distribution(str(PYTHON_OUTPUT_DIR))
 
 
 if __name__ == "__main__":
