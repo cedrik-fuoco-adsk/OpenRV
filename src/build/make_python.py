@@ -310,8 +310,8 @@ def install() -> None:
     shutil.copytree(extracted_python_dir, OUTPUT_DIR, dirs_exist_ok=True)
     print("cedrik123")
     print(os.listdir(extracted_python_dir))
-    print(os.listdir(extracted_python_dir + "/include"))
-    print(os.listdir(extracted_python_dir + "/bin"))
+    print(os.listdir(extracted_python_dir / "include"))
+    print(os.listdir(extracted_python_dir / "bin"))
 
     patch_python_distribution(OUTPUT_DIR)
     test_python_distribution(OUTPUT_DIR)
