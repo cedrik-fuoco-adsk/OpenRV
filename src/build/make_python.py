@@ -113,7 +113,7 @@ except Exception as e:
 '''
 
 
-def get_python_interpreter_args(python_home: str, variant: str) -> List[str]:
+def get_python_interpreter_args(python_home: str, variant : str) -> List[str]:
     """
     Return the path to the python interpreter given a Python home.
 
@@ -131,23 +131,20 @@ def get_python_interpreter_args(python_home: str, variant: str) -> List[str]:
 
     # Filter out directories and non-executables
     python_interpreters = [
-        p for p in python_interpreters if os.path.isfile(p) and os.access(p, os.X_OK)
+        p for p in python_interpreters
+        if os.path.isfile(p) and os.access(p, os.X_OK)
     ]
 
     # Sort to get the main interpreter first (e.g., python3.10 before python3.10-config)
-    python_interpreters.sort(
-        key=lambda p: (
-            "-config" in os.path.basename(p),
-            not ("_d" in os.path.basename(p) and is_windows_debug),
-            len(os.path.basename(p)),  # Shorter names first (python3 vs python3.10)
-            os.path.basename(p),
-        )
-    )
+    python_interpreters.sort(key=lambda p: (
+        '-config' in os.path.basename(p),
+        not ('_d' in os.path.basename(p) and is_windows_debug),
+        len(os.path.basename(p)), # Shorter names first (python3 vs python3.10)
+        os.path.basename(p)
+    ))
 
     if not python_interpreters:
-        raise FileNotFoundError(
-            f"Could not find a suitable python interpreter in {python_home}"
-        )
+        raise FileNotFoundError(f"Could not find a suitable python interpreter in {python_home}")
 
     print(f"Found python interpreters: {python_interpreters}")
     python_interpreter = python_interpreters[0]
@@ -194,9 +191,7 @@ def patch_python_distribution(python_home: str) -> None:
         os.path.join(python_home, "**", "site-packages"), recursive=True
     )
     if not site_packages_list:
-        raise FileNotFoundError(
-            f"Could not find site-packages directory in {python_home}"
-        )
+        raise FileNotFoundError(f"Could not find site-packages directory in {python_home}")
 
     site_packages = site_packages_list[0]
     print(f"Site packages found at: {site_packages}")
@@ -211,49 +206,6 @@ def patch_python_distribution(python_home: str) -> None:
     with open(site_customize_path, "w") as sitecustomize_file:
         sitecustomize_file.write(SITECUSTOMIZE_FILE_CONTENT)
 
-    # Create the missing python3-config script that many build systems expect
-    # python-build-standalone has the script but not in the standard location
-    config_script_pattern = os.path.join(
-        python_home, "lib", "python*", "config-*", "python-config.py"
-    )
-    config_script_source_files = glob.glob(config_script_pattern)
-
-    if config_script_source_files:
-        config_script_source = config_script_source_files[0]
-        bin_dir = os.path.join(python_home, "bin")
-
-        # Create python3-config wrapper script
-        if platform.system() == "Windows":
-            python3_config_path = os.path.join(bin_dir, "python3-config.bat")
-            python_config_path = os.path.join(bin_dir, "python-config.bat")
-            python_exe = os.path.join(python_home, "bin", "python.exe")
-
-            config_wrapper_content = f"""@echo off
-"{python_exe}" "{config_script_source}" %*
-"""
-        else:
-            python3_config_path = os.path.join(bin_dir, "python3-config")
-            python_config_path = os.path.join(bin_dir, "python-config")
-            python_exe = os.path.join(python_home, "bin", "python3")
-
-            config_wrapper_content = f"""#!/bin/bash
-exec "{python_exe}" "{config_script_source}" "$@"
-"""
-
-        print(f"Creating python3-config wrapper at {python3_config_path}")
-        with open(python3_config_path, "w") as config_file:
-            config_file.write(config_wrapper_content)
-        if platform.system() != "Windows":
-            os.chmod(python3_config_path, 0o755)
-
-        print(f"Creating python-config wrapper at {python_config_path}")
-        with open(python_config_path, "w") as config_file:
-            config_file.write(config_wrapper_content)
-        if platform.system() != "Windows":
-            os.chmod(python_config_path, 0o755)
-    else:
-        print("Warning: Could not find python-config.py to create wrapper scripts")
-
 
 def test_python_distribution(python_home: str) -> None:
     """
@@ -265,7 +217,7 @@ def test_python_distribution(python_home: str) -> None:
     tmp_dir = os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
     os.makedirs(tmp_dir)
     tmp_python_home = os.path.join(tmp_dir, "python_test_install")
-
+    
     try:
         print(f"Testing relocatability by moving {python_home} to {tmp_python_home}")
         shutil.move(python_home, tmp_python_home)
@@ -280,25 +232,14 @@ def test_python_distribution(python_home: str) -> None:
             print("Building opentimelineio from source for Windows Debug build")
             my_env = os.environ.copy()
             my_env["OTIO_CXX_DEBUG_BUILD"] = "1"
-            python_lib = os.path.join(
-                tmp_python_home, "libs", f"python{PYTHON_VERSION}_d.lib"
-            )
-            my_env["CMAKE_ARGS"] = (
-                f"-DPython_LIBRARY={python_lib} -DCMAKE_INCLUDE_PATH={os.path.join(tmp_python_home, 'include')}"
-            )
-
+            python_lib = os.path.join(tmp_python_home, "libs", f"python{PYTHON_VERSION}_d.lib")
+            my_env["CMAKE_ARGS"] = f"-DPython_LIBRARY={python_lib} -DCMAKE_INCLUDE_PATH={os.path.join(tmp_python_home, 'include')}"
+            
             otio_install_args = python_interpreter_args + ["-m", "pip", "install", "."]
-            subprocess.run(
-                otio_install_args, env=my_env, cwd=OPENTIMELINEIO_SOURCE_DIR, check=True
-            )
+            subprocess.run(otio_install_args, env=my_env, cwd=OPENTIMELINEIO_SOURCE_DIR, check=True)
 
         # Install a package with C extensions to test the toolchain
-        wheel_install_arg = python_interpreter_args + [
-            "-m",
-            "pip",
-            "install",
-            "cryptography",
-        ]
+        wheel_install_arg = python_interpreter_args + ["-m", "pip", "install", "cryptography"]
         if not build_opentimelineio:
             wheel_install_arg.append("opentimelineio")
 
@@ -367,20 +308,10 @@ def install() -> None:
 
     print(f"Copying Python distribution from {extracted_python_dir} to {OUTPUT_DIR}")
     shutil.copytree(extracted_python_dir, OUTPUT_DIR, dirs_exist_ok=True)
-
-    # On non-Windows, create a `python` symlink to `python3` for convenience.
-    if platform.system() != "Windows":
-        bin_dir = os.path.join(OUTPUT_DIR, "bin")
-        python3_executable = os.path.join(bin_dir, "python3.11")
-        python_symlink = os.path.join(bin_dir, "python")
-        python3_symlink = os.path.join(bin_dir, "python3")
-        if os.path.exists(python3_executable) and not os.path.lexists(python_symlink):
-            print(f"Creating symlink: {python_symlink} -> python3")
-            os.symlink("python3.11", python_symlink)
-            os.symlink("python3.11", python3_symlink)
-
-    files = os.listdir(bin_dir)
-    print("cedrik", files)
+    print("cedrik123")
+    print(os.listdir(extracted_python_dir))
+    print(os.listdir(extracted_python_dir + "/include"))
+    print(os.listdir(extracted_python_dir + "/bin)
 
     patch_python_distribution(OUTPUT_DIR)
     test_python_distribution(OUTPUT_DIR)
@@ -392,82 +323,24 @@ if __name__ == "__main__":
     )
 
     # Actions
-    parser.add_argument(
-        "--clean", dest="clean", action="store_true", help="Clean build directories."
-    )
-    parser.add_argument(
-        "--install",
-        dest="install",
-        action="store_true",
-        help="Install the Python distribution.",
-    )
+    parser.add_argument("--clean", dest="clean", action="store_true", help="Clean build directories.")
+    parser.add_argument("--install", dest="install", action="store_true", help="Install the Python distribution.")
 
     # Paths
-    parser.add_argument(
-        "--source-dir",
-        dest="source",
-        type=pathlib.Path,
-        required=True,
-        help="Directory where the Python archive was extracted.",
-    )
-    parser.add_argument(
-        "--temp-dir",
-        dest="temp",
-        type=pathlib.Path,
-        required=True,
-        help="Directory for temporary build files.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        dest="output",
-        type=pathlib.Path,
-        required=True,
-        help="Final installation directory for Python.",
-    )
-
+    parser.add_argument("--source-dir", dest="source", type=pathlib.Path, required=True, help="Directory where the Python archive was extracted.")
+    parser.add_argument("--temp-dir", dest="temp", type=pathlib.Path, required=True, help="Directory for temporary build files.")
+    parser.add_argument("--output-dir", dest="output", type=pathlib.Path, required=True, help="Final installation directory for Python.")
+    
     # Configuration
-    parser.add_argument(
-        "--variant",
-        dest="variant",
-        type=str,
-        required=True,
-        choices=["Release", "Debug"],
-        help="Build variant.",
-    )
-    parser.add_argument(
-        "--arch",
-        dest="arch",
-        type=str,
-        required=False,
-        default="",
-        help="Target architecture.",
-    )
-    parser.add_argument(
-        "--vfx_platform",
-        dest="vfx_platform",
-        type=int,
-        required=True,
-        help="VFX Platform year (e.g., 2023, 2024).",
-    )
-
+    parser.add_argument("--variant", dest="variant", type=str, required=True, choices=["Release", "Debug"], help="Build variant.")
+    parser.add_argument("--arch", dest="arch", type=str, required=False, default="", help="Target architecture.")
+    parser.add_argument("--vfx_platform", dest="vfx_platform", type=int, required=True, help="VFX Platform year (e.g., 2023, 2024).")
+    
     # Optional Dependencies
-    parser.add_argument(
-        "--opentimelineio-source-dir",
-        dest="otio_source_dir",
-        type=str,
-        required=False,
-        default="",
-        help="Source directory for OpenTimelineIO (for Windows Debug builds).",
-    )
+    parser.add_argument("--opentimelineio-source-dir", dest="otio_source_dir", type=str, required=False, default="", help="Source directory for OpenTimelineIO (for Windows Debug builds).")
 
     if platform.system() == "Windows":
-        parser.add_argument(
-            "--python-version",
-            dest="python_version",
-            type=str,
-            required=True,
-            help="Major and minor Python version, e.g., '310' for 3.10.",
-        )
+        parser.add_argument("--python-version", dest="python_version", type=str, required=True, help="Major and minor Python version, e.g., '310' for 3.10.")
 
     args = parser.parse_args()
 
@@ -479,8 +352,8 @@ if __name__ == "__main__":
     ARCH = args.arch
 
     files = os.listdir(SOURCE_DIR)
-    print("cedrik", files)
-
+    print(files)
+    
     OPENTIMELINEIO_SOURCE_DIR = args.otio_source_dir
     if platform.system() == "Windows":
         PYTHON_VERSION = args.python_version
@@ -495,3 +368,4 @@ if __name__ == "__main__":
     if not args.clean and not args.install:
         print("No action specified. Use --install or --clean.")
         parser.print_help()
+    
