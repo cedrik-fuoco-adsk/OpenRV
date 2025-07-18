@@ -2,9 +2,6 @@ name: OpenRV
 
 on:
   push:
-    branches:
-      # This will run when PR is merged or direct pushes to main.
-      - main
 
   pull_request: # This handles PR creation and subsequent commits.
 
@@ -313,7 +310,7 @@ jobs:
           cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   macos:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    if : ${{ github.repository_owner == 'cedrik-fuoco-adsk' }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -504,18 +501,6 @@ jobs:
           filters: |
             dependencies:
               - 'cmake/**'
-  
-      - name: Restore some dependencies
-        # Restore only if there are no changes under cmake folder and Release build.
-        if: env.SKIP_DEPS_CACHE == 'false' && steps.changes-in-deps.outputs.dependencies == 'false' && matrix.build-type == 'Release'
-        id: cmake-dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ./_build/RV_DEPS_*
-            ./_build/cmake/dependencies
-            ./_build/_deps
-          key: macos-${{ matrix.arch-type }}-${{ matrix.vfx-platform }}-dependencies
 
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2023' }}
@@ -534,6 +519,20 @@ jobs:
         run: |
           cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
           ls -al _build
+
+      - name: Prepare selective cache
+        run: |
+          mkdir -p cache-essentials
+          cp -r ./_build/RV_DEPS_* cache-essentials/
+          cp -r ./_build/cmake/dependencies cache-essentials/
+          cp -r ./_build/_deps cache-essentials/
+          tar --zstd -cf selective-cache.tar.zst cache-essentials/
+
+      - name: Cache selective content
+        uses: actions/cache/save@v4
+        with:
+          path: selective-cache.tar.zst
+          key: ${{ runner.os }}-selective-${{ hashFiles('cmake/**') }}
           
       - name: Build OpenRV main executable
         run: |
