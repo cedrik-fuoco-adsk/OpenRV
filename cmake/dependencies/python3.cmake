@@ -100,7 +100,7 @@ SET(_python3_make_command
     python3 "${_python3_make_command_script}"
 )
 LIST(APPEND _python3_make_command "--variant")
-LIST(APPEND _python3_make_command ${CMAKE_BUILD_TYPE})
+LIST(APPEND _python3_make_command "Release")
 LIST(APPEND _python3_make_command "--source-dir")
 LIST(APPEND _python3_make_command ${_source_dir})
 LIST(APPEND _python3_make_command "--output-dir")
