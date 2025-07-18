@@ -520,13 +520,25 @@ jobs:
           cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
           ls -al _build
 
-      - name: Prepare selective cache
+      - name: Create selective cache archive
         run: |
-          mkdir -p cache-essentials
-          cp -r ./_build/RV_DEPS_* cache-essentials/
-          cp -r ./_build/cmake/dependencies cache-essentials/
-          cp -r ./_build/_deps cache-essentials/
-          tar --zstd -cf selective-cache.tar.zst cache-essentials/
+          # Build the tar command with only existing paths
+          tar_paths=()
+    
+          # Add paths that exist
+          for path in ./_build/RV_DEPS_* ./_build/cmake/dependencies ./_build/_deps; do
+            if [ -e "$path" ]; then
+              tar_paths+=("$path")
+            fi
+          done
+    
+          # Create archive if we have any paths
+          if [ ${#tar_paths[@]} -gt 0 ]; then
+            tar --zstd -cf selective-cache.tar.zst "${tar_paths[@]}"
+          else
+            echo "No paths found to archive"
+            touch selective-cache.tar.zst  # Create empty archive
+          fi
 
       - name: Cache selective content
         uses: actions/cache/save@v4
