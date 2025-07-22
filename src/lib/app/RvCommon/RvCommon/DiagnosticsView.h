@@ -11,6 +11,8 @@
 #include <QOpenGLExtraFunctions>
 #include <QSurfaceFormat>
 #include <QTimer>
+#include <QShowEvent>
+#include <QHideEvent>
 
 #include <vector>
 
@@ -37,6 +39,10 @@ namespace Rv
         void applyStyle();
         void handleMenuBar();
         void resetDockSpace();
+
+    protected:
+        void showEvent(QShowEvent* event) override;
+        void hideEvent(QHideEvent* event) override;
 
     private:
         QTimer m_timer;

@@ -99,12 +99,15 @@ namespace Rv
 
         ImGui_ImplQt_RegisterWidget(this);
 
-        // Send an invalidate request every 33 milliseconds (eg: 30 fps tops)
+        // Connect the timer but don't start it yet - it will be started when
+        // the widget is shown Send an invalidate request every 33 milliseconds
+        // (eg: 30 fps tops)
         connect(&m_timer, &QTimer::timeout, this,
                 QOverload<>::of(&QWidget::update));
 
-        // every 40 ms = 25 fps -- more than enough for idle updates
-        m_timer.start(40);
+        // Set the timer interval (40 ms = 25 fps -- more than enough for idle
+        // updates)
+        m_timer.setInterval(40);
     }
 
     DiagnosticsView::~DiagnosticsView()
@@ -371,6 +374,20 @@ namespace Rv
         // Render ImGui Frame
         ImGui::Render();
         ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+    }
+
+    void DiagnosticsView::showEvent(QShowEvent* event)
+    {
+        QOpenGLWidget::showEvent(event);
+        // Start the timer when the widget becomes visible.
+        m_timer.start();
+    }
+
+    void DiagnosticsView::hideEvent(QHideEvent* event)
+    {
+        QOpenGLWidget::hideEvent(event);
+        // Stop the timer when the widget is hidden to save CPU/GPU resources.
+        m_timer.stop();
     }
 
 } // namespace Rv
