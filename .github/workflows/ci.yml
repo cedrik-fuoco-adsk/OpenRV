@@ -522,11 +522,21 @@ jobs:
 
       - name: Create selective cache archive
         run: |
-          # Build the tar command with only existing paths
+          # Build the tar command with only existing install paths
           tar_paths=()
     
-          # Add paths that exist
-          for path in ./_build/RV_DEPS_* ./_build/cmake/dependencies ./_build/_deps; do
+          # Add RV_DEPS install directories that exist
+          for deps_dir in ./_build/RV_DEPS_*; do
+            if [ -d "$deps_dir" ]; then
+              install_path="$deps_dir/install"
+              if [ -d "$install_path" ]; then
+                tar_paths+=("$install_path")
+              fi
+            fi
+          done
+          
+          # Add other dependency paths if they exist
+          for path in ./_build/cmake/dependencies ./_build/_deps; do
             if [ -e "$path" ]; then
               tar_paths+=("$path")
             fi
@@ -534,7 +544,10 @@ jobs:
     
           # Create archive if we have any paths
           if [ ${#tar_paths[@]} -gt 0 ]; then
+            echo "Archiving ${#tar_paths[@]} paths:"
+            printf '  %s\n' "${tar_paths[@]}"
             tar --zstd -cf selective-cache.tar.zst "${tar_paths[@]}"
+            echo "Archive created successfully"
           else
             echo "No paths found to archive"
             touch selective-cache.tar.zst  # Create empty archive
