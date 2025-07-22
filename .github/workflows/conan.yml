@@ -222,7 +222,14 @@ jobs:
         run: |
           /github/home/.local/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
           /github/home/.local/bin/conan export openrvcore-conanfile.py
-   
+
+      - name: Cache Conan Dependencies
+        id: cache-conan
+        uses: actions/cache/save@v4
+        with:
+          path: /github/home/.conan2
+          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+          
       - name: Build OpenRV dependencies
         run: |
           export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
