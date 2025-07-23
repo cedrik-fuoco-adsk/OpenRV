@@ -225,7 +225,7 @@ jobs:
 
       - name: Cache Conan Dependencies
         id: cache-conan
-        uses: actions/cache/save@v4
+        uses: actions/cache@v4
         with:
           path: /github/home/.conan2
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
