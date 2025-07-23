@@ -217,6 +217,12 @@ jobs:
           export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
           cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
 
+      - uses: actions/cache/restore@v4
+        id: cache
+        with:
+          path: /github/home/.conan2
+          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+      
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
@@ -225,7 +231,7 @@ jobs:
 
       - name: Cache Conan Dependencies
         id: cache-conan
-        uses: actions/cache@v4
+        uses: actions/cache/save@v4
         with:
           path: /github/home/.conan2
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
