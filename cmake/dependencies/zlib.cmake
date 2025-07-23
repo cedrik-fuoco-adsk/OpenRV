@@ -19,6 +19,8 @@ CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
 
 LIST(APPEND RV_DEPS_LIST ZLIB::ZLIB)
 
+# Library naming conventions
+
 IF(RV_TARGET_WINDOWS)
   IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
     SET(_zlibname
@@ -39,8 +41,6 @@ SET(_libname
     ${CMAKE_SHARED_LIBRARY_PREFIX}${_zlibname}${CMAKE_SHARED_LIBRARY_SUFFIX}
 )
 
-CONAN_SETUP_STAGING(${_target} ${_find_target})
-
 IF(RV_TARGET_WINDOWS)
   SET(_implibname
       ${CMAKE_IMPORT_LIBRARY_PREFIX}${_zlibname}${CMAKE_IMPORT_LIBRARY_SUFFIX}
@@ -49,6 +49,10 @@ IF(RV_TARGET_WINDOWS)
       ${_lib_dir}/${_implibname}
   )
 ENDIF()
+
+CONAN_SETUP_STAGING(${_target} ${_find_target})
+
+# custom command to copy the library to the staging area
 
 IF(RV_TARGET_WINDOWS)
   # FFmpeg expect "zlib" in Release and Debug.

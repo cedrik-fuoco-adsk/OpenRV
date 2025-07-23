@@ -19,11 +19,15 @@ CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
 
 LIST(APPEND RV_DEPS_LIST dav1d::dav1d)
 
+# Library naming conventions
+
 SET(_david_lib_name
     ${CMAKE_STATIC_LIBRARY_PREFIX}dav1d${CMAKE_STATIC_LIBRARY_SUFFIX}
 )
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
+
+# custom command to copy the library to the staging area
 
 IF(RV_TARGET_WINDOWS)
   ADD_CUSTOM_COMMAND(
