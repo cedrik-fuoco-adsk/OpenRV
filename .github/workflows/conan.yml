@@ -207,9 +207,6 @@ jobs:
           python3 -m pip install --user --upgrade -r requirements.txt
           python3 -m pip install --user conan
 
-      # For Rocky Linux, we can't cache the dependencies of Open RV 
-      # because there is not enough room in the cache (10GB limit) for all platforms.
-
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2023' }}
         run: |
@@ -258,3 +255,216 @@ jobs:
       - name: Install OpenRV
         run: |
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
+
+macos:
+    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
+      <qt=${{ matrix.qt-version }},
+       python=${{ matrix.python-version }},
+       arch=${{ matrix.arch-type }},
+       config=${{ matrix.build-type }}>'
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # VFX2024
+          #- os: "macos-13"
+            #arch-type: "x86_64"
+            #build-type: "Release"
+            #qt-version: "6.5.3"
+            #qt-version-short: "6.5"
+            #python-version: "3.11"
+            #cmake-version: "3.31.6"
+            #vfx-platform: "CY2024"
+          - os: "macos-14"
+            arch-type: "arm64"
+            build-type: "Release"
+            qt-version: "6.5.3"
+            qt-version-short: "6.5"
+            python-version: "3.11"
+            cmake-version: "3.31.6"
+            vfx-platform: "CY2024"
+
+    steps:
+      - name: Check if it is a schedule job
+        if: github.event_name == 'schedule'
+        run: |
+          echo "SKIP_DEPS_CACHE='true'" >> $GITHUB_ENV
+          
+      - name: Display disk space
+        run: |
+          df -h /
+          
+      - name: Clear up some spaces on disk
+        run: |
+          # Remove some unused XCode (Default is XCode 15.4).
+          sudo rm -rf /Applications/Xcode_15.3.app
+          sudo rm -rf /Applications/Xcode_15.2.app
+          sudo rm -rf /Applications/Xcode_15.1.app
+          sudo rm -rf /Applications/Xcode_15.0.1.app
+          sudo rm -rf /Users/runner/Library/Android
+
+      - name: Display disk space
+        run: |
+          df -h /
+
+      - name: Check out repository code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
+        with:
+          submodules: recursive
+
+      - name: Add repository as safe directory
+        run: |
+          git config --global --add safe.directory /__w/OpenRV/OpenRV
+
+      - name: Install cmake
+        uses: jwlawson/actions-setup-cmake@802fa1a2c4e212495c05bf94dba2704a92a472be # v2
+        with:
+          cmake-version: "${{ matrix.cmake-version }}"
+
+      - name: Prepare Qt folder
+        run: |
+          mkdir -p "${{ github.workspace }}/deps"
+
+      - name: Install Qt ${{ matrix.qt-version }}
+        if: matrix.arch-type == 'x86_64' && matrix.vfx-platform == 'CY2023'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '${{ matrix.qt-version }}'
+          host: 'mac'
+          target: 'desktop'
+          arch: 'clang_64'
+          dir: "${{ github.workspace }}/deps"
+          install-deps: 'false'
+          modules: ${{ env.QT5_MODULES }}
+          archives: ${{ env.MACOX_X86_64_QT5_ARCHIVES }}
+          # Caching only save 2 minutes. Keep the cache for longer operations.
+          cache: false
+          setup-python: 'false'
+          tools: 'tools_qtcreator'
+          set-env: 'true'
+          tools-only: 'false'
+          aqtversion: '==3.2.*'
+
+      - name: Install Qt ${{ matrix.qt-version }}
+        if: matrix.vfx-platform == 'CY2024'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '${{ matrix.qt-version }}'
+          host: 'mac'
+          target: 'desktop'
+          # clang_64 contains both x86_64 and arm64 for Qt 6.
+          arch: 'clang_64' 
+          dir: "${{ github.workspace }}/deps"
+          install-deps: 'false'
+          modules: ${{ env.MACOX_X86_64_QT6_MODULES }}
+          archives: ${{ env.MACOX_X86_64_QT6_ARCHIVES }}
+          # Caching only save 2 minutes. Keep the cache for longer operations.
+          cache: false
+          setup-python: true
+          tools: 'tools_qtcreator'
+          set-env: 'true'
+          tools-only: 'false'
+          aqtversion: '==3.2.*'
+
+      - name: Patch Qt ${{ matrix.qt-version }}
+        if: matrix.arch-type == 'x86_64' && matrix.vfx-platform == 'CY2023'
+        # There is an issue with Clang15 and Qt < 5.15.15.
+        run: |
+          curl -o file.zip https://codereview.qt-project.org/changes/qt%2Fqtbase~503172/revisions/3/files/mkspecs%2Ffeatures%2Ftoolchain.prf/download
+          unzip file.zip
+          cp $(unzip -l file.zip | awk 'NR==4 {print $4}') ${{ github.workspace }}/deps/Qt/${{ matrix.qt-version }}/clang_64/mkspecs/features/toolchain.prf
+
+      - name: Activate Python ${{ matrix.python-version }}
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
+        with:
+          python-version: '${{ matrix.python-version }}'
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --user --upgrade -r requirements.txt
+  
+      - name: Install Homebrew dependencies
+        # icu4c is needed for Qt UIC executable / AUTOUIC.
+        # Might be to find another way to install icu4c if the icu4c recipe disappear.
+        run: |
+          retry_count=0
+          max_retries=5
+          
+          until [ $retry_count -ge $max_retries ]; do
+            echo "Attempt $((retry_count + 1)) of $max_retries"
+            
+            if brew install --formula cmake ninja readline sqlite3 xz zlib tcl-tk@8 python-tk autoconf automake libtool python yasm clang-format black meson nasm pkg-config glew && \
+               brew install --formula icu4c; then
+              echo "Homebrew dependencies installed successfully"
+              break
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "Attempt $retry_count failed. Retrying in 5 seconds..."
+                sleep 5
+              fi
+            fi
+          done
+          
+          if [ $retry_count -ge $max_retries ]; then
+            echo "Failed to install Homebrew dependencies after $max_retries attempts"
+            exit 1
+          fi
+
+      - name: Set QT_HOME
+        if: matrix.arch-type == 'x86_64' && matrix.vfx-platform == 'CY2023'
+        # With aqt, the universal binaries are under clang_64 and not macos folder.
+        run: |
+          echo "QT_HOME=${{ github.workspace }}/deps/Qt/${{ matrix.qt-version }}/clang_64" >> $GITHUB_ENV
+          
+      - name: Set QT_HOME
+        if: matrix.arch-type == 'arm64' && matrix.vfx-platform == 'CY2023'
+        # The path for QT_HOME is diferent for arm64 CY2023 because we have to build it in the CI.
+        run: |
+          echo "QT_HOME=${{ github.workspace }}/deps" >> $GITHUB_ENV
+
+      - name: Set QT_HOME
+        if: matrix.vfx-platform == 'CY2024'
+        run: |
+          echo "QT_HOME=${{ github.workspace }}/deps/Qt/${{ matrix.qt-version }}/macos" >> $GITHUB_ENV
+
+      - uses: actions/cache/restore@v4
+        id: cache
+        with:
+          path: /github/home/.conan2
+          key: ${{ runner.os }}-conan-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-${{ hashFiles('**/conanfile.py') }}
+          
+      - name: Configure OpenRV
+        if: ${{ matrix.vfx-platform == 'CY2024' }}
+        run: |
+          /github/home/.local/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
+          /github/home/.local/bin/conan export openrvcore-conanfile.py
+
+      - name: Build OpenRV dependencies
+        run: |
+          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          /github/home/.local/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_apple_release
+
+      - name: Cache Conan Dependencies
+        id: cache-conan
+        uses: actions/cache/save@v4
+        with:
+          path: /github/home/.conan2
+          key: ${{ runner.os }}-conan-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-${{ hashFiles('**/conanfile.py') }}
+          
+      - name: Build OpenRV main executable
+        run: |
+          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          /github/home/.local/bin/conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_apple_release
+      
+      - name: Tests
+        run: |
+          ctest --test-dir _build -C ${{ matrix.build-type }} --extra-verbose
+
+      - name: Install OpenRV
+        run: |
+          cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
+          
