@@ -256,7 +256,7 @@ jobs:
         run: |
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
-macos:
+  macos:
     if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
