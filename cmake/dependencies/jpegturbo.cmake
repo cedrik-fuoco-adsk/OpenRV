@@ -22,7 +22,7 @@ LIST(APPEND RV_DEPS_LIST libjpeg-turbo::turbojpeg)
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
 
-# CMake is not generating debug postfix for JpegTurbo
+# Library naming conventions Needs _lib_dir and _bin_dir to be defined (from CONAN_SETUP_STAGING) CMake is not generating debug postfix for JpegTurbo
 RV_MAKE_STANDARD_LIB_NAME("jpeg" "62.3.0" "SHARED" "")
 SET(_winlibjpegname
     jpeg62.dll

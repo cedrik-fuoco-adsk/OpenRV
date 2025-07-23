@@ -19,6 +19,8 @@ CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
 
 LIST(APPEND RV_DEPS_LIST Imath::Imath)
 
+# Library naming conventions
+
 IF(RV_TARGET_DARWIN)
   SET(_libname
       ${CMAKE_SHARED_LIBRARY_PREFIX}Imath-3_1${RV_DEBUG_POSTFIX}.29.5.0${CMAKE_SHARED_LIBRARY_SUFFIX}
@@ -40,6 +42,8 @@ IF(RV_TARGET_WINDOWS)
 ENDIF()
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
+
+# custom command to copy the library to the staging area
 
 IF(RV_TARGET_WINDOWS)
   ADD_CUSTOM_COMMAND(

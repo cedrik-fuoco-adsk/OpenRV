@@ -19,6 +19,7 @@ CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
 
 LIST(APPEND RV_DEPS_LIST OpenSSL::SSL)
 
+# Library naming conventions
 IF(RV_TARGET_LINUX)
   SET(_crypto_lib_name
       ${CMAKE_SHARED_LIBRARY_PREFIX}crypto${CMAKE_SHARED_LIBRARY_SUFFIX}${_dot_version}
@@ -56,10 +57,13 @@ ENDIF()
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
 
+# custom command to copy the library to the staging area
+
 ADD_CUSTOM_COMMAND(
   COMMENT "Installing ${_target}'s libs into ${_openssl_stage_lib_dir}"
   OUTPUT ${_openssl_stage_lib_dir}/${_crypto_lib_name} ${_openssl_stage_lib_dir}/${_ssl_lib_name}
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${_openssl_stage_lib_dir}
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
   DEPENDS OpenSSL::SSL OpenSSL::Crypto
 )
 ADD_CUSTOM_TARGET(

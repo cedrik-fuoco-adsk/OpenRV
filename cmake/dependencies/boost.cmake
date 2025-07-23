@@ -17,6 +17,8 @@ FIND_PACKAGE(${_find_target} 1.82 CONFIG REQUIRED)
 # Prints the variables.
 CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
 
+# Library naming conventions
+
 SET(_boost_libs
     atomic
     chrono
@@ -68,6 +70,8 @@ ENDIF()
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
 
+# custom command to copy the library to the staging area
+
 FOREACH(
   _boost_lib
   ${_boost_libs}
@@ -78,7 +82,7 @@ FOREACH(
   SET(_boost_${_boost_lib}_lib
       ${_lib_dir}/${_boost_${_boost_lib}_lib_name}
   )
-  LIST(APPEND _boost_byproducts ${_boost_${_boost_lib}_lib})
+
   IF(RV_TARGET_WINDOWS)
     SET(_boost_${_boost_lib}_implib
         ${_lib_dir}/${BOOST_IMPORT_LIBRARY_PREFIX}boost_${_boost_lib}${BOOST_IMPORT_LIBRARY_SUFFIX}
