@@ -215,7 +215,7 @@ jobs:
           cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
 
       - name: Set Conan Home Path
-        run: echo "CONAN_HOME=$(/Users/runner/Library/Python/3.11/bin/conan config home)" >> $GITHUB_ENV
+        run: echo "CONAN_HOME=$(/github/home/.local/bin/conan config home)" >> $GITHUB_ENV
         
       - uses: actions/cache/restore@v4
         id: cache
