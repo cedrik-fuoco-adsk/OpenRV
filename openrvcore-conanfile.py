@@ -59,7 +59,7 @@ class OpenRVBase:
 
     def requirements(self):
 
-        self.requires("zlib/1.3.1", force=True)
+        self.requires("zlib/1.3.1", force=True, options={"shared": True})
 
         if is_apple_os(self):
             # The link for the source code is wrong in the recipe on conan center.
