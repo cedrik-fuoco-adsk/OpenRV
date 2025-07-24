@@ -231,7 +231,7 @@ jobs:
           
       - name: Build OpenRV dependencies
         run: |
-          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          echo "QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64" >> $GITHUB_ENV
           /github/home/.local/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
       - name: Cache Conan Dependencies
@@ -243,7 +243,6 @@ jobs:
           
       - name: Build OpenRV main executable
         run: |
-          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
           /github/home/.local/bin/conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
       - name: Tests
@@ -454,7 +453,6 @@ jobs:
 
       - name: Build OpenRV dependencies
         run: |
-          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
           /Users/runner/Library/Python/3.11/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/arm64_apple_release
 
       - name: Cache Conan Dependencies
@@ -466,7 +464,6 @@ jobs:
           
       - name: Build OpenRV main executable
         run: |
-          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
           /Users/runner/Library/Python/3.11/bin/conan build conanfile.py --build=missing -pr:a ./conan/profiles/arm64_apple_release
       
       - name: Tests
