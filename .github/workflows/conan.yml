@@ -441,13 +441,13 @@ jobs:
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
-          /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
+          /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
           /Users/runner/Library/Python/3.11/bin/conan export openrvcore-conanfile.py
 
       - name: Build OpenRV dependencies
         run: |
           export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
-          /Users/runner/Library/Python/3.11/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_apple_release
+          /Users/runner/Library/Python/3.11/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/arm64_apple_release
 
       - name: Cache Conan Dependencies
         id: cache-conan
@@ -459,7 +459,7 @@ jobs:
       - name: Build OpenRV main executable
         run: |
           export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
-          /Users/runner/Library/Python/3.11/bin/conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_apple_release
+          /Users/runner/Library/Python/3.11/bin/conan build conanfile.py --build=missing -pr:a ./conan/profiles/arm64_apple_release
       
       - name: Tests
         run: |
