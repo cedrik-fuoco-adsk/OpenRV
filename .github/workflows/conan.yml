@@ -468,9 +468,14 @@ jobs:
       
       - name: Tests
         run: |
-          ctest --test-dir _build -C ${{ matrix.build-type }} --extra-verbose
+          ctest --test-dir build/Release -C ${{ matrix.build-type }} --extra-verbose
 
+      - name: Free some spaces for the install steps
+        run: |
+          rm -rf build/Release/RV_DEPS_*
+          rm -rf build/Release/_deps
+          
       - name: Install OpenRV
         run: |
-          cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
+          cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
           
