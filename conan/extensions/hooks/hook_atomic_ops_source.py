@@ -2,7 +2,8 @@ from conan.tools.files import load, save
 import os
 
 def pre_source(conanfile):
-    print("hello from cedrik")
+    print("hello from cedrik", conanfile.name, conanfile.version)
+    print("cedrik: ", conanfile.recipe_folder)
     # Check if the recipe is the one you want to modify
     if conanfile.name == "libatomic_ops" and conanfile.version == "7.8.2":
         # Load the conandata.yml
