@@ -9,8 +9,6 @@ class Libatomic_opsWrapper(ConanFile):
 
     def export_sources(self):
         # Copy conandata.yml from the Conan Center recipe's cache folder
-        print("cedrik")
-        print(self.dependencies)
         dep = self.dependencies["libatomic_ops/7.8.2"]
         conandata_src = os.path.join(dep.recipe_folder, "conandata.yml")
         conandata_dst = os.path.join(self.recipe_folder, "conandata.yml")
