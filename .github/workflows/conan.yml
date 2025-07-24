@@ -445,6 +445,7 @@ jobs:
           ls -al ${{ github.workspace }}/conan
           /Users/runner/Library/Python/3.11/bin/conan config install ${{ github.workspace }}/conan
           /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
+          /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/libatomic_ops/conanfile.py --version 7.8.2 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
           /Users/runner/Library/Python/3.11/bin/conan export openrvcore-conanfile.py
 
       - name: Build OpenRV dependencies
