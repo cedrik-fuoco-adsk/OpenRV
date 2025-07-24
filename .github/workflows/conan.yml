@@ -441,7 +441,6 @@ jobs:
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
-          /Users/runner/Library/Python/3.11/bin/conan profile detect
           /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
           /Users/runner/Library/Python/3.11/bin/conan export openrvcore-conanfile.py
 
