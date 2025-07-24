@@ -214,10 +214,13 @@ jobs:
           export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
           cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
 
+      - name: Set Conan Home Path
+        run: echo "CONAN_HOME=$(/Users/runner/Library/Python/3.11/bin/conan config home)" >> $GITHUB_ENV
+        
       - uses: actions/cache/restore@v4
         id: cache
         with:
-          path: /github/home/.conan2
+          path: ${{ env.CONAN_HOME }}
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
       
       - name: Configure OpenRV
@@ -235,7 +238,7 @@ jobs:
         id: cache-conan
         uses: actions/cache/save@v4
         with:
-          path: /github/home/.conan2
+          path: ${{ env.CONAN_HOME }}
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
           
       - name: Build OpenRV main executable
@@ -432,17 +435,18 @@ jobs:
         run: |
           echo "QT_HOME=${{ github.workspace }}/deps/Qt/${{ matrix.qt-version }}/macos" >> $GITHUB_ENV
 
+      - name: Set Conan Home Path
+        run: echo "CONAN_HOME=$(/Users/runner/Library/Python/3.11/bin/conan config home)" >> $GITHUB_ENV
+        
       - uses: actions/cache/restore@v4
         id: cache
         with:
-          path: /github/home/.conan2
+          path: ${{ env.CONAN_HOME }}
           key: ${{ runner.os }}-conan-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-${{ hashFiles('**/conanfile.py') }}
           
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
-          ls -al $(/Users/runner/Library/Python/3.11/bin/conan config home)
-          ls -al ${{ github.workspace }}/conan
           /Users/runner/Library/Python/3.11/bin/conan config install ${{ github.workspace }}/conan
           /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
           /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/libatomic_ops/all/conanfile.py --version 7.8.2 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
@@ -457,7 +461,7 @@ jobs:
         id: cache-conan
         uses: actions/cache/save@v4
         with:
-          path: /github/home/.conan2
+          path: ${{ env.CONAN_HOME }}
           key: ${{ runner.os }}-conan-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-${{ hashFiles('**/conanfile.py') }}
           
       - name: Build OpenRV main executable
