@@ -1,7 +1,7 @@
 from conan.tools.files import load, save
 import os
 
-def pre_source(conanfile):
+def pre_export(conanfile):
     print("hello from cedrik", conanfile.name, conanfile.version)
     print("cedrik: ", conanfile.recipe_folder)
     # Check if the recipe is the one you want to modify
