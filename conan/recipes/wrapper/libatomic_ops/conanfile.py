@@ -2,7 +2,7 @@ from conan import ConanFile
 from conan.tools.files import load, save
 import os
 
-class ZlibWrapper(ConanFile):
+class Libatomic_opsWrapper(ConanFile):
     name = "libatomic_ops"
     version = "7.8.2"
     requires = "libatomic_ops/7.8.2"
