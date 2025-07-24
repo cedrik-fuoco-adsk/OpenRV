@@ -1,8 +1,8 @@
 import os
 from conan import ConanFile
+from conan.tools.apple import is_apple_os
 from conan.tools.cmake import CMake, CMakeDeps, cmake_layout, CMakeToolchain
 from conan.tools.env import VirtualBuildEnv
-
 
 # The comment below is relevant for WINDOWS only because of the usage of MSYS2.
 
@@ -61,8 +61,16 @@ class OpenRVBase:
 
         self.requires("zlib/1.3.1", force=True)
 
-        # Version 7.7.7 not available in conan center.
-        self.requires("libatomic_ops/7.8.2@openrv", options={"shared": False})
+        if not is_apple_os(self):
+            # The link for the source code is wrong in the recipe on conan center.
+            # Since it has to be built for MacOS, we need a custom recipe.
+            # TODO: Will probably have to expand the if condition to include all the debug builds
+            #       since they are not hosted on conan center I think.
+            self.requires("libatomic_ops/7.8.2@openrv", options={"shared": False})
+        else:
+            # For Linux, the binaries are available.
+            # TBD for Windows
+            self.requires("libatomic_ops/7.8.2", options={"shared": False})
 
         # Version conflict: ffmpeg/4.4.3->libwebp/1.3.2, ->libwebp/1.2.1
         # Webp >=1.3.0 depends on sharpyuv and it causes issues with OIIO.
