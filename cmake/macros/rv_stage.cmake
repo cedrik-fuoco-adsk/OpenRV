@@ -83,33 +83,36 @@ FUNCTION(rv_stage)
       GET_TARGET_PROPERTY(_native_target_type ${arg_TARGET} TYPE)
       IF(_native_target_type STREQUAL "EXECUTABLE")
         ADD_CUSTOM_COMMAND(
+          TARGET ${arg_TARGET}
+          POST_BUILD
           COMMENT "Fixing ${arg_TARGET}'s RPATHs" TARGET ${arg_TARGET} POST_BUILD
           COMMAND ${CMAKE_INSTALL_NAME_TOOL} -add_rpath "@executable_path/../Frameworks" "$<TARGET_FILE:${arg_TARGET}>"
           COMMAND ${CMAKE_INSTALL_NAME_TOOL} -add_rpath "@executable_path/../lib" "$<TARGET_FILE:${arg_TARGET}>"
         )
       ENDIF()
 
-      IF(_native_target_type STREQUAL "EXECUTABLE"
-         OR _native_target_type STREQUAL "SHARED_LIBRARY"
-      )
-        FOREACH(
-          dep
-          ${RV_DEPS_LIST}
-        )
-          IF(TARGET ${dep})
-            GET_PROPERTY(
-              dep_file_path
-              TARGET ${dep}
-              PROPERTY LOCATION
-            )
-            GET_FILENAME_COMPONENT(dep_file_name ${dep_file_path} NAME)
-            ADD_CUSTOM_COMMAND(
-              COMMENT "Fixing ${dep_file_name}'s rpath in ${arg_TARGET}" TARGET ${arg_TARGET} POST_BUILD
-              COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "${dep_file_path}" "@rpath/${dep_file_name}" "$<TARGET_FILE:${arg_TARGET}>"
-            )
-          ENDIF()
-        ENDFOREACH()
-      ENDIF()
+      # TODO: Handled by remove_absolute_rpath.py in pre_install_darwin.cmake?
+      # IF(_native_target_type STREQUAL "EXECUTABLE"
+      #    OR _native_target_type STREQUAL "SHARED_LIBRARY"
+      # )
+      #   FOREACH(
+      #     dep
+      #     ${RV_DEPS_LIST}
+      #   )
+      #     IF(TARGET ${dep})
+      #       GET_PROPERTY(
+      #         dep_file_path
+      #         TARGET ${dep}
+      #         PROPERTY LOCATION
+      #       )
+      #       GET_FILENAME_COMPONENT(dep_file_name ${dep_file_path} NAME)
+      #       ADD_CUSTOM_COMMAND(
+      #         COMMENT "Fixing ${dep_file_name}'s rpath in ${arg_TARGET}" TARGET ${arg_TARGET} POST_BUILD
+      #         COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "${dep_file_path}" "@rpath/${dep_file_name}" "$<TARGET_FILE:${arg_TARGET}>"
+      #       )
+      #     ENDIF()
+      #   ENDFOREACH()
+      # ENDIF()
     ENDIF()
   ENDIF()
 
