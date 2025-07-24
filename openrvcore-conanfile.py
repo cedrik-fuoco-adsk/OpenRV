@@ -61,7 +61,7 @@ class OpenRVBase:
 
         self.requires("zlib/1.3.1", force=True)
 
-        if not is_apple_os(self):
+        if is_apple_os(self):
             # The link for the source code is wrong in the recipe on conan center.
             # Since it has to be built for MacOS, we need a custom recipe.
             # TODO: Will probably have to expand the if condition to include all the debug builds
