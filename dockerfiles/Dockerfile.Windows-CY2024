@@ -18,8 +18,8 @@ RUN choco install cmake --version=3.31.8 -y
 
 # Download and install MSYS2
 RUN Invoke-WebRequest -Uri "https://github.com/msys2/msys2-installer/releases/download/2024-01-13/msys2-base-x86_64-20240113.sfx.exe" -OutFile "msys2.exe"; `
-    Start-Process -FilePath "./msys2.exe" -ArgumentList "-y", "-oC:\msys64" -NoNewWindow -Wait; `
-    Remove-Item msys2.exe
+    Start-Process -Wait -FilePath "msys2.exe" -ArgumentList @('-y', '-oC:\msys64'); `
+    Remove-Item -Force msys2.exe
 
 # Install MSYS2 packages
 RUN C:\msys64\usr\bin\bash.exe -lc `
