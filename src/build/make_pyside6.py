@@ -176,6 +176,10 @@ def configure_cmake():
         "-DCMAKE_VERBOSE_MAKEFILE=ON",
         "-DLOG_LEVEL=VERBOSE",
         f"-DCMAKE_JOB_POOLS=all={os.cpu_count() or 1}",
+        f"--debug-find-pkg=Python",
+        f"--debug-find-pkg=Python3",
+        f"--trace-source=FindPython.cmake",
+        f"--trace-source=FindPython3.cmake",
     ]
     
     # Add comprehensive Python variables
