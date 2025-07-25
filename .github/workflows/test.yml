@@ -66,7 +66,7 @@ jobs:
           do {
             try {
               Write-Host "=== Build Attempt $($retryCount + 1) of $maxRetries ==="
-              docker build --no-cache -f Dockerfile.Windows-CY2024 -t ${{ env.IMAGE }}:${{ env.TAG }} .
+              docker build --no-cache -f ./dockerfiles/Dockerfile.Windows-CY2024 -t ${{ env.IMAGE }}:${{ env.TAG }} .
               $success = $true
               Write-Host "=== Build Successful ==="
             }
