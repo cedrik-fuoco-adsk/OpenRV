@@ -35,3 +35,8 @@ jobs:
         run: |
           cd ./dockerfiles
           docker build -f Dockerfile.Windows-CY2024 -t ${{ env.IMAGE }}:${{ env.TAG }} .
+
+      - name: Push image
+        shell: powershell
+        run: |
+          docker push ${{ env.IMAGE }}:${{ env.TAG }}
