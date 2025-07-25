@@ -19,6 +19,19 @@ RUN Invoke-WebRequest `
     $msvcPath = Get-ChildItem -Path "C:\BuildTools\VC\Tools\MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName; `
     setx /M PATH \"$msvcPath\bin\Hostx64\x64;C:\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;$([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine))\"
 
+# Add MSVC components
+RUN Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\" ; \
+    $componentsToAdd = @("Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "Microsoft.VisualStudio.Component.VC.14.39.Spectre") ; \
+    [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ } ; \
+    $arguments = @("vs_installer.exe", "modify", "--installPath", "`"C:\Program Files\Microsoft Visual Studio\2022\Enterprise`"", $workloadArgs, "--quiet", "--norestart", "--nocache") ; \
+    Start-Process -FilePath .\vs_installer.exe -ArgumentList $arguments -Wait -NoNewWindow ; \
+    Start-Process -FilePath .\vs_installer.exe -ArgumentList $arguments -Wait -NoNewWindow
+
+# Set up MSVC environment (example for x64)
+SHELL ["cmd", "/S", "/C"]
+RUN CALL "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && <your build command>
+
+
 # Install Git portable
 RUN Invoke-WebRequest `
         -Uri "https://github.com/git-for-windows/git/releases/download/v2.50.0.windows.2/PortableGit-2.50.0.2-64-bit.7z.exe" `
