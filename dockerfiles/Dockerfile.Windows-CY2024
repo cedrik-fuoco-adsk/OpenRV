@@ -77,11 +77,9 @@ ENV PATH="C:\Program Files\CMake\bin;C:\Python310;C:\Python310\Scripts;C:\msys64
     RV_VFX_PLATFORM="CY2023"
 
 # Create a script to set up MSVC environment
-RUN $script = @'
-@echo off
-call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-cmd /k
-'@; `
+RUN $script = '@echo off' + [Environment]::NewLine + `
+    'call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"' + [Environment]::NewLine + `
+    'cmd /k'; `
     $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII
 
 # Create workspace directory
@@ -93,90 +91,82 @@ COPY requirements.txt .
 RUN & 'C:\Python310\python.exe' -m pip install --user --upgrade -r requirements.txt
 
 # Create a build script for OpenRV
-RUN $buildScript = @'
-@echo off
-echo Setting up MSVC environment...
-call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-
-echo Configuring OpenRV...
-if "%RV_VFX_PLATFORM%"=="CY2023" (
-    cmake -B _build -G "Visual Studio 17 2022" -A x64 ^
-        -DRV_DEPS_WIN_PERL_ROOT=C:\Strawberry\perl\bin ^
-        -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
-        -DRV_DEPS_QT5_LOCATION=%QT_HOME% ^
-        -DRV_VFX_PLATFORM=%RV_VFX_PLATFORM%
-) else (
-    cmake -B _build -G "Visual Studio 17 2022" -A x64 ^
-        -DRV_DEPS_WIN_PERL_ROOT=C:\Strawberry\perl\bin ^
-        -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
-        -DRV_DEPS_QT6_LOCATION=%QT_HOME% ^
-        -DRV_VFX_PLATFORM=%RV_VFX_PLATFORM%
-)
-
-echo Building OpenRV dependencies...
-cmake --build _build --config %BUILD_TYPE% --target dependencies --parallel %NUMBER_OF_PROCESSORS% -v
-
-echo Building OpenRV main executable...
-cmake --build _build --config %BUILD_TYPE% --target main_executable --parallel %NUMBER_OF_PROCESSORS% -v
-
-echo Running tests...
-ctest --test-dir _build -C %BUILD_TYPE% --extra-verbose
-
-echo Installing OpenRV...
-cmake --install _build --prefix %cd%\_install --config %BUILD_TYPE%
-'@; `
+RUN $buildScript = '@echo off' + [Environment]::NewLine + `
+    'echo Setting up MSVC environment...' + [Environment]::NewLine + `
+    'call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"' + [Environment]::NewLine + `
+    '' + [Environment]::NewLine + `
+    'echo Configuring OpenRV...' + [Environment]::NewLine + `
+    'if "%RV_VFX_PLATFORM%"=="CY2023" (' + [Environment]::NewLine + `
+    '    cmake -B _build -G "Visual Studio 17 2022" -A x64 ^' + [Environment]::NewLine + `
+    '        -DRV_DEPS_WIN_PERL_ROOT=C:\Strawberry\perl\bin ^' + [Environment]::NewLine + `
+    '        -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^' + [Environment]::NewLine + `
+    '        -DRV_DEPS_QT5_LOCATION=%QT_HOME% ^' + [Environment]::NewLine + `
+    '        -DRV_VFX_PLATFORM=%RV_VFX_PLATFORM%' + [Environment]::NewLine + `
+    ') else (' + [Environment]::NewLine + `
+    '    cmake -B _build -G "Visual Studio 17 2022" -A x64 ^' + [Environment]::NewLine + `
+    '        -DRV_DEPS_WIN_PERL_ROOT=C:\Strawberry\perl\bin ^' + [Environment]::NewLine + `
+    '        -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^' + [Environment]::NewLine + `
+    '        -DRV_DEPS_QT6_LOCATION=%QT_HOME% ^' + [Environment]::NewLine + `
+    '        -DRV_VFX_PLATFORM=%RV_VFX_PLATFORM%' + [Environment]::NewLine + `
+    ')' + [Environment]::NewLine + `
+    '' + [Environment]::NewLine + `
+    'echo Building OpenRV dependencies...' + [Environment]::NewLine + `
+    'cmake --build _build --config %BUILD_TYPE% --target dependencies --parallel %NUMBER_OF_PROCESSORS% -v' + [Environment]::NewLine + `
+    '' + [Environment]::NewLine + `
+    'echo Building OpenRV main executable...' + [Environment]::NewLine + `
+    'cmake --build _build --config %BUILD_TYPE% --target main_executable --parallel %NUMBER_OF_PROCESSORS% -v' + [Environment]::NewLine + `
+    '' + [Environment]::NewLine + `
+    'echo Running tests...' + [Environment]::NewLine + `
+    'ctest --test-dir _build -C %BUILD_TYPE% --extra-verbose' + [Environment]::NewLine + `
+    '' + [Environment]::NewLine + `
+    'echo Installing OpenRV...' + [Environment]::NewLine + `
+    'cmake --install _build --prefix %cd%\_install --config %BUILD_TYPE%'; `
     $buildScript | Out-File -FilePath 'C:\build_openrv.bat' -Encoding ASCII
 
 # Set default build type
 ENV BUILD_TYPE=Release
 
 # Create alternative configurations for different VFX platforms and Qt versions
-RUN $setupQt6Script = @'
-@echo off
-echo Installing Qt 6.5.3 for VFX 2024...
-C:\Python310\python.exe -m aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 --outputdir C:\Qt --modules qt3d qt5compat qtactiveqt qtcharts qtconnectivity qtdatavis3d qtgrpc qthttpserver qtimageformats qtlanguageserver qtlocation qtlottie qtmultimedia qtnetworkauth qtpdf qtpositioning qtquick3d qtquick3dphysics qtquickeffectmaker qtquicktimeline qtremoteobjects qtscxml qtsensors qtserialbus qtserialport qtshadertools qtspeech qtvirtualkeyboard qtwebchannel qtwebengine qtwebsockets qtwebview --archives d3dcompiler_47 opengl32sw qtbase qtdeclarative qtsvg qttools qttranslations
-
-set QT_HOME=C:\Qt\6.5.3\msvc2019_64
-set RV_VFX_PLATFORM=CY2024
-echo Qt 6.5.3 installed and environment updated for VFX 2024
-'@; `
+RUN $setupQt6Script = '@echo off' + [Environment]::NewLine + `
+    'echo Installing Qt 6.5.3 for VFX 2024...' + [Environment]::NewLine + `
+    'C:\Python310\python.exe -m aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 --outputdir C:\Qt --modules qt3d qt5compat qtactiveqt qtcharts qtconnectivity qtdatavis3d qtgrpc qthttpserver qtimageformats qtlanguageserver qtlocation qtlottie qtmultimedia qtnetworkauth qtpdf qtpositioning qtquick3d qtquick3dphysics qtquickeffectmaker qtquicktimeline qtremoteobjects qtscxml qtsensors qtserialbus qtserialport qtshadertools qtspeech qtvirtualkeyboard qtwebchannel qtwebengine qtwebsockets qtwebview --archives d3dcompiler_47 opengl32sw qtbase qtdeclarative qtsvg qttools qttranslations' + [Environment]::NewLine + `
+    '' + [Environment]::NewLine + `
+    'set QT_HOME=C:\Qt\6.5.3\msvc2019_64' + [Environment]::NewLine + `
+    'set RV_VFX_PLATFORM=CY2024' + [Environment]::NewLine + `
+    'echo Qt 6.5.3 installed and environment updated for VFX 2024'; `
     $setupQt6Script | Out-File -FilePath 'C:\setup_qt6_vfx2024.bat' -Encoding ASCII
 
-RUN $setupPython311Script = @'
-@echo off
-echo Installing Python 3.11 for VFX 2024...
-powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile 'python311-installer.exe'"
-python311-installer.exe /quiet InstallAllUsers=1 PrependPath=0 TargetDir=C:\Python311
-del python311-installer.exe
-copy C:\Python311\python.exe C:\Python311\python3.exe
-echo Python 3.11 installed
-'@; `
+RUN $setupPython311Script = '@echo off' + [Environment]::NewLine + `
+    'echo Installing Python 3.11 for VFX 2024...' + [Environment]::NewLine + `
+    'powershell -Command "Invoke-WebRequest -Uri ''https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe'' -OutFile ''python311-installer.exe''"' + [Environment]::NewLine + `
+    'python311-installer.exe /quiet InstallAllUsers=1 PrependPath=0 TargetDir=C:\Python311' + [Environment]::NewLine + `
+    'del python311-installer.exe' + [Environment]::NewLine + `
+    'copy C:\Python311\python.exe C:\Python311\python3.exe' + [Environment]::NewLine + `
+    'echo Python 3.11 installed'; `
     $setupPython311Script | Out-File -FilePath 'C:\setup_python311.bat' -Encoding ASCII
 
 # Create entry point script
-RUN $entryScript = @'
-@echo off
-echo OpenRV Windows Build Container
-echo =============================
-echo.
-echo Available commands:
-echo   build_openrv.bat         - Build OpenRV with current configuration
-echo   setup_qt6_vfx2024.bat    - Switch to Qt 6.5.3 and VFX Platform 2024
-echo   setup_python311.bat      - Install Python 3.11 for VFX 2024
-echo   setup_msvc.bat           - Set up MSVC environment and open command prompt
-echo.
-echo Current configuration:
-echo   VFX Platform: %RV_VFX_PLATFORM%
-echo   Qt Home: %QT_HOME%
-echo   Build Type: %BUILD_TYPE%
-echo   Python: C:\Python310\python.exe
-echo.
-echo To build OpenRV:
-echo   1. Clone your OpenRV repository to C:\workspace
-echo   2. Run: build_openrv.bat
-echo.
-cmd /k
-'@; `
+RUN $entryScript = '@echo off' + [Environment]::NewLine + `
+    'echo OpenRV Windows Build Container' + [Environment]::NewLine + `
+    'echo =============================' + [Environment]::NewLine + `
+    'echo.' + [Environment]::NewLine + `
+    'echo Available commands:' + [Environment]::NewLine + `
+    'echo   build_openrv.bat         - Build OpenRV with current configuration' + [Environment]::NewLine + `
+    'echo   setup_qt6_vfx2024.bat    - Switch to Qt 6.5.3 and VFX Platform 2024' + [Environment]::NewLine + `
+    'echo   setup_python311.bat      - Install Python 3.11 for VFX 2024' + [Environment]::NewLine + `
+    'echo   setup_msvc.bat           - Set up MSVC environment and open command prompt' + [Environment]::NewLine + `
+    'echo.' + [Environment]::NewLine + `
+    'echo Current configuration:' + [Environment]::NewLine + `
+    'echo   VFX Platform: %RV_VFX_PLATFORM%' + [Environment]::NewLine + `
+    'echo   Qt Home: %QT_HOME%' + [Environment]::NewLine + `
+    'echo   Build Type: %BUILD_TYPE%' + [Environment]::NewLine + `
+    'echo   Python: C:\Python310\python.exe' + [Environment]::NewLine + `
+    'echo.' + [Environment]::NewLine + `
+    'echo To build OpenRV:' + [Environment]::NewLine + `
+    'echo   1. Clone your OpenRV repository to C:\workspace' + [Environment]::NewLine + `
+    'echo   2. Run: build_openrv.bat' + [Environment]::NewLine + `
+    'echo.' + [Environment]::NewLine + `
+    'cmd /k'; `
     $entryScript | Out-File -FilePath 'C:\entrypoint.bat' -Encoding ASCII
 
 # Set the entry point
