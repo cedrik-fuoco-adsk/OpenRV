@@ -1,8 +1,6 @@
 # escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
-LABEL maintainer="Open RV maintainer - https://github.com/AcademySoftwareFoundation/OpenRV"
-
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # Set environment variables
