@@ -1,36 +1,29 @@
 # escape=`
 
-FROM mcr.microsoft.com/windows/servercore:ltsc2022
+FROM mcr.microsoft.com/windows/servercore:ltsc2019
 
+# Set PowerShell as the default shell
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Install Visual Studio Build Tools with C++ support
-RUN Invoke-WebRequest `
-        -Uri "https://aka.ms/vs/17/release/vs_buildtools.exe" `
-        -OutFile "vs_buildtools.exe"; `
-    Start-Process -FilePath "vs_buildtools.exe" `
-        -ArgumentList `
-            "--quiet", "--wait", "--norestart", "--nocache", `
-            "--installPath", "C:\BuildTools", `
-            "--add", "Microsoft.VisualStudio.Workload.VCTools", `
-            "--includeRecommended" `
-        -Wait; `
-    Remove-Item "vs_buildtools.exe"; `
-    $msvcPath = Get-ChildItem -Path "C:\BuildTools\VC\Tools\MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName; `
-    setx /M PATH \"$msvcPath\bin\Hostx64\x64;C:\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;$([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine))\"
+# Install Visual Studio Build Tools
+RUN Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile vs_buildtools.exe ; `
+    Start-Process -FilePath .\vs_buildtools.exe -ArgumentList '--quiet', '--wait', '--norestart', '--nocache', `
+    '--installPath', 'C:\BuildTools', `
+    '--add', 'Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64', `
+    '--add', 'Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64.Spectre' -NoNewWindow -Wait ; `
+    Remove-Item .\vs_buildtools.exe
 
-# Add MSVC components
-RUN Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\" ; \
-    $componentsToAdd = @("Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "Microsoft.VisualStudio.Component.VC.14.39.Spectre") ; \
-    [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ } ; \
-    $arguments = @("vs_installer.exe", "modify", "--installPath", "`"C:\Program Files\Microsoft Visual Studio\2022\Enterprise`"", $workloadArgs, "--quiet", "--norestart", "--nocache") ; \
-    Start-Process -FilePath .\vs_installer.exe -ArgumentList $arguments -Wait -NoNewWindow ; \
-    Start-Process -FilePath .\vs_installer.exe -ArgumentList $arguments -Wait -NoNewWindow
+# Set up the development environment
+RUN setx /M PATH $('C:\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;' + $env:PATH)
 
-# Set up MSVC environment (example for x64)
-SHELL ["cmd", "/S", "/C"]
-RUN CALL "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && <your build command>
+# Set up MSVC environment variables
+RUN setx /M VSINSTALLDIR "C:\BuildTools" ; `
+    setx /M VCINSTALLDIR "C:\BuildTools\VC"
 
+# Optional: Set up additional environment variables if needed
+ENV INCLUDE="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\include;${INCLUDE}"
+ENV LIB="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\lib\x64;${LIB}"
+ENV PATH="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\bin\Hostx64\x64;${PATH}"
 
 # Install Git portable
 RUN Invoke-WebRequest `
