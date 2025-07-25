@@ -10,7 +10,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2019
     permissions:
       contents: read
       packages: write
@@ -30,13 +30,70 @@ jobs:
           $date = Get-Date -Format "yyyyMMdd"
           echo "TAG=$date" >> $env:GITHUB_ENV
 
-      - name: Build image
+      - name: Create requirements.txt if missing
         shell: powershell
         run: |
-          cd ./dockerfiles
-          docker build -f Dockerfile.Windows-CY2024 -t ${{ env.IMAGE }}:${{ env.TAG }} .
+          if (-Not (Test-Path "requirements.txt")) {
+            New-Item -ItemType File -Path "requirements.txt" -Force
+            Write-Output "# Python requirements for OpenRV build" | Out-File -FilePath "requirements.txt" -Encoding utf8
+          }
 
-      #- name: Push image
-      #  shell: powershell
-      #  run: |
-      #    docker push ${{ env.IMAGE }}:${{ env.TAG }}
+      - name: Setup Docker for Windows containers
+        shell: powershell
+        run: |
+          # Check Docker status
+          Write-Host "=== Docker Info ==="
+          docker info
+          Write-Host "=== Docker Version ==="
+          docker version
+          
+          # Check available disk space
+          Write-Host "=== Disk Space ==="
+          Get-WmiObject -Class Win32_LogicalDisk | Select-Object DeviceID, @{Name="Size(GB)";Expression={[math]::Round($_.Size/1GB,2)}}, @{Name="FreeSpace(GB)";Expression={[math]::Round($_.FreeSpace/1GB,2)}}
+          
+          # Check Windows version
+          Write-Host "=== Windows Version ==="
+          Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion
+
+      - name: Build image
+        shell: powershell
+        timeout-minutes: 180
+        run: |
+          $maxRetries = 3
+          $retryCount = 0
+          $success = $false
+          
+          do {
+            try {
+              Write-Host "=== Build Attempt $($retryCount + 1) of $maxRetries ==="
+              docker build --no-cache -f Dockerfile.Windows-CY2024 -t ${{ env.IMAGE }}:${{ env.TAG }} .
+              $success = $true
+              Write-Host "=== Build Successful ==="
+            }
+            catch {
+              $retryCount++
+              Write-Host "=== Build Failed - Attempt $retryCount of $maxRetries ==="
+              Write-Host "Error: $($_.Exception.Message)"
+              
+              if ($retryCount -lt $maxRetries) {
+                Write-Host "=== Retrying in 30 seconds ==="
+                Start-Sleep -Seconds 30
+                
+                # Clean up any partial containers/images
+                docker system prune -f 2>&1 | Out-Null
+              } else {
+                Write-Host "=== All retries exhausted ==="
+                throw
+              }
+            }
+          } while (-not $success -and $retryCount -lt $maxRetries)
+
+      - name: Test image
+        shell: powershell
+        run: |
+          docker images ${{ env.IMAGE }}:${{ env.TAG }}
+
+      # - name: Push image
+      #   shell: powershell
+      #   run: |
+      #     docker push ${{ env.IMAGE }}:${{ env.TAG }}
