@@ -5,21 +5,33 @@ on:
 
   workflow_dispatch:
   
-#env:
-#  BUILDPACK_IMAGE: ghcr.io/brekkylab/ailoy-buildpack-windows:20250704
+env:
+  IMAGE: ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows
 
 jobs:
-  build-windows:
-    runs-on: windows-2022
-
-    continue-on-error: true
-
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Login to ghcr.io
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set date as image tag
+        shell: powershell
+        run: |
+          $date = Get-Date -Format "yyyyMMdd"
+          echo "TAG=$date" >> $env:GITHUB_ENV
+
+      - name: Build image
+        shell: powershell
+        run: |
+          cd ./dockerfiles/Dockerfile.Windows-CY2024
+          docker build -t ${{ env.IMAGE }}:${{ env.TAG }} .
