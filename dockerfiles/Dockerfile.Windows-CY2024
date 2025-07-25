@@ -1,67 +1,185 @@
 # escape=`
-
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
-# Set PowerShell as the default shell
+LABEL maintainer="Open RV maintainer - https://github.com/AcademySoftwareFoundation/OpenRV"
+
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Set environment variables
+ENV CMAKE_VERSION=3.31.6 `
+    PYTHON_VERSION_2023=3.10.11 `
+    PYTHON_VERSION_2024=3.11.9 `
+    QT_VERSION_2023=5.15.2 `
+    QT_VERSION_2024=6.5.3 `
+    MSVC_COMPONENT=14.40.17.10.x86.x64 `
+    MSVC_COMPILER=14.40.33807
 
 # Install Chocolatey
 RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
-    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
-# Install Python 3.11
-RUN choco install python311 -y
+# Install Git via Chocolatey 
+RUN choco install git -y; `
+    choco install 7zip -y; `
+    choco install wget -y
 
-# Install CMake
-RUN choco install cmake --version=3.31.8 -y
+# Install Visual Studio Build Tools 2022 with specific MSVC components
+RUN choco install visualstudio2022buildtools -y; `
+    choco install visualstudio2022-workload-vctools -y
 
-# Install MSYS2 using Chocolatey
-RUN choco install msys2 -y; `
-    refreshenv; `
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+# Install specific MSVC components
+RUN & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe' modify `
+    --installPath 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools' `
+    --add Microsoft.VisualStudio.Component.VC.$env:MSVC_COMPONENT `
+    --add Microsoft.VisualStudio.Component.VC.1$env:MSVC_COMPONENT.Spectre `
+    --quiet --wait; `
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-# Initialize MSYS2 and install packages
-RUN C:\tools\msys64\usr\bin\bash.exe -lc 'pacman --noconfirm -Syuu'; `
-    C:\tools\msys64\usr\bin\bash.exe -lc 'pacman --noconfirm -Syuu'; `
-    C:\tools\msys64\usr\bin\bash.exe -lc 'pacman -S --noconfirm mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'
+# Install Python 3.10 for VFX 2023 (default)
+RUN $url = 'https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe'; `
+    Invoke-WebRequest -Uri $url -OutFile 'python-installer.exe'; `
+    Start-Process -FilePath 'python-installer.exe' -ArgumentList '/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'TargetDir=C:\Python310' -Wait; `
+    Remove-Item 'python-installer.exe'
 
-# Install Visual Studio Build Tools
-RUN Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile vs_buildtools.exe ; `
-    Start-Process -FilePath .\vs_buildtools.exe -ArgumentList '--quiet', '--wait', '--norestart', '--nocache', `
-    '--installPath', 'C:\BuildTools', `
-    '--add', 'Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64', `
-    '--add', 'Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64.Spectre' -NoNewWindow -Wait ; `
-    Remove-Item .\vs_buildtools.exe
+# Create python3.exe alias
+RUN Copy-Item 'C:\Python310\python.exe' 'C:\Python310\python3.exe'
 
-# Install Qt 6.5.3 (for CY2024) using aqt
-RUN pip install aqtinstall==3.2.* ; `
-    mkdir C:\Qt ; `
-    aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 --outputdir C:\Qt ; `
-    aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 --outputdir C:\Qt --modules qtmultimedia qtwebsockets qtpositioning qtwebchannel qtwebengine
+# Install CMake via Chocolatey
+RUN choco install cmake --version=$env:CMAKE_VERSION --allow-downgrade -y
 
-# Set environment variables
-RUN setx /M PATH "C:\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\CMake\bin;C:\Python311;C:\Python311\Scripts;C:\tools\msys64\mingw64\bin;C:\tools\msys64\usr\bin;C:\Qt\6.5.3\msvc2019_64\bin;%PATH%" ; `
-    setx /M VSINSTALLDIR "C:\BuildTools" ; `
-    setx /M VCINSTALLDIR "C:\BuildTools\VC" ; `
-    setx /M ACLOCAL_PATH "C:\tools\msys64\usr\share\aclocal" ; `
-    setx /M QT_HOME "C:\Qt\6.5.3\msvc2019_64"
+# Install Strawberry Perl (required for OpenRV dependencies)
+RUN choco install strawberryperl -y
 
-ENV INCLUDE="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\include;${INCLUDE}"
-ENV LIB="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\lib\x64;${LIB}"
-ENV PATH="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\bin\Hostx64\x64;${PATH}"
+# Download and install MSYS2
+RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2023-05-26/msys2-x86_64-20230526.exe'; `
+    Invoke-WebRequest -Uri $url -OutFile 'msys2-installer.exe'; `
+    Start-Process -FilePath 'msys2-installer.exe' -ArgumentList 'in', '--confirm-command', '--accept-messages', '--root', 'C:\msys64' -Wait; `
+    Remove-Item 'msys2-installer.exe'
 
-# Create bash profile with environment settings
-RUN echo 'export PATH="/c/Program Files/CMake/bin:/c/Python311:/c/tools/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin"' > C:\tools\msys64\home\ContainerAdministrator\.bash_profile ; `
-    echo 'export ACLOCAL_PATH=/c/tools/msys64/usr/share/aclocal' >> C:\tools\msys64\home\ContainerAdministrator\.bash_profile ; `
-    echo 'export QT_HOME=/c/Qt/6.5.3/msvc2019_64' >> C:\tools\msys64\home\ContainerAdministrator\.bash_profile
+# Update MSYS2 and install required packages
+RUN & 'C:\msys64\usr\bin\bash.exe' -l -c 'pacman -Syu --noconfirm'; `
+    & 'C:\msys64\usr\bin\bash.exe' -l -c 'pacman -S --noconfirm mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'
 
-# Create directory for Qt
-RUN mkdir C:\qt
+# Install aqt (Qt installer tool) via pip
+RUN & 'C:\Python310\python.exe' -m pip install --upgrade pip; `
+    & 'C:\Python310\python.exe' -m pip install aqt==3.2.*
 
-# Set working directory
+# Install Qt 5.15.2 for VFX 2023 (default)
+RUN New-Item -ItemType Directory -Force -Path 'C:\Qt'; `
+    & 'C:\Python310\python.exe' -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 `
+    --outputdir C:\Qt `
+    --modules qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin `
+    --archives d3dcompiler_47 opengl32sw qt3d qtactiveqt qtbase qtconnectivity qtdeclarative qtgraphicaleffects qtimageformats qtlocation qtmultimedia qtquickcontrols qtquickcontrols2 qtremoteobjects qtscxml qtsensors qtsvg qttools qttranslations qtwebchannel qtwebsockets qtwebview qtwinextras qtxmlpatterns
+
+# Set up environment variables
+ENV PATH="C:\Program Files\CMake\bin;C:\Python310;C:\Python310\Scripts;C:\msys64\mingw64\bin;C:\Strawberry\c\bin;C:\Strawberry\perl\site\bin;C:\Strawberry\perl\bin;C:\Program Files\Git\bin;${PATH}" `
+    QT_HOME="C:\Qt\5.15.2\msvc2019_64" `
+    ACLOCAL_PATH="C:\msys64\usr\share\aclocal" `
+    RV_VFX_PLATFORM="CY2023"
+
+# Create a script to set up MSVC environment
+RUN $script = @'
+@echo off
+call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+cmd /k
+'@; `
+    $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII
+
+# Create workspace directory
+RUN New-Item -ItemType Directory -Force -Path 'C:\workspace'
 WORKDIR C:\workspace
 
-# Default shell to MSYS2 bash
-SHELL ["C:\\tools\\msys64\\usr\\bin\\bash.exe", "-lc"]
-CMD ["bash"] 
+# Copy requirements.txt and install Python dependencies
+COPY requirements.txt .
+RUN & 'C:\Python310\python.exe' -m pip install --user --upgrade -r requirements.txt
+
+# Create a build script for OpenRV
+RUN $buildScript = @'
+@echo off
+echo Setting up MSVC environment...
+call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+
+echo Configuring OpenRV...
+if "%RV_VFX_PLATFORM%"=="CY2023" (
+    cmake -B _build -G "Visual Studio 17 2022" -A x64 ^
+        -DRV_DEPS_WIN_PERL_ROOT=C:\Strawberry\perl\bin ^
+        -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+        -DRV_DEPS_QT5_LOCATION=%QT_HOME% ^
+        -DRV_VFX_PLATFORM=%RV_VFX_PLATFORM%
+) else (
+    cmake -B _build -G "Visual Studio 17 2022" -A x64 ^
+        -DRV_DEPS_WIN_PERL_ROOT=C:\Strawberry\perl\bin ^
+        -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+        -DRV_DEPS_QT6_LOCATION=%QT_HOME% ^
+        -DRV_VFX_PLATFORM=%RV_VFX_PLATFORM%
+)
+
+echo Building OpenRV dependencies...
+cmake --build _build --config %BUILD_TYPE% --target dependencies --parallel %NUMBER_OF_PROCESSORS% -v
+
+echo Building OpenRV main executable...
+cmake --build _build --config %BUILD_TYPE% --target main_executable --parallel %NUMBER_OF_PROCESSORS% -v
+
+echo Running tests...
+ctest --test-dir _build -C %BUILD_TYPE% --extra-verbose
+
+echo Installing OpenRV...
+cmake --install _build --prefix %cd%\_install --config %BUILD_TYPE%
+'@; `
+    $buildScript | Out-File -FilePath 'C:\build_openrv.bat' -Encoding ASCII
+
+# Set default build type
+ENV BUILD_TYPE=Release
+
+# Create alternative configurations for different VFX platforms and Qt versions
+RUN $setupQt6Script = @'
+@echo off
+echo Installing Qt 6.5.3 for VFX 2024...
+C:\Python310\python.exe -m aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 --outputdir C:\Qt --modules qt3d qt5compat qtactiveqt qtcharts qtconnectivity qtdatavis3d qtgrpc qthttpserver qtimageformats qtlanguageserver qtlocation qtlottie qtmultimedia qtnetworkauth qtpdf qtpositioning qtquick3d qtquick3dphysics qtquickeffectmaker qtquicktimeline qtremoteobjects qtscxml qtsensors qtserialbus qtserialport qtshadertools qtspeech qtvirtualkeyboard qtwebchannel qtwebengine qtwebsockets qtwebview --archives d3dcompiler_47 opengl32sw qtbase qtdeclarative qtsvg qttools qttranslations
+
+set QT_HOME=C:\Qt\6.5.3\msvc2019_64
+set RV_VFX_PLATFORM=CY2024
+echo Qt 6.5.3 installed and environment updated for VFX 2024
+'@; `
+    $setupQt6Script | Out-File -FilePath 'C:\setup_qt6_vfx2024.bat' -Encoding ASCII
+
+RUN $setupPython311Script = @'
+@echo off
+echo Installing Python 3.11 for VFX 2024...
+powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile 'python311-installer.exe'"
+python311-installer.exe /quiet InstallAllUsers=1 PrependPath=0 TargetDir=C:\Python311
+del python311-installer.exe
+copy C:\Python311\python.exe C:\Python311\python3.exe
+echo Python 3.11 installed
+'@; `
+    $setupPython311Script | Out-File -FilePath 'C:\setup_python311.bat' -Encoding ASCII
+
+# Create entry point script
+RUN $entryScript = @'
+@echo off
+echo OpenRV Windows Build Container
+echo =============================
+echo.
+echo Available commands:
+echo   build_openrv.bat         - Build OpenRV with current configuration
+echo   setup_qt6_vfx2024.bat    - Switch to Qt 6.5.3 and VFX Platform 2024
+echo   setup_python311.bat      - Install Python 3.11 for VFX 2024
+echo   setup_msvc.bat           - Set up MSVC environment and open command prompt
+echo.
+echo Current configuration:
+echo   VFX Platform: %RV_VFX_PLATFORM%
+echo   Qt Home: %QT_HOME%
+echo   Build Type: %BUILD_TYPE%
+echo   Python: C:\Python310\python.exe
+echo.
+echo To build OpenRV:
+echo   1. Clone your OpenRV repository to C:\workspace
+echo   2. Run: build_openrv.bat
+echo.
+cmd /k
+'@; `
+    $entryScript | Out-File -FilePath 'C:\entrypoint.bat' -Encoding ASCII
+
+# Set the entry point
+ENTRYPOINT ["C:\\entrypoint.bat"] 
