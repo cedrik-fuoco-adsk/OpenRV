@@ -5,6 +5,29 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2022
 # Set PowerShell as the default shell
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
+# Install Chocolatey
+RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+
+# Install Python 3.11
+RUN choco install python311 -y
+
+# Install CMake
+RUN choco install cmake --version=3.31.8 -y
+
+# Download and install MSYS2
+RUN Invoke-WebRequest -Uri "https://github.com/msys2/msys2-installer/releases/download/2024-01-13/msys2-base-x86_64-20240113.sfx.exe" -OutFile "msys2.exe"; `
+    Start-Process -FilePath "./msys2.exe" -ArgumentList "-y", "-oC:\msys64" -NoNewWindow -Wait; `
+    Remove-Item msys2.exe
+
+# Install MSYS2 packages
+RUN C:\msys64\usr\bin\bash.exe -lc `
+    'pacman -Syu --noconfirm && `
+    pacman -S --noconfirm mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps `
+    mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson `
+    mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'
+
 # Install Visual Studio Build Tools
 RUN Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile vs_buildtools.exe ; `
     Start-Process -FilePath .\vs_buildtools.exe -ArgumentList '--quiet', '--wait', '--norestart', '--nocache', `
@@ -13,22 +36,34 @@ RUN Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vs_buildtools.exe -OutFi
     '--add', 'Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64.Spectre' -NoNewWindow -Wait ; `
     Remove-Item .\vs_buildtools.exe
 
-# Set up the development environment
-RUN setx /M PATH $('C:\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;' + $env:PATH)
+# Install Qt 6.5.3 (for CY2024) using aqt
+RUN pip install aqtinstall==3.2.* ; `
+    mkdir C:\Qt ; `
+    aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 --outputdir C:\Qt ; `
+    aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 --outputdir C:\Qt --modules qtmultimedia qtwebsockets qtpositioning qtwebchannel qtwebengine
 
-# Set up MSVC environment variables
-RUN setx /M VSINSTALLDIR "C:\BuildTools" ; `
-    setx /M VCINSTALLDIR "C:\BuildTools\VC"
+# Set environment variables
+RUN setx /M PATH "C:\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\CMake\bin;C:\Python311;C:\Python311\Scripts;C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\Qt\6.5.3\msvc2019_64\bin;%PATH%" ; `
+    setx /M VSINSTALLDIR "C:\BuildTools" ; `
+    setx /M VCINSTALLDIR "C:\BuildTools\VC" ; `
+    setx /M ACLOCAL_PATH "C:\msys64\usr\share\aclocal" ; `
+    setx /M QT_HOME "C:\Qt\6.5.3\msvc2019_64"
 
-# Optional: Set up additional environment variables if needed
 ENV INCLUDE="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\include;${INCLUDE}"
 ENV LIB="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\lib\x64;${LIB}"
 ENV PATH="C:\BuildTools\VC\Tools\MSVC\14.40.17.10\bin\Hostx64\x64;${PATH}"
 
-# Install Git portable
-RUN Invoke-WebRequest `
-        -Uri "https://github.com/git-for-windows/git/releases/download/v2.50.0.windows.2/PortableGit-2.50.0.2-64-bit.7z.exe" `
-        -OutFile "PortableGit.7z.exe"; `
-    Start-Process -FilePath "PortableGit.7z.exe" -ArgumentList '-y', '-oC:\git' -Wait; `
-    Remove-Item "PortableGit.7z.exe"; `
-    setx /M PATH \"C:\git\cmd;$([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine))\"
+# Create bash profile with environment settings
+RUN echo 'export PATH="/c/Program Files/CMake/bin:/c/Python311:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin"' > C:\msys64\home\ContainerAdministrator\.bash_profile ; `
+    echo 'export ACLOCAL_PATH=/c/msys64/usr/share/aclocal' >> C:\msys64\home\ContainerAdministrator\.bash_profile ; `
+    echo 'export QT_HOME=/c/Qt/6.5.3/msvc2019_64' >> C:\msys64\home\ContainerAdministrator\.bash_profile
+
+# Create directory for Qt
+RUN mkdir C:\qt
+
+# Set working directory
+WORKDIR C:\workspace
+
+# Default shell to MSYS2 bash
+SHELL ["C:\\msys64\\usr\\bin\\bash.exe", "-lc"]
+CMD ["bash"] 
