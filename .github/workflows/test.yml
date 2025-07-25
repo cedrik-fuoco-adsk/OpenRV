@@ -33,5 +33,6 @@ jobs:
       - name: Build image
         shell: powershell
         run: |
+          dir
           cd ./dockerfiles/Dockerfile.Windows-CY2024
           docker build -t ${{ env.IMAGE }}:${{ env.TAG }} .
