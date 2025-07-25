@@ -50,31 +50,90 @@ RUN choco install cmake --version=$env:CMAKE_VERSION --allow-downgrade -y
 RUN choco install strawberryperl -y
 
 # Download and install MSYS2
-RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2023-05-26/msys2-x86_64-20230526.exe'; `
-    Write-Host "Downloading MSYS2..."; `
-    Invoke-WebRequest -Uri $url -OutFile 'msys2-installer.exe'; `
-    Write-Host "Installing MSYS2..."; `
-    Start-Process -FilePath 'msys2-installer.exe' -ArgumentList 'in', '--confirm-command', '--accept-messages', '--root', 'C:\msys64' -Wait -NoNewWindow; `
-    Remove-Item 'msys2-installer.exe'; `
-    Write-Host "MSYS2 installation completed."
+RUN Write-Host "Starting MSYS2 installation..."; `
+    $msys2Installer = "msys2-x86_64-20230526.exe"; `
+    $url = "https://github.com/msys2/msys2-installer/releases/download/2023-05-26/$msys2Installer"; `
+    Write-Host "Downloading MSYS2 from $url"; `
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
+    Invoke-WebRequest -Uri $url -OutFile $msys2Installer -UseBasicParsing; `
+    Write-Host "Download completed. Starting installation..."; `
+    $installArgs = @( `
+        'in', `
+        '--confirm-command', `
+        '--accept-messages', `
+        '--root', 'C:\msys64' `
+    ); `
+    $process = Start-Process -FilePath $msys2Installer -ArgumentList $installArgs -Wait -PassThru -NoNewWindow; `
+    if ($process.ExitCode -ne 0) { `
+        Write-Error "MSYS2 installation failed with exit code $($process.ExitCode)"; `
+        exit 1; `
+    }; `
+    Remove-Item $msys2Installer -Force; `
+    Write-Host "MSYS2 installation completed successfully."
 
 # Add MSYS2 to PATH and verify installation
-RUN $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;$env:PATH"; `
-    [Environment]::SetEnvironmentVariable('PATH', $env:PATH, [EnvironmentVariableTarget]::Machine); `
+RUN Write-Host "Current PATH: $env:PATH"; `
+    $msys2Path = "C:\msys64"; `
+    Write-Host "Checking if MSYS2 directory exists at $msys2Path"; `
+    if (-not (Test-Path $msys2Path)) { `
+        Write-Error "MSYS2 directory not found at $msys2Path"; `
+        exit 1; `
+    }; `
+    $newPath = "$msys2Path\usr\bin;$msys2Path\mingw64\bin;$env:PATH"; `
+    Write-Host "Setting new PATH: $newPath"; `
+    $env:PATH = $newPath; `
+    [Environment]::SetEnvironmentVariable('PATH', $newPath, [EnvironmentVariableTarget]::Machine); `
     Write-Host "Verifying MSYS2 installation..."; `
-    if (Test-Path 'C:\msys64\usr\bin\bash.exe') { `
-        Write-Host "MSYS2 bash found at C:\msys64\usr\bin\bash.exe"; `
+    $bashPath = Join-Path $msys2Path "usr\bin\bash.exe"; `
+    if (Test-Path $bashPath) { `
+        Write-Host "MSYS2 bash found at $bashPath"; `
     } else { `
-        Write-Error "MSYS2 bash not found!"; `
+        Write-Error "MSYS2 bash not found at $bashPath!"; `
         exit 1; `
     }
 
 # Update MSYS2 and install required packages
 RUN Write-Host "Updating MSYS2..."; `
-    $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;$env:PATH"; `
-    Start-Process -FilePath "C:\msys64\usr\bin\bash.exe" -ArgumentList '-l', '-c', "'pacman -Syu --noconfirm'" -Wait -NoNewWindow; `
+    $msys2Path = "C:\msys64"; `
+    $bashExe = Join-Path $msys2Path "usr\bin\bash.exe"; `
+    Write-Host "Using bash at: $bashExe"; `
+    $updateCmd = 'pacman -Syu --noconfirm'; `
+    Write-Host "Running update command: $updateCmd"; `
+    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', $updateCmd -Wait -PassThru -NoNewWindow; `
+    if ($process.ExitCode -ne 0) { `
+        Write-Error "MSYS2 update failed with exit code $($process.ExitCode)"; `
+        exit 1; `
+    }; `
     Write-Host "Installing MSYS2 packages..."; `
-    Start-Process -FilePath "C:\msys64\usr\bin\bash.exe" -ArgumentList '-l', '-c', "'pacman -S --noconfirm mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'" -Wait -NoNewWindow
+    $packages = @( `
+        'mingw-w64-x86_64-autotools', `
+        'mingw-w64-x86_64-cmake', `
+        'mingw-w64-x86_64-cmake-cmcldeps', `
+        'mingw-w64-x86_64-glew', `
+        'mingw-w64-x86_64-libarchive', `
+        'mingw-w64-x86_64-make', `
+        'mingw-w64-x86_64-meson', `
+        'mingw-w64-x86_64-toolchain', `
+        'autoconf', `
+        'automake', `
+        'bison', `
+        'flex', `
+        'git', `
+        'libtool', `
+        'nasm', `
+        'p7zip', `
+        'patch', `
+        'unzip', `
+        'zip' `
+    ); `
+    $installCmd = "pacman -S --noconfirm $($packages -join ' ')"; `
+    Write-Host "Running install command: $installCmd"; `
+    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', $installCmd -Wait -PassThru -NoNewWindow; `
+    if ($process.ExitCode -ne 0) { `
+        Write-Error "Package installation failed with exit code $($process.ExitCode)"; `
+        exit 1; `
+    }; `
+    Write-Host "MSYS2 packages installed successfully."
 
 # Install aqt (Qt installer tool) via pip
 RUN & 'C:\Python310\python.exe' -m pip install --upgrade pip; `
