@@ -12,43 +12,6 @@ ENV CMAKE_VERSION=3.31.6 `
     MSVC_COMPONENT=14.40.17.10.x86.x64 `
     MSVC_COMPILER=14.40.33807
 
-# Install Chocolatey
-RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
-    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-
-# Install Git via Chocolatey 
-RUN choco install git -y; `
-    choco install 7zip -y; `
-    choco install wget -y
-
-# Install Visual Studio Build Tools 2022 with specific MSVC components
-RUN choco install visualstudio2022buildtools -y; `
-    choco install visualstudio2022-workload-vctools -y
-
-# Install specific MSVC components
-RUN & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe' modify `
-    --installPath 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools' `
-    --add Microsoft.VisualStudio.Component.VC.$env:MSVC_COMPONENT `
-    --add Microsoft.VisualStudio.Component.VC.1$env:MSVC_COMPONENT.Spectre `
-    --quiet --wait; `
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-# Install Python 3.10 for VFX 2023 (default)
-RUN $url = 'https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe'; `
-    Invoke-WebRequest -Uri $url -OutFile 'python-installer.exe'; `
-    Start-Process -FilePath 'python-installer.exe' -ArgumentList '/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'TargetDir=C:\Python310' -Wait; `
-    Remove-Item 'python-installer.exe'
-
-# Create python3.exe alias
-RUN Copy-Item 'C:\Python310\python.exe' 'C:\Python310\python3.exe'
-
-# Install CMake via Chocolatey
-RUN choco install cmake --version=$env:CMAKE_VERSION --allow-downgrade -y
-
-# Install Strawberry Perl (required for OpenRV dependencies)
-RUN choco install strawberryperl -y
-
 # Download and install MSYS2
 RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2025-02-21/msys2-x86_64-20250221.exe'; `
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
