@@ -50,8 +50,19 @@ RUN $msys2Path = 'C:\msys64'; `
 # Second layer: re-run install with a fresh shell
 RUN $msys2Path = 'C:\msys64'; `
     $bashExe = Join-Path $msys2Path 'usr\bin\bash.exe'; `
-    $packages = 'mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'; `
-    $cmd = "pacman -S --noconfirm $packages"; `
+    $packages = @(
+        'mingw-w64-x86_64-cmake',
+        'mingw-w64-x86_64-cmake-cmcldeps',
+        'mingw-w64-x86_64-glew',
+        'mingw-w64-x86_64-libarchive',
+        'mingw-w64-x86_64-make',
+        'mingw-w64-x86_64-meson',
+        'mingw-w64-x86_64-toolchain',
+        'autoconf', 'automake', 'bison', 'flex', 'git', 'libtool', 'nasm',
+        'p7zip', 'patch', 'unzip', 'zip'
+    ); `
+    $packageStr = $packages -join ' '; `
+    $cmd = "pacman -S --noconfirm $packageStr"; `
     Write-Host "Installing MSYS2 packages using: $cmd"; `
     & $bashExe '-c', "`"$cmd`""; `
     if ($LASTEXITCODE -ne 0) { throw 'Package install failed with exit code: ' + $LASTEXITCODE }; `
