@@ -1,17 +1,56 @@
-escape=`
-
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # Set environment variables
-ENV CMAKE_VERSION=3.31.6   PYTHON_VERSION_2023=3.10.11 `
-    PYTHON_VERSION_2024=3.11.9   QT_VERSION_2023=5.15.2 `
-    QT_VERSION_2024=6.5.3   MSVC_COMPONENT=14.40.17.10.x86.x64 `
+ENV CMAKE_VERSION=3.31.6 `
+    PYTHON_VERSION_2023=3.10.11 `
+    PYTHON_VERSION_2024=3.11.9 `
+    QT_VERSION_2023=5.15.2 `
+    QT_VERSION_2024=6.5.3 `
+    MSVC_COMPONENT=14.40.17.10.x86.x64 `
     MSVC_COMPILER=14.40.33807
 
+# Install Chocolatey
+RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Install Git via Chocolatey 
+RUN choco install git -y; `
+    choco install 7zip -y; `
+    choco install wget -y
+
+# Install Visual Studio Build Tools 2022 with specific MSVC components
+RUN choco install visualstudio2022buildtools -y; `
+    choco install visualstudio2022-workload-vctools -y
+
+# Install specific MSVC components
+RUN & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe' modify `
+    --installPath 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools' `
+    --add Microsoft.VisualStudio.Component.VC.$env:MSVC_COMPONENT `
+    --add Microsoft.VisualStudio.Component.VC.1$env:MSVC_COMPONENT.Spectre `
+    --quiet --wait; `
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Install Python 3.10 for VFX 2023 (default)
+RUN $url = 'https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe'; `
+    Invoke-WebRequest -Uri $url -OutFile 'python-installer.exe'; `
+    Start-Process -FilePath 'python-installer.exe' -ArgumentList '/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'TargetDir=C:\Python310' -Wait; `
+    Remove-Item 'python-installer.exe'
+
+# Create python3.exe alias
+RUN Copy-Item 'C:\Python310\python.exe' 'C:\Python310\python3.exe'
+
+# Install CMake via Chocolatey
+RUN choco install cmake --version=$env:CMAKE_VERSION --allow-downgrade -y
+
+# Install Strawberry Perl (required for OpenRV dependencies)
+RUN choco install strawberryperl -y
+
 # Download and install MSYS2
-RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2025-02-21/msys2-x86_64-20250221.exe'; `
+RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2023-05-26/msys2-x86_64-20230526.exe'; `
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
     Invoke-WebRequest -Uri $url -OutFile 'msys2-installer.exe' -UseBasicParsing; `
     Start-Process -FilePath 'msys2-installer.exe' -ArgumentList 'in', '--confirm-command', '--accept-messages', '--root', 'C:\msys64' -Wait; `
@@ -19,18 +58,18 @@ RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2025-02-2
 
 # Add MSYS2 to PATH and verify installation
 RUN Write-Host "Current PATH: $env:PATH"; `
-    $msys2Path = 'C:\msys64'; `
+    $msys2Path = "C:\msys64"; `
     Write-Host "Checking if MSYS2 directory exists at $msys2Path"; `
     if (-not (Test-Path $msys2Path)) { `
         Write-Error "MSYS2 directory not found at $msys2Path"; `
         exit 1; `
     }; `
-    $newPath = $msys2Path + '\usr\bin;' + $msys2Path + '\mingw64\bin;' + $env:PATH; `
+    $newPath = "$msys2Path\usr\bin;$msys2Path\mingw64\bin;$env:PATH"; `
     Write-Host "Setting new PATH: $newPath"; `
     $env:PATH = $newPath; `
     [Environment]::SetEnvironmentVariable('PATH', $newPath, [EnvironmentVariableTarget]::Machine); `
     Write-Host "Verifying MSYS2 installation..."; `
-    $bashPath = Join-Path $msys2Path 'usr\bin\bash.exe'; `
+    $bashPath = Join-Path $msys2Path "usr\bin\bash.exe"; `
     if (Test-Path $bashPath) { `
         Write-Host "MSYS2 bash found at $bashPath"; `
     } else { `
@@ -39,35 +78,47 @@ RUN Write-Host "Current PATH: $env:PATH"; `
     }
 
 # Update MSYS2 and install required packages
-# This RUN instruction is modified to fix the pacman execution error.
-# It uses the PowerShell call operator '&' instead of Start-Process for more reliable argument passing.
-# The pacman update command is run twice, which is a best practice for MSYS2 automation
-# to ensure core components are updated before installing other packages.
-RUN $bashExe = 'C:\msys64\usr\bin\bash.exe'; `
+RUN Write-Host "Updating MSYS2..."; `
+    $msys2Path = "C:\msys64"; `
+    $bashExe = Join-Path $msys2Path "usr\bin\bash.exe"; `
     Write-Host "Using bash at: $bashExe"; `
-    `
-    Write-Host 'Running MSYS2 update (first pass)...'; `
-    & $bashExe -l -c "pacman --noconfirm -Syu"; `
-    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 2) { `
-        Write-Host "MSYS2 first update pass failed with a critical error: $LASTEXITCODE"; `
-        exit $LASTEXITCODE; `
-    } `
-    `
-    Write-Host 'Running MSYS2 update (second pass)...'; `
-    & $bashExe -l -c "pacman --noconfirm -Syu"; `
-    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 2) { `
-        Write-Host "MSYS2 second update pass failed with a critical error: $LASTEXITCODE"; `
-        exit $LASTEXITCODE; `
-    } `
-    `
-    Write-Host 'Installing MSYS2 packages...'; `
-    $packages = 'mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'; `
-    & $bashExe -l -c "pacman -S --noconfirm --needed $packages"; `
-    if ($LASTEXITCODE -ne 0) { `
-        Write-Host "Package installation failed with exit code: $LASTEXITCODE"; `
-        exit $LASTEXITCODE; `
+    $updateCmd = 'pacman -Syu --noconfirm'; `
+    Write-Host "Running update command: $updateCmd"; `
+    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', $updateCmd -Wait -PassThru -NoNewWindow; `
+    if ($process.ExitCode -ne 0) { `
+        Write-Error "MSYS2 update failed with exit code $($process.ExitCode)"; `
+        exit 1; `
     }; `
-    Write-Host 'MSYS2 packages installed successfully.'
+    Write-Host "Installing MSYS2 packages..."; `
+    $packages = @( `
+        'mingw-w64-x86_64-autotools', `
+        'mingw-w64-x86_64-cmake', `
+        'mingw-w64-x86_64-cmake-cmcldeps', `
+        'mingw-w64-x86_64-glew', `
+        'mingw-w64-x86_64-libarchive', `
+        'mingw-w64-x86_64-make', `
+        'mingw-w64-x86_64-meson', `
+        'mingw-w64-x86_64-toolchain', `
+        'autoconf', `
+        'automake', `
+        'bison', `
+        'flex', `
+        'git', `
+        'libtool', `
+        'nasm', `
+        'p7zip', `
+        'patch', `
+        'unzip', `
+        'zip' `
+    ); `
+    $installCmd = "pacman -S --noconfirm $($packages -join ' ')"; `
+    Write-Host "Running install command: $installCmd"; `
+    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', $installCmd -Wait -PassThru -NoNewWindow; `
+    if ($process.ExitCode -ne 0) { `
+        Write-Error "Package installation failed with exit code $($process.ExitCode)"; `
+        exit 1; `
+    }; `
+    Write-Host "MSYS2 packages installed successfully."
 
 # Install aqt (Qt installer tool) via pip
 RUN & 'C:\Python310\python.exe' -m pip install --upgrade pip; `
@@ -180,4 +231,4 @@ RUN $entryScript = '@echo off' + [Environment]::NewLine + `
     $entryScript | Out-File -FilePath 'C:\entrypoint.bat' -Encoding ASCII
 
 # Set the entry point
-ENTRYPOINT ["C:\entrypoint.bat"]
+ENTRYPOINT ["C:\\entrypoint.bat"]
