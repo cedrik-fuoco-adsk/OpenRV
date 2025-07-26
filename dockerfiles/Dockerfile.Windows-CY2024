@@ -41,25 +41,14 @@ RUN Write-Host "Current PATH: $env:PATH"; `
     }
 
 # Update MSYS2 and install required packages
-RUN Write-Host 'Updating MSYS2...'; `
-    $msys2Path = 'C:\msys64'; `
+RUN $msys2Path = 'C:\msys64'; `
     $bashExe = Join-Path $msys2Path 'usr\bin\bash.exe'; `
     Write-Host "Using bash at: $bashExe"; `
-    Write-Host 'Running MSYS2 update...'; `
-    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', '"pacman -Syu --noconfirm"' -Wait -PassThru -NoNewWindow; `
-    if ($process.ExitCode -ne 0) { `
-        Write-Host "MSYS2 update failed with exit code: $($process.ExitCode)"; `
-        exit 1; `
-    }; `
-    Write-Host 'Installing MSYS2 packages...'; `
+    & $bashExe -l -c "pacman -Syu --noconfirm"; `
+    if ($LASTEXITCODE -ne 0) { throw "MSYS2 update failed with exit code: $LASTEXITCODE" }; `
     $packages = 'mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'; `
-    $installCmd = "pacman -S --noconfirm $packages"; `
-    Write-Host "Running install command: $installCmd"; `
-    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', "`"$installCmd`"" -Wait -PassThru -NoNewWindow; `
-    if ($process.ExitCode -ne 0) { `
-        Write-Host "Package installation failed with exit code: $($process.ExitCode)"; `
-        exit 1; `
-    }; `
+    & $bashExe -l -c "pacman -S --noconfirm $packages"; `
+    if ($LASTEXITCODE -ne 0) { throw "Package installation failed with exit code: $LASTEXITCODE" }; `
     Write-Host 'MSYS2 packages installed successfully.'
 
 # Install aqt (Qt installer tool) via pip
