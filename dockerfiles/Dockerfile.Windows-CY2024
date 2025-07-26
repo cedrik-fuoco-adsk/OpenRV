@@ -109,11 +109,37 @@ ENV PATH="C:\Program Files\CMake\bin;C:\Python310;C:\Python310\Scripts;C:\msys64
     ACLOCAL_PATH="C:\msys64\usr\share\aclocal" `
     RV_VFX_PLATFORM="CY2023"
 
-# Create a script to set up MSVC environment
-RUN $script = '@echo off' + [Environment]::NewLine + `
-    'call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"' + [Environment]::NewLine + `
-    'cmd /k'; `
-    $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII
+RUN $possiblePaths = @(
+        'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat',
+        'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat',
+        'C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat',
+        'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat'
+    ); `
+    $vcvarsPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1; `
+    if ($vcvarsPath) { `
+        $script = '@echo off' + [Environment]::NewLine + `
+                  "call `"$vcvarsPath`"" + [Environment]::NewLine + `
+                  'cmd /k'; `
+        $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII; `
+        Write-Host "MSVC setup script created with path: $vcvarsPath"; `
+    } else { `
+        Write-Host 'No vcvars64.bat found. Searching for any Visual Studio installation...'; `
+        $foundPath = Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\' -Recurse -Name 'vcvars64.bat' -ErrorAction SilentlyContinue | Select-Object -First 1; `
+        if ($foundPath) { `
+            $fullPath = Join-Path 'C:\Program Files\Microsoft Visual Studio\' $foundPath; `
+            $script = '@echo off' + [Environment]::NewLine + `
+                      "call `"$fullPath`"" + [Environment]::NewLine + `
+                      'cmd /k'; `
+            $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII; `
+            Write-Host "MSVC setup script created with found path: $fullPath"; `
+        } else { `
+            Write-Host 'Warning: vcvars64.bat not found. Creating placeholder script.'; `
+            $script = '@echo off' + [Environment]::NewLine + `
+                      'echo Visual Studio Build Tools not found' + [Environment]::NewLine + `
+                      'cmd /k'; `
+            $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII; `
+        } `
+    }
 
 # Create workspace directory
 RUN New-Item -ItemType Directory -Force -Path 'C:\workspace'
