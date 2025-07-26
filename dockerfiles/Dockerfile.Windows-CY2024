@@ -13,18 +13,18 @@ ENV CMAKE_VERSION=3.31.6 `
     MSVC_COMPILER=14.40.33807
 
 # Install Chocolatey
-RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
-    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+#RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
+#    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+#    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
 # Install Git via Chocolatey 
-RUN choco install git -y; `
-    choco install 7zip -y; `
-    choco install wget -y
+#RUN choco install git -y; `
+#    choco install 7zip -y; `
+#    choco install wget -y
 
 # Install Visual Studio Build Tools 2022 with specific MSVC components
-RUN choco install visualstudio2022buildtools -y; `
-    choco install visualstudio2022-workload-vctools -y
+#RUN choco install visualstudio2022buildtools -y; `
+#    choco install visualstudio2022-workload-vctools -y
 
 # Install specific MSVC components
 RUN & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe' modify `
