@@ -109,6 +109,10 @@ ENV PATH="C:\Program Files\CMake\bin;C:\Python310;C:\Python310\Scripts;C:\msys64
     ACLOCAL_PATH="C:\msys64\usr\share\aclocal" `
     RV_VFX_PLATFORM="CY2023"
 
+RUN $vsPath = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath; \
+    Write-Host "Visual Studio Path: $vsPath"; \
+    cmd /c "call `"$vsPath\VC\Auxiliary\Build\vcvars64.bat`""
+
 RUN $vcvarsPath = $null; `
     if (Test-Path 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat') { `
         $vcvarsPath = 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat'; `
