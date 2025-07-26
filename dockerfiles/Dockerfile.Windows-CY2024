@@ -39,7 +39,7 @@ RUN & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe
 
 RUN $vsPath = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath; `
     Write-Host "Visual Studio Path: $vsPath"; `
-    ls -R $vsPath
+    ls -R $vsPath\VC
     #cmd /c "call `"$vsPath\VC\Auxiliary\Build\vcvars64.bat`""
 
 # Install Python 3.10 for VFX 2023 (default)
