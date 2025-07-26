@@ -34,6 +34,10 @@ RUN & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe
     --quiet --wait; `
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+RUN $vsPath = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath; `
+    Write-Host "Visual Studio Path: $vsPath"; `
+    cmd /c "call `"$vsPath\VC\Auxiliary\Build\vcvars64.bat`""
+
 # Install Python 3.10 for VFX 2023 (default)
 RUN $url = 'https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe'; `
     Invoke-WebRequest -Uri $url -OutFile 'python-installer.exe'; `
@@ -108,10 +112,6 @@ ENV PATH="C:\Program Files\CMake\bin;C:\Python310;C:\Python310\Scripts;C:\msys64
     QT_HOME="C:\Qt\5.15.2\msvc2019_64" `
     ACLOCAL_PATH="C:\msys64\usr\share\aclocal" `
     RV_VFX_PLATFORM="CY2023"
-
-RUN $vsPath = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath; \
-    Write-Host "Visual Studio Path: $vsPath"; \
-    cmd /c "call `"$vsPath\VC\Auxiliary\Build\vcvars64.bat`""
 
 RUN $vcvarsPath = $null; `
     if (Test-Path 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat') { `
