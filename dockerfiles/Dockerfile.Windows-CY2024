@@ -23,11 +23,11 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
 #    choco install wget -y
 
 # Install Visual Studio Build Tools 2022 with specific MSVC components
-#RUN choco install visualstudio2022buildtools -y; `
-#    choco install visualstudio2022-workload-vctools -y
-RUN choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --includeOptional"; `
-    choco install windows-sdk-10.0 --version=10.0.22621.0; `
-    choco install visualcpp-build-tools -y
+RUN choco install visualstudio2022buildtools -y; `
+    choco install visualstudio2022-workload-vctools -y
+#RUN choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --includeOptional"; `
+#    choco install windows-sdk-10.0 --version=10.0.22621.0; `
+#    choco install visualcpp-build-tools -y
 
 # Install specific MSVC components
 RUN & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe' modify `
