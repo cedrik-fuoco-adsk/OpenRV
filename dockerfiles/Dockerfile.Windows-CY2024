@@ -21,18 +21,18 @@ RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2023-05-2
 
 # Add MSYS2 to PATH and verify installation
 RUN Write-Host "Current PATH: $env:PATH"; `
-    $msys2Path = 'C:\msys64'; `
+    $msys2Path = "C:\msys64"; `
     Write-Host "Checking if MSYS2 directory exists at $msys2Path"; `
     if (-not (Test-Path $msys2Path)) { `
         Write-Error "MSYS2 directory not found at $msys2Path"; `
         exit 1; `
     }; `
-    $newPath = $msys2Path + '\usr\bin;' + $msys2Path + '\mingw64\bin;' + $env:PATH; `
+    $newPath = "$msys2Path\usr\bin;$msys2Path\mingw64\bin;$env:PATH"; `
     Write-Host "Setting new PATH: $newPath"; `
     $env:PATH = $newPath; `
     [Environment]::SetEnvironmentVariable('PATH', $newPath, [EnvironmentVariableTarget]::Machine); `
     Write-Host "Verifying MSYS2 installation..."; `
-    $bashPath = Join-Path $msys2Path 'usr\bin\bash.exe'; `
+    $bashPath = Join-Path $msys2Path "usr\bin\bash.exe"; `
     if (Test-Path $bashPath) { `
         Write-Host "MSYS2 bash found at $bashPath"; `
     } else { `
@@ -45,40 +45,18 @@ RUN Write-Host 'Updating MSYS2...'; `
     $msys2Path = 'C:\msys64'; `
     $bashExe = Join-Path $msys2Path 'usr\bin\bash.exe'; `
     Write-Host "Using bash at: $bashExe"; `
-    Write-Host 'Running MSYS2 update...'; `
-    & $bashExe -lc 'pacman -Syu --noconfirm'; `
+    & $bashExe -l -c "pacman -Sy --noconfirm && pacman -Su --noconfirm"; `
     if ($LASTEXITCODE -ne 0) { `
-        Write-Host "MSYS2 update failed with exit code: $LASTEXITCODE"; `
-        exit 1; `
+        Write-Error "MSYS2 update failed with exit code $LASTEXITCODE"; `
+        exit $LASTEXITCODE; `
     }; `
     Write-Host 'Installing MSYS2 packages...'; `
-    $packages = @( `
-        'mingw-w64-x86_64-autotools', `
-        'mingw-w64-x86_64-cmake', `
-        'mingw-w64-x86_64-cmake-cmcldeps', `
-        'mingw-w64-x86_64-glew', `
-        'mingw-w64-x86_64-libarchive', `
-        'mingw-w64-x86_64-make', `
-        'mingw-w64-x86_64-meson', `
-        'mingw-w64-x86_64-toolchain', `
-        'autoconf', `
-        'automake', `
-        'bison', `
-        'flex', `
-        'git', `
-        'libtool', `
-        'nasm', `
-        'p7zip', `
-        'patch', `
-        'unzip', `
-        'zip' `
-    ); `
-    $packagesString = $packages -join ' '; `
-    Write-Host "Installing packages: $packagesString"; `
-    & $bashExe -lc "pacman -S --noconfirm $packagesString"; `
+    $packages = 'mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'; `
+    $installCmd = "pacman -S --noconfirm $packages"; `
+    & $bashExe -l -c $installCmd; `
     if ($LASTEXITCODE -ne 0) { `
-        Write-Host "Package installation failed with exit code: $LASTEXITCODE"; `
-        exit 1; `
+        Write-Error "Package installation failed with exit code $LASTEXITCODE"; `
+        exit $LASTEXITCODE; `
     }; `
     Write-Host 'MSYS2 packages installed successfully.'
 
