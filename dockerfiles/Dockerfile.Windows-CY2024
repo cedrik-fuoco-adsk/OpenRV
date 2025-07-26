@@ -21,18 +21,18 @@ RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2023-05-2
 
 # Add MSYS2 to PATH and verify installation
 RUN Write-Host "Current PATH: $env:PATH"; `
-    $msys2Path = "C:\msys64"; `
+    $msys2Path = 'C:\msys64'; `
     Write-Host "Checking if MSYS2 directory exists at $msys2Path"; `
     if (-not (Test-Path $msys2Path)) { `
         Write-Error "MSYS2 directory not found at $msys2Path"; `
         exit 1; `
     }; `
-    $newPath = "$msys2Path\usr\bin;$msys2Path\mingw64\bin;$env:PATH"; `
+    $newPath = $msys2Path + '\usr\bin;' + $msys2Path + '\mingw64\bin;' + $env:PATH; `
     Write-Host "Setting new PATH: $newPath"; `
     $env:PATH = $newPath; `
     [Environment]::SetEnvironmentVariable('PATH', $newPath, [EnvironmentVariableTarget]::Machine); `
     Write-Host "Verifying MSYS2 installation..."; `
-    $bashPath = Join-Path $msys2Path "usr\bin\bash.exe"; `
+    $bashPath = Join-Path $msys2Path 'usr\bin\bash.exe'; `
     if (Test-Path $bashPath) { `
         Write-Host "MSYS2 bash found at $bashPath"; `
     } else { `
