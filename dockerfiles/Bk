@@ -50,7 +50,7 @@ RUN choco install cmake --version=$env:CMAKE_VERSION --allow-downgrade -y
 RUN choco install strawberryperl -y
 
 # Download and install MSYS2
-RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2023-05-26/msys2-x86_64-20230526.exe'; `
+RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2025-02-21/msys2-x86_64-20250221.exe'; `
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
     Invoke-WebRequest -Uri $url -OutFile 'msys2-installer.exe' -UseBasicParsing; `
     Start-Process -FilePath 'msys2-installer.exe' -ArgumentList 'in', '--confirm-command', '--accept-messages', '--root', 'C:\msys64' -Wait; `
@@ -58,18 +58,18 @@ RUN $url = 'https://github.com/msys2/msys2-installer/releases/download/2023-05-2
 
 # Add MSYS2 to PATH and verify installation
 RUN Write-Host "Current PATH: $env:PATH"; `
-    $msys2Path = "C:\msys64"; `
+    $msys2Path = 'C:\msys64'; `
     Write-Host "Checking if MSYS2 directory exists at $msys2Path"; `
     if (-not (Test-Path $msys2Path)) { `
         Write-Error "MSYS2 directory not found at $msys2Path"; `
         exit 1; `
     }; `
-    $newPath = "$msys2Path\usr\bin;$msys2Path\mingw64\bin;$env:PATH"; `
+    $newPath = $msys2Path + '\usr\bin;' + $msys2Path + '\mingw64\bin;' + $env:PATH; `
     Write-Host "Setting new PATH: $newPath"; `
     $env:PATH = $newPath; `
     [Environment]::SetEnvironmentVariable('PATH', $newPath, [EnvironmentVariableTarget]::Machine); `
     Write-Host "Verifying MSYS2 installation..."; `
-    $bashPath = Join-Path $msys2Path "usr\bin\bash.exe"; `
+    $bashPath = Join-Path $msys2Path 'usr\bin\bash.exe'; `
     if (Test-Path $bashPath) { `
         Write-Host "MSYS2 bash found at $bashPath"; `
     } else { `
@@ -77,52 +77,24 @@ RUN Write-Host "Current PATH: $env:PATH"; `
         exit 1; `
     }
 
-# Update MSYS2 and install required packages
-RUN Write-Host "Updating MSYS2..."; `
-    $msys2Path = "C:\msys64"; `
-    $bashExe = Join-Path $msys2Path "usr\bin\bash.exe"; `
-    Write-Host "Using bash at: $bashExe"; `
-    $updateCmd = 'pacman -Syu --noconfirm'; `
-    Write-Host "Running update command: $updateCmd"; `
-    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', $updateCmd -Wait -PassThru -NoNewWindow; `
-    if ($process.ExitCode -ne 0) { `
-        Write-Error "MSYS2 update failed with exit code $($process.ExitCode)"; `
-        exit 1; `
-    }; `
-    Write-Host "Installing MSYS2 packages..."; `
-    $packages = @( `
-        'mingw-w64-x86_64-autotools', `
-        'mingw-w64-x86_64-cmake', `
-        'mingw-w64-x86_64-cmake-cmcldeps', `
-        'mingw-w64-x86_64-glew', `
-        'mingw-w64-x86_64-libarchive', `
-        'mingw-w64-x86_64-make', `
-        'mingw-w64-x86_64-meson', `
-        'mingw-w64-x86_64-toolchain', `
-        'autoconf', `
-        'automake', `
-        'bison', `
-        'flex', `
-        'git', `
-        'libtool', `
-        'nasm', `
-        'p7zip', `
-        'patch', `
-        'unzip', `
-        'zip' `
-    ); `
-    $installCmd = "pacman -S --noconfirm $($packages -join ' ')"; `
-    Write-Host "Running install command: $installCmd"; `
-    $process = Start-Process -FilePath $bashExe -ArgumentList '-l', '-c', $installCmd -Wait -PassThru -NoNewWindow; `
-    if ($process.ExitCode -ne 0) { `
-        Write-Error "Package installation failed with exit code $($process.ExitCode)"; `
-        exit 1; `
-    }; `
-    Write-Host "MSYS2 packages installed successfully."
+# Install MSYS2 and update core packages
+RUN $msys2Path = 'C:\msys64'; `
+    $bashExe = Join-Path $msys2Path 'usr\bin\bash.exe'; `
+    Write-Host "Running core MSYS2 update..."; `
+    & $bashExe '-lc', 'pacman -Syu --noconfirm'; `
+    if ($LASTEXITCODE -ne 0) { throw 'Core update failed with exit code: ' + $LASTEXITCODE }
+
+# Second layer: re-run install with a fresh shell
+RUN $msys2Path = 'C:\msys64'; `
+    $bashExe = Join-Path $msys2Path 'usr\bin\bash.exe'; `
+    Write-Host "Installing MSYS2 packages"; `
+    & $bashExe '-lc', 'pacman -Sy --needed --noconfirm mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'; `
+    if ($LASTEXITCODE -ne 0) { throw 'Package install failed with exit code: ' + $LASTEXITCODE }; `
+    Write-Host 'MSYS2 packages installed successfully.'
 
 # Install aqt (Qt installer tool) via pip
 RUN & 'C:\Python310\python.exe' -m pip install --upgrade pip; `
-    & 'C:\Python310\python.exe' -m pip install aqt==3.2.*
+    & 'C:\Python310\python.exe' -m pip install aqtinstall
 
 # Install Qt 5.15.2 for VFX 2023 (default)
 RUN New-Item -ItemType Directory -Force -Path 'C:\Qt'; `
@@ -137,11 +109,25 @@ ENV PATH="C:\Program Files\CMake\bin;C:\Python310;C:\Python310\Scripts;C:\msys64
     ACLOCAL_PATH="C:\msys64\usr\share\aclocal" `
     RV_VFX_PLATFORM="CY2023"
 
-# Create a script to set up MSVC environment
-RUN $script = '@echo off' + [Environment]::NewLine + `
-    'call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"' + [Environment]::NewLine + `
-    'cmd /k'; `
-    $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII
+RUN $vcvarsPath = $null; `
+    if (Test-Path 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat') { `
+        $vcvarsPath = 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat'; `
+    } elseif (Test-Path 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat') { `
+        $vcvarsPath = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat'; `
+    } elseif (Test-Path 'C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat') { `
+        $vcvarsPath = 'C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat'; `
+    } elseif (Test-Path 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat') { `
+        $vcvarsPath = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat'; `
+    }; `
+    if ($vcvarsPath) { `
+        $script = '@echo off' + [Environment]::NewLine + 'call "' + $vcvarsPath + '"' + [Environment]::NewLine + 'cmd /k'; `
+        $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII; `
+        Write-Host "MSVC setup script created with path: $vcvarsPath"; `
+    } else { `
+        Write-Host 'Warning: vcvars64.bat not found. Creating placeholder script.'; `
+        $script = '@echo off' + [Environment]::NewLine + 'echo Visual Studio Build Tools not found' + [Environment]::NewLine + 'cmd /k'; `
+        $script | Out-File -FilePath 'C:\setup_msvc.bat' -Encoding ASCII; `
+    }
 
 # Create workspace directory
 RUN New-Item -ItemType Directory -Force -Path 'C:\workspace'
