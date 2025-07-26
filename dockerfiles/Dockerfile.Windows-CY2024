@@ -41,15 +41,17 @@ RUN Write-Host "Current PATH: $env:PATH"; `
     }
 
 # Update MSYS2 and install required packages
-RUN $msys2Path = 'C:\msys64'; `
-    $bashExe = Join-Path $msys2Path 'usr\bin\bash.exe'; `
-    Write-Host "Using bash at: $bashExe"; `
-    & $bashExe -l -c "pacman -Syu --noconfirm"; `
-    if ($LASTEXITCODE -ne 0) { throw 'MSYS2 update failed with exit code: ' + $LASTEXITCODE }; `
-    $packages = 'mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'; `
-    & $bashExe -l -c "pacman -S --noconfirm $packages"; `
-    if ($LASTEXITCODE -ne 0) { throw 'Package installation failed with exit code: ' + $LASTEXITCODE }; `
-    Write-Host 'MSYS2 packages installed successfully.'
+RUN  $msys2Path = 'C:\msys64'; `
+     $bashExe   = Join-Path $msys2Path 'usr\bin\bash.exe'; `
+     Write-Host "Using bash at: $bashExe"; `
+     # ——— Update MSYS2 itself ———
+     & $bashExe '-l','-c','pacman -Syu --noconfirm'; `
+     if ($LASTEXITCODE -ne 0) { throw 'MSYS2 update failed with exit code: ' + $LASTEXITCODE }; `
+     # ——— Install packages ———
+     $packages = 'mingw-w64-x86_64-autotools mingw-w64-x86_64-cmake mingw-w64-x86_64-cmake-cmcldeps mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip'; `
+     & $bashExe '-l','-c',("pacman -S --noconfirm $packages"); `
+     if ($LASTEXITCODE -ne 0) { throw 'MSYS2 package install failed with exit code: ' + $LASTEXITCODE }; `
+     Write-Host 'MSYS2 packages installed successfully.'
 
 # Install aqt (Qt installer tool) via pip
 RUN & 'C:\Python310\python.exe' -m pip install --upgrade pip; `
