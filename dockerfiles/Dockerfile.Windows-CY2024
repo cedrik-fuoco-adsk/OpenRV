@@ -18,9 +18,9 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
     iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
 # Install Git via Chocolatey 
-RUN choco install git -y; `
-    choco install 7zip -y; `
-    choco install wget -y
+#RUN choco install git -y; `
+#    choco install 7zip -y; `
+#    choco install wget -y
 
 # Install Visual Studio Build Tools 2022 with specific MSVC components
 RUN choco install visualstudio2022buildtools -y; `
