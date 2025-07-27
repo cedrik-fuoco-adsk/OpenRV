@@ -30,6 +30,7 @@ jobs:
           OWNER: ${{ github.actor }}
         run: |
           dir
+          $currentPath = (Get-Location).Path
           docker pull ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows:20250725
           docker images
           docker run --rm `
