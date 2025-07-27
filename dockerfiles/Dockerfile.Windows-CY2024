@@ -117,7 +117,11 @@ ENV PATH="C:\Program Files\CMake\bin;C:\Python311;C:\Python311\Scripts;C:\msys64
     ACLOCAL_PATH="C:\msys64\usr\share\aclocal" `
     RV_VFX_PLATFORM="CY2024"
 
+SHELL ["C:\\msys64\\usr\\bin\\bash.exe", "-lc"]
+
+RUN ls -al
+
 # Copy requirements.txt and install Python dependencies
-COPY requirements.txt .
-RUN & 'C:\Python311\python.exe' -m pip install --user --upgrade -r requirements.txt
+#COPY requirements.txt .
+#RUN & 'C:\Python311\python.exe' -m pip install --user --upgrade -r requirements.txt
 
