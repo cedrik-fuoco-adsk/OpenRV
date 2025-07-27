@@ -34,8 +34,8 @@ jobs:
           docker pull ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows:20250725
           docker images
           docker run --rm `
-            -v "${currentPath}:D:\workspace" `
-            -w "D:\workspace" `
+            -v "${currentPath}:C:\workspace" `
+            -w "C:\workspace" `
             ${{ env.BUILDPACK_IMAGE }} `
             powershell -Command @"
               Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
