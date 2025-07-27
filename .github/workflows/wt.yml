@@ -29,47 +29,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.actor }}
         run: |
-          echo "# GitHub Package Images Report" >> $GITHUB_STEP_SUMMARY
-          echo "Repository: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-          echo "Generated: $(date -u)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-
-          # Function to convert bytes to human readable format
-          convert_bytes() {
-            local bytes=$1
-            if [ $bytes -eq 0 ]; then
-              echo "0 B"
-            elif [ $bytes -lt 1024 ]; then
-              echo "${bytes} B"
-            elif [ $bytes -lt 1048576 ]; then
-              echo "$(( bytes / 1024 )) KB"
-            elif [ $bytes -lt 1073741824 ]; then
-              echo "$(( bytes / 1048576 )) MB"
-            else
-              echo "$(( bytes / 1073741824 )) GB"
-            fi
-          }
-          
-          # Get all packages for the repository owner
-          echo "Fetching packages for owner: $OWNER"
-          packages=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/users/$OWNER/packages?package_type=container&per_page=100")
-          
-          if [ "$(echo "$packages" | jq '. | length')" -eq 0 ]; then
-            echo "No container packages found for $OWNER"
-            echo "## No Packages Found" >> $GITHUB_STEP_SUMMARY
-            echo "No container packages were found for this repository owner." >> $GITHUB_STEP_SUMMARY
-            exit 0
-          fi
-
-          echo "## Container Images" >> $GITHUB_STEP_SUMMARY
-          echo "| Package Name | Version/Tag | Size | Created | Downloads |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------------|-------------|------|---------|-----------|" >> $GITHUB_STEP_SUMMARY
-          
-          total_size=0
-          package_count=0
-          
-          # Process each package
-          echo "$packages"
+          docker pull ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows:20250725
+          docker images
