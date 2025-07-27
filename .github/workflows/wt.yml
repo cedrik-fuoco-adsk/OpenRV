@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   
 env:
-  IMAGE: ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows
+  BUILDPACK_IMAGE: ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows:20250725
 
 jobs:
   build:
@@ -30,5 +30,12 @@ jobs:
           OWNER: ${{ github.actor }}
         run: |
           dir
-          #docker pull ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows:20250725
+          docker pull ghcr.io/cedrik-fuoco-adsk/openrv-buildpack-windows:20250725
           docker images
+          docker run --rm `
+            -v "${currentPath}:D:\workspace" `
+            -w "D:\workspace" `
+            ${{ env.BUILDPACK_IMAGE }} `
+            powershell -Command @"
+              ls
+            "@
