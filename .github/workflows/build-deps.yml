@@ -94,13 +94,6 @@ jobs:
         run: |
           python -c "import sys; print(sys.executable)"
 
-      - name: Cache CMake for Windows
-        uses: actions/cache@v4
-        id: windows-cmake-cache
-        with:
-          path: "C:/Program Files/CMake"
-          key: ${{ runner.os }}-cmake-${{ matrix.cmake-version }}
-
       - name: Install CMake ${{ matrix.cmake-version }} with chocolatey
         if: steps.windows-cmake-cache.outputs.cache-hit != 'true'
         run: |
