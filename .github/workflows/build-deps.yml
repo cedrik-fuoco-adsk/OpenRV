@@ -65,6 +65,10 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install MSVC components (alternative)
+        run: |
+          winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Component.VC.${{ matrix.msvc-component }} --add Microsoft.VisualStudio.Component.VC.1${{ matrix.msvc-component }}.Spectre --quiet --wait"
+
       - name: Install MSVC components ${{ matrix.msvc-component }}
         run: |
           Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
