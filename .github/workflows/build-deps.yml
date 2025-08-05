@@ -48,7 +48,7 @@ jobs:
       matrix:
         include:
           # VFX2024
-          - os: "windows-2022"
+          - os: "windows-2025"
             arch-type: "x86_64"
             build-type: "Release"
             qt-version: "6.5.3"
