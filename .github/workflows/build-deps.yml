@@ -64,110 +64,20 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
         with:
           submodules: recursive
-          
+
       - name: Install MSVC components ${{ matrix.msvc-component }}
         run: |
-          # Kill any existing VS installer processes
-          Get-Process -Name "vs_installer*" -ErrorAction SilentlyContinue | Stop-Process -Force
-          Get-Process -Name "setup*" -ErrorAction SilentlyContinue | Stop-Process -Force
-          
-          # Wait a moment for processes to fully terminate
-          Start-Sleep -Seconds 5
-          
           Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
           $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-          $componentsToAdd = @(
+          $componentsToRemove= @(
             "Microsoft.VisualStudio.Component.VC.${{ matrix.msvc-component }}"
             "Microsoft.VisualStudio.Component.VC.${{ matrix.msvc-component }}.Spectre"
           )
-          
-          # Build arguments properly as array
-          $Arguments = @(
-            'modify'
-            '--installPath'
-            $InstallPath
-            '--quiet'
-            '--norestart'
-            '--nocache'
-            '--wait'
-          )
-          
-          # Add components to arguments
-          foreach ($component in $componentsToAdd) {
-            $Arguments += '--add'
-            $Arguments += $component
-          }
-          
-          Write-Host "Running VS Installer with arguments: $($Arguments -join ' ')"
-          
-          # Function to run installer with timeout
-          function Invoke-VSInstaller {
-            param($Arguments, $TimeoutMinutes = 30)
-            
-            try {
-              $process = Start-Process -FilePath ".\vs_installer.exe" -ArgumentList $Arguments -Wait -PassThru -NoNewWindow -RedirectStandardOutput "vs_output.log" -RedirectStandardError "vs_error.log"
-              
-              # Check if process is still running after expected completion
-              if ($process.HasExited) {
-                Write-Host "VS Installer completed with exit code: $($process.ExitCode)"
-                
-                # Show output logs for debugging
-                if (Test-Path "vs_output.log") {
-                  Write-Host "=== VS Installer Output ==="
-                  Get-Content "vs_output.log"
-                }
-                if (Test-Path "vs_error.log") {
-                  Write-Host "=== VS Installer Errors ==="
-                  Get-Content "vs_error.log"
-                }
-                
-                return $process.ExitCode
-              } else {
-                Write-Warning "VS Installer process did not exit properly"
-                return -1
-              }
-            } catch {
-              Write-Error "Failed to start VS Installer: $($_.Exception.Message)"
-              return -1
-            }
-          }
-          
-          # First attempt
-          Write-Host "First installation attempt..."
-          $exitCode1 = Invoke-VSInstaller -Arguments $Arguments
-          
-          if ($exitCode1 -eq 0) {
-            Write-Host "First attempt successful"
-          } else {
-            Write-Warning "First attempt failed with exit code: $exitCode1"
-            
-            # Wait and kill any hanging processes
-            Start-Sleep -Seconds 10
-            Get-Process -Name "vs_installer*" -ErrorAction SilentlyContinue | Stop-Process -Force
-            Get-Process -Name "setup*" -ErrorAction SilentlyContinue | Stop-Process -Force
-            Start-Sleep -Seconds 5
-            
-            # Second attempt
-            Write-Host "Second installation attempt..."
-            $exitCode2 = Invoke-VSInstaller -Arguments $Arguments
-            
-            if ($exitCode2 -ne 0) {
-              Write-Error "Both installation attempts failed. Exit codes: $exitCode1, $exitCode2"
-              
-              # Show system information for debugging
-              Write-Host "=== System Information ==="
-              Get-WmiObject -Class Win32_OperatingSystem | Select-Object Caption, Version, FreePhysicalMemory, TotalVisibleMemorySize
-              Get-Process | Where-Object {$_.ProcessName -like "*visual*" -or $_.ProcessName -like "*msbuild*"} | Select-Object ProcessName, Id, CPU, WorkingSet
-              
-              exit 1
-            } else {
-              Write-Host "Second attempt successful"
-            }
-          }
-          
-          Write-Host "MSVC components installation completed successfully"
-        shell: powershell
-        timeout-minutes: 20
+          [string]$workloadArgs = $componentsToRemove | ForEach-Object {" --add " +  $_}
+          $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
+          # should be run twice
+          $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
           
       - name: Set up MSVC ${{ matrix.msvc-compiler }}
         uses: ilammy/msvc-dev-cmd@v1
