@@ -64,10 +64,10 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
         with:
           submodules: recursive
-
-      - name: Install MSVC components (alternative)
+          
+      - name: Install MSVC components  
         run: |
-          winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Component.VC.${{ matrix.msvc-component }} --add Microsoft.VisualStudio.Component.VC.1${{ matrix.msvc-component }}.Spectre --quiet --wait"
+          winget install Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements --override "--add Microsoft.VisualStudio.Component.VC.${{ matrix.msvc-component }} --quiet --wait"
 
       - name: Install MSVC components ${{ matrix.msvc-component }}
         run: |
