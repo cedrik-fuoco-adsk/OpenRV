@@ -99,6 +99,18 @@ class OpenRVBase:
         # Override imath version for other dependencies.
         self.requires("imath/3.1.6", force=True, options={"shared": True})
 
+        self.requires(
+            "python/3.11.9@openrv",
+            options={
+                # These options are the default for the vfx_platform 2024.
+                "vfx_platform": "2024",
+                "shared": True,
+                "optimizations": True,
+                "with_tkinter": True,
+                "with_ssl": True,
+            },
+        )
+
     def generate(self):
         buildenv = VirtualBuildEnv(self)
         buildenv.generate()

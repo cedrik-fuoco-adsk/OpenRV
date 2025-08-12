@@ -1,0 +1,17 @@
+# Placeholder patch for Python 3.11 OpenSSL props integration
+# This patch would modify PCBuild/openssl.props for OpenSSL integration
+# 
+# Based on the original patch from OpenRV's cmake/dependencies/patch/ directory
+# The actual patch content would need to be extracted from the original build system
+
+--- a/PCBuild/openssl.props.orig
++++ b/PCBuild/openssl.props
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <PropertyGroup Label="UserMacros">
+-    <opensslDir>$(ExternalsDir)openssl-1.1.1k\</opensslDir>
++    <opensslDir>$(OPENSSL_DIR)\</opensslDir>
+   </PropertyGroup>
+   <PropertyGroup>
+     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>

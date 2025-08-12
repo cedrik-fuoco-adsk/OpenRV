@@ -1,0 +1,17 @@
+# Placeholder patch for Python 3.11 python.props integration  
+# This patch would modify PCBuild/python.props for build configuration
+#
+# Based on the original patch from OpenRV's cmake/dependencies/patch/ directory
+# The actual patch content would need to be extracted from the original build system
+
+--- a/PCBuild/python.props.orig
++++ b/PCBuild/python.props  
+@@ -20,7 +20,7 @@
+     <OutDir>$(SolutionDir)$(ArchName)\</OutDir>
+     <IntDir>$(SolutionDir)$(ArchName)-temp\$(ProjectName)\</IntDir>
+     <TargetName>$(ProjectName)</TargetName>
+-    <SuppressStartupBanner>true</SuppressStartupBanner>
++    <SuppressStartupBanner>false</SuppressStartupBanner>
+   </PropertyGroup>
+   <ItemDefinitionGroup>
+     <ClCompile>

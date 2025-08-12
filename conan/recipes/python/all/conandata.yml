@@ -1,0 +1,14 @@
+sources:
+  "3.10.13":
+    url: "https://github.com/python/cpython/archive/refs/tags/v3.10.13.zip"
+    md5: "21b32503f31386b37f0c42172dfe5637"
+  "3.11.9":
+    url: "https://github.com/python/cpython/archive/refs/tags/v3.11.9.zip" 
+    md5: "392eccd4386936ffcc46ed08057db3e7"
+
+patches:
+  "3.11.9":
+    - patch_file: "patches/python-3.11-openssl.patch"
+      base_path: "."
+      patch_description: "OpenSSL integration patches for Windows"
+      patch_type: "portability"
