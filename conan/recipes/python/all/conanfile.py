@@ -139,7 +139,7 @@ class PythonConan(ConanFile):
             if self.options.vfx_platform == "2023":
                 return "lib"
             elif self.options.vfx_platform == "2024":
-                return "lib64"
+                return "lib"
             return "lib"
 
     def _get_python_version_short(self):
