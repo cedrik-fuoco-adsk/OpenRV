@@ -99,6 +99,8 @@ class OpenRVBase:
         # Override imath version for other dependencies.
         self.requires("imath/3.1.6", force=True, options={"shared": True})
 
+        # Python ported from make_python.py.
+        # This package is customized for RV.
         self.requires(
             "python/3.11.9@openrv",
             options={
