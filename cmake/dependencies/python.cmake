@@ -70,6 +70,8 @@ if(NOT Python_VERSION VERSION_EQUAL "${_python3_version}")
     message(WARNING "Found Python ${Python_VERSION}, but expected ${_python3_version}")
 endif()
 
+CONAN_PRINT_TARGET_VARIABLES("Python")
+
 # Set up variables for compatibility with the rest of the build system
 SET(_python3_executable ${Python_EXECUTABLE})
 SET(_include_dir ${Python_INCLUDE_DIRS})
