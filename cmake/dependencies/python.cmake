@@ -74,7 +74,7 @@ CONAN_PRINT_TARGET_VARIABLES("Python")
 
 # Set up variables for compatibility with the rest of the build system
 SET(_include_dir ${Python_INCLUDE_DIRS})
-SET(_python3_executable "${Python_INCLUDE_DIRS}/../../python")
+SET(_python3_executable "${Python_INCLUDE_DIRS}/../../bin/python3")
 SET(_python3_lib "${Python_INCLUDE_DIRS}/../../lib")
 
 
