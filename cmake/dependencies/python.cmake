@@ -73,75 +73,9 @@ endif()
 CONAN_PRINT_TARGET_VARIABLES("Python")
 
 # Set up variables for compatibility with the rest of the build system
-#SET(_python3_executable ${Python_EXECUTABLE})
-#SET(_include_dir ${Python_INCLUDE_DIRS})
-#SET(_python3_lib ${Python_LIBRARIES})
-IF(RV_TARGET_WINDOWS)
-  IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-    SET(PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG
-        "_d"
-    )
-  ELSE()
-    SET(PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG
-        ""
-    )
-  ENDIF()
-  SET(_python_name
-      python${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR}${PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG}
-  )
-  SET(_include_dir
-      ${_install_dir}/include
-  )
-  SET(_bin_dir
-      ${_install_dir}/bin
-  )
-  SET(_lib_dir
-      ${_install_dir}/libs
-  )
-  SET(_python3_lib_name
-      ${_python_name}${CMAKE_SHARED_LIBRARY_SUFFIX}
-  )
-  SET(_python3_lib
-      ${_bin_dir}/${_python3_lib_name}
-  )
-  SET(_python3_implib
-      ${_lib_dir}/${_python_name}${CMAKE_IMPORT_LIBRARY_SUFFIX}
-  )
-  SET(_python3_executable
-      ${_bin_dir}/python${PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG}.exe
-  )
-
-  # When building in Debug, we need the Release name also: see below for add_custom_command.
-  SET(_python_release_libname
-      python${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR}${CMAKE_STATIC_LIBRARY_SUFFIX}
-  )
-  SET(_python_release_libpath
-      ${_lib_dir}/${_python_release_libname}
-  )
-
-  SET(_python_release_in_bin_libpath
-      ${_bin_dir}/${_python_release_libname}
-  )
-ELSE() # Not WINDOWS
-  SET(_python_name
-      python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}
-  )
-  SET(_include_dir
-      ${_install_dir}/include/${_python_name}
-  )
-  SET(_lib_dir
-      ${_install_dir}/lib
-  )
-  SET(_python3_lib_name
-      ${CMAKE_SHARED_LIBRARY_PREFIX}${_python_name}${CMAKE_SHARED_LIBRARY_SUFFIX}
-  )
-  SET(_python3_lib
-      ${_lib_dir}/${_python3_lib_name}
-  )
-  SET(_python3_executable
-      ${_install_dir}/bin/python3
-  )
-ENDIF()
+SET(_include_dir ${Python_INCLUDE_DIRS})
+SET(_python3_executable "${Python_INCLUDE_DIRS}/../../python3")
+SET(_python3_lib "${Python_INCLUDE_DIRS}/../../lib")
 
 # Set up install directory for staging
 SET(_install_dir
@@ -402,7 +336,6 @@ ELSE()
   ADD_CUSTOM_COMMAND(
     COMMENT "Installing ${_python3_target}'s include and libs into staging area"
     OUTPUT ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_STDLIB} ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable} ${RV_STAGE_BIN_DIR}/
     COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib} ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
