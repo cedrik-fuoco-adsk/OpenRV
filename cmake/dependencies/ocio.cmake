@@ -166,7 +166,7 @@ IF(NOT RV_TARGET_WINDOWS)
     SOURCE_DIR ${_source_dir}
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
-    DEPENDS Boost::headers RV_DEPS_PYTHON3 Imath::Imath ZLIB::ZLIB
+    DEPENDS Boost::headers Python::Python Imath::Imath ZLIB::ZLIB
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
     BUILD_COMMAND ${_cmake_build_command}
     INSTALL_COMMAND ${_cmake_install_command}
@@ -260,7 +260,7 @@ ELSE() # Windows
     SOURCE_DIR ${_source_dir}
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
-    DEPENDS Boost::headers RV_DEPS_PYTHON3 Imath::Imath ZLIB::ZLIB EXPAT::EXPAT
+    DEPENDS Boost::headers Python::Python Imath::Imath ZLIB::ZLIB EXPAT::EXPAT
     PATCH_COMMAND 
       python3 ${_pyopencolorio_patch_script_path} ${_pyopencolorio_cmakelists_path}
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
