@@ -57,27 +57,25 @@ RV_VFX_SET_VARIABLE(
 RV_VFX_SET_VARIABLE(_pyside_download_hash CY2023 "87841aaced763b6b52e9b549e31a493f" CY2024 "515d3249c6e743219ff0d7dd25b8c8d8")
 
 # Find Python using find_package instead of building from source
-SET(Python_FIND_STRATEGY VERSION)
-SET(Python_FIND_UNVERSIONED_NAMES FIRST)
+SET(Python_FIND_STRATEGY
+    VERSION
+)
+SET(Python_FIND_UNVERSIONED_NAMES
+    FIRST
+)
 
 # Look for the specific version we need
-find_package(Python ${RV_DEPS_PYTHON_VERSION_SHORT} EXACT REQUIRED 
-    COMPONENTS Interpreter Development.Module Development.Embed
+FIND_PACKAGE(
+  Python ${RV_DEPS_PYTHON_VERSION_SHORT} EXACT REQUIRED
+  COMPONENTS Interpreter Development.Module Development.Embed
 )
 
 # Verify we found the right version
-if(NOT Python_VERSION VERSION_EQUAL "${_python3_version}")
-    message(WARNING "Found Python ${Python_VERSION}, but expected ${_python3_version}")
-endif()
+IF(NOT Python_VERSION VERSION_EQUAL "${_python3_version}")
+  MESSAGE(WARNING "Found Python ${Python_VERSION}, but expected ${_python3_version}")
+ENDIF()
 
 CONAN_PRINT_TARGET_VARIABLES("Python")
-
-# Set up variables for compatibility with the rest of the build system
-SET(_include_dir ${Python_INCLUDE_DIRS})
-SET(_python3_executable "${Python_INCLUDE_DIRS}/../../bin/python3")
-SET(_python3_lib "${Python_INCLUDE_DIRS}/../../lib")
-
-
 
 # Set up install directory for staging
 SET(_install_dir
@@ -90,21 +88,29 @@ SET(_build_dir
 # Windows-specific library naming
 IF(RV_TARGET_WINDOWS)
   IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-    SET(PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG "_d")
+    SET(PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG
+        "_d"
+    )
   ELSE()
-    SET(PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG "")
+    SET(PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG
+        ""
+    )
   ENDIF()
-  
+
   SET(_python_name
       python${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR}${PYTHON3_EXTRA_WIN_LIBRARY_SUFFIX_IF_DEBUG}
   )
   SET(_python3_lib_name
       ${_python_name}${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
-  
+
   # For staging purposes, we'll copy the found Python installation
-  SET(_bin_dir ${_install_dir}/bin)
-  SET(_lib_dir ${_install_dir}/libs)
+  SET(_bin_dir
+      ${_install_dir}/bin
+  )
+  SET(_lib_dir
+      ${_install_dir}/libs
+  )
 ELSE()
   SET(_python_name
       python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}
@@ -112,9 +118,33 @@ ELSE()
   SET(_python3_lib_name
       ${CMAKE_SHARED_LIBRARY_PREFIX}${_python_name}${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
-  
-  SET(_lib_dir ${_install_dir}/lib)
+
+  SET(_lib_dir
+      ${_install_dir}/lib
+  )
 ENDIF()
+
+# TODO: This should be done by Python recipe in Conan, but it isn't yet. Set up variables for compatibility with the rest of the build system
+SET(_include_dir
+    ${Python_INCLUDE_DIRS}
+)
+# Legacy variable for compatibility
+SET(_python3_executable
+    "${Python_INCLUDE_DIRS}/../../bin/python3"
+)
+SET(_python3_lib
+    "${Python_INCLUDE_DIRS}/../../lib/${_python3_lib_name}"
+)
+# Standard variables
+SET(Python3_EXECUTABLE
+    ${_python3_executable}
+)
+SET(Python3_LIBRARY
+    ${_python3_lib}
+)
+SET(Python3_ROOT
+    "${Python_INCLUDE_DIRS}/../.."
+)
 
 # OpenTimelineIO setup (Windows only)
 IF(RV_TARGET_WINDOWS)
@@ -169,7 +199,9 @@ ADD_CUSTOM_TARGET(
 # This is temporary until the patch gets into the official PyOpenGL repo.      #
 # ##############################################################################################################################################################
 # Only for Apple Intel. Windows and Linux uses the requirements.txt file to install PyOpenGL-accelerate.
-IF(APPLE AND RV_TARGET_APPLE_X86_64)
+IF(APPLE
+   AND RV_TARGET_APPLE_X86_64
+)
   MESSAGE(STATUS "Patching PyOpenGL and building PyOpenGL from source")
   SET(_patch_pyopengl_command
       patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/patch/pyopengl-accelerate.patch
@@ -198,8 +230,8 @@ IF(APPLE AND RV_TARGET_APPLE_X86_64)
 ENDIF()
 # ##############################################################################################################################################################
 
-# PySide build commands
-# TODO_QT: Maybe we could use something like NOT CY2023 since after 2023, it is Qt6 TODO_QT: Below code could be simplified, but for now it is faster to test.
+# PySide build commands TODO_QT: Maybe we could use something like NOT CY2023 since after 2023, it is Qt6 TODO_QT: Below code could be simplified, but for now
+# it is faster to test.
 IF(RV_VFX_PLATFORM STREQUAL CY2023)
   SET(_pyside_make_command_script
       "${PROJECT_SOURCE_DIR}/src/build/make_pyside.py"
@@ -223,7 +255,7 @@ IF(RV_VFX_PLATFORM STREQUAL CY2023)
   ENDIF()
 
   LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python_STDLIB})  # Use found Python stdlib
+  LIST(APPEND _pyside_make_command ${Python_STDLIB}) # Use found Python stdlib
   LIST(APPEND _pyside_make_command "--qt-dir")
   LIST(APPEND _pyside_make_command ${RV_DEPS_QT5_LOCATION})
   LIST(APPEND _pyside_make_command "--python-version")
@@ -251,7 +283,7 @@ ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
   ENDIF()
 
   LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python_STDLIB})  # Use found Python stdlib
+  LIST(APPEND _pyside_make_command ${Python_STDLIB}) # Use found Python stdlib
   LIST(APPEND _pyside_make_command "--qt-dir")
   LIST(APPEND _pyside_make_command ${RV_DEPS_QT6_LOCATION})
   LIST(APPEND _pyside_make_command "--python-version")
@@ -297,18 +329,19 @@ ENDIF()
 # Staging targets - copy Python installation to staging area
 IF(RV_TARGET_WINDOWS)
   SET(_copy_commands
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_STDLIB} ${RV_STAGE_LIB_DIR}
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR}
-      COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable} ${RV_STAGE_BIN_DIR}/
-      COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib} ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_STDLIB} ${RV_STAGE_LIB_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir}
+      ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable} ${RV_STAGE_BIN_DIR}/ COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib}
+      ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
   )
 
   IF(RV_VFX_CY2024)
     # Copy DLLs directory if it exists in the Python installation
     GET_FILENAME_COMPONENT(_python_root ${_python3_executable} DIRECTORY)
     GET_FILENAME_COMPONENT(_python_root ${_python_root} DIRECTORY)
-    SET(_python_dlls_dir ${_python_root}/DLLs)
-    
+    SET(_python_dlls_dir
+        ${_python_root}/DLLs
+    )
+
     IF(EXISTS ${_python_dlls_dir})
       LIST(
         APPEND
@@ -325,8 +358,7 @@ IF(RV_TARGET_WINDOWS)
 
   ADD_CUSTOM_COMMAND(
     COMMENT "Installing ${_python3_target}'s include and libs into staging area"
-    OUTPUT ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
-    ${_copy_commands}
+    OUTPUT ${RV_STAGE_BIN_DIR}/${_python3_lib_name} ${_copy_commands}
     DEPENDS ${${_python3_target}-requirements-flag} ${_build_flag_depends}
   )
 
