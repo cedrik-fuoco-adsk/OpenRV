@@ -54,7 +54,7 @@ ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
 ENDIF()
 
 INCLUDE(openssl) # Python3 requirement
-INCLUDE(python3)
+INCLUDE(python)
 INCLUDE(imgui)
 INCLUDE(nanobind)
 INCLUDE(pyimgui)
