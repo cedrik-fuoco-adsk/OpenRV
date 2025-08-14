@@ -137,12 +137,16 @@ SET(Python_INCLUDE_DIRS
 SET(_include_dir
     ${Python_INCLUDE_DIRS}
 )
+
+cmake_path(ABSOLUTE_PATH ${Python_INCLUDE_DIRS}/../../lib OUTPUT_VARIABLE Python_BIN_DIR)
+cmake_path(ABSOLUTE_PATH ${Python_INCLUDE_DIRS}/../../bin OUTPUT_VARIABLE Python_LIB_DIR)
+
 # Legacy variable for compatibility
 SET(_python3_executable
-    "${Python_INCLUDE_DIRS}/../../bin/python3"
+    "${Python_BIN_DIR}/python3"
 )
 SET(_python3_lib
-    "${Python_INCLUDE_DIRS}/../../lib/${_python3_lib_name}"
+    "${Python_LIB_DIR}/${_python3_lib_name}"
 )
 # Standard variables
 SET(Python_EXECUTABLE
@@ -343,8 +347,9 @@ ENDIF()
 # Staging targets - copy Python installation to staging area
 IF(RV_TARGET_WINDOWS)
   SET(_copy_commands
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory {_include_dir}/../../bin
-      ${RV_STAGE_BIN_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory {_include_dir}/../../lib ${RV_STAGE_BIN_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR} 
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_BIN_DIR ${RV_STAGE_BIN_DIR} 
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_LIB_DIR} ${RV_STAGE_LIB_DIR}
   )
 
   IF(RV_VFX_CY2024)
@@ -384,8 +389,8 @@ ELSE()
     COMMENT "Installing ${_target}'s include and libs into staging area"
     OUTPUT ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir}/../../bin ${RV_STAGE_BIN_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory {_include_dir}/../../lib ${RV_STAGE_LIB_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_BIN_DIR} ${RV_STAGE_BIN_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_LIB_DIR} ${RV_STAGE_LIB_DIR}
     DEPENDS ${${_target}-requirements-flag} ${_build_flag_depends}
   )
   ADD_CUSTOM_TARGET(
