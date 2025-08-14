@@ -128,7 +128,12 @@ ELSE()
   )
 ENDIF()
 
-# TODO: This should be done by Python recipe in Conan, but it isn't yet. Set up variables for compatibility with the rest of the build system
+# TODO: This should be done by Python recipe in Conan, but it isn't yet. Set up variables for compatibility with the rest of the build system Make
+# Python_INCLUDE_DIRS available in other CMake files.
+SET(Python_INCLUDE_DIRS
+    "${Python_INCLUDE_DIRS}"
+    CACHE INTERNAL "Python include directories" FORCE
+)
 SET(_include_dir
     ${Python_INCLUDE_DIRS}
 )
@@ -140,13 +145,13 @@ SET(_python3_lib
     "${Python_INCLUDE_DIRS}/../../lib/${_python3_lib_name}"
 )
 # Standard variables
-SET(Python3_EXECUTABLE
+SET(Python_EXECUTABLE
     ${_python3_executable}
 )
-SET(Python3_LIBRARY
+SET(Python_LIBRARY
     ${_python3_lib}
 )
-SET(Python3_ROOT
+SET(Python_ROOT
     "${Python_INCLUDE_DIRS}/../.."
 )
 
@@ -264,7 +269,7 @@ IF(RV_VFX_PLATFORM STREQUAL CY2023)
   ENDIF()
 
   LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python3_ROOT})
+  LIST(APPEND _pyside_make_command ${Python_ROOT})
   LIST(APPEND _pyside_make_command "--qt-dir")
   LIST(APPEND _pyside_make_command ${RV_DEPS_QT5_LOCATION})
   LIST(APPEND _pyside_make_command "--python-version")
@@ -292,7 +297,7 @@ ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
   ENDIF()
 
   LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python3_ROOT})
+  LIST(APPEND _pyside_make_command ${Python_ROOT})
   LIST(APPEND _pyside_make_command "--qt-dir")
   LIST(APPEND _pyside_make_command ${RV_DEPS_QT6_LOCATION})
   LIST(APPEND _pyside_make_command "--python-version")
@@ -338,8 +343,8 @@ ENDIF()
 # Staging targets - copy Python installation to staging area
 IF(RV_TARGET_WINDOWS)
   SET(_copy_commands
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable}
-      ${RV_STAGE_BIN_DIR}/ COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib} ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory {_include_dir}/../../bin
+      ${RV_STAGE_BIN_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory {_include_dir}/../../lib ${RV_STAGE_BIN_DIR}
   )
 
   IF(RV_VFX_CY2024)
@@ -379,8 +384,8 @@ ELSE()
     COMMENT "Installing ${_target}'s include and libs into staging area"
     OUTPUT ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable} ${RV_STAGE_BIN_DIR}/
-    COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib} ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir}/../../bin ${RV_STAGE_BIN_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory {_include_dir}/../../lib ${RV_STAGE_LIB_DIR}
     DEPENDS ${${_target}-requirements-flag} ${_build_flag_depends}
   )
   ADD_CUSTOM_TARGET(

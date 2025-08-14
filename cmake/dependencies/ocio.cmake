@@ -118,10 +118,10 @@ RV_VFX_SET_VARIABLE(_ocio_simd_options_str CY2023 "-DOCIO_USE_SSE=ON" CY2024 "-D
 LIST(APPEND _configure_options "${_ocio_simd_options_str}")
 
 # Ref.: https://cmake.org/cmake/help/latest/module/FindPython.html#hints
-LIST(APPEND _configure_options "-DPython_ROOT_DIR=${Python3_ROOT}")
+LIST(APPEND _configure_options "-DPython_ROOT_DIR=${Python_ROOT}")
 IF(NOT RV_TARGET_WINDOWS)
   SET(OCIO_PYTHON_PATH
-      ${Python3_EXECUTABLE}/../bin/python${RV_DEPS_PYTHON_VERSION_SHORT}
+      ${Python_INCLUDE_DIRS}/../../bin/python${RV_DEPS_PYTHON_VERSION_SHORT}
   )
   LIST(APPEND _configure_options "-DPython_EXECUTABLE=${OCIO_PYTHON_PATH}")
 ENDIF()
@@ -134,6 +134,8 @@ LIST(APPEND _configure_options "-DZLIB_ROOT=${RV_DEPS_ZLIB_ROOT_DIR}")
 
 # OCIO apps are not needed.
 LIST(APPEND _configure_options "-DOCIO_BUILD_APPS=OFF")
+
+MESSAGE(STATUS "Configure options: ${_configure_options}")
 
 IF(NOT RV_TARGET_WINDOWS)
   EXTERNALPROJECT_ADD(
@@ -192,13 +194,13 @@ ELSE() # Windows
     "-DZLIB_INCLUDE_DIR=${_zlib_include_dir}"
     "-Dexpat_ROOT=${RV_DEPS_EXPAT_ROOT_DIR}"
     "-DImath_DIR=${RV_DEPS_IMATH_ROOT_DIR}/lib/cmake/Imath"
-    "-DPython_ROOT=${Python3_ROOT}"
+    "-DPython_ROOT=${Python_ROOT}"
     # Mandatory param: OCIO CMake code finds Python.
-    "-DPython_LIBRARY=${Python3_LIBRARY}" # with this param
+    "-DPython_LIBRARY=${Python_LIBRARY}" # with this param
     # DRV_Python_LIBRARIES: A Patch RV created for PyOpenColorIO inside OCIO: Hardcode to Release since FindPython.cmake will find the Debug lib, which we don't
     # want and doesn't build.
-    "-DRV_Python_LIBRARIES=${Python3_LIBRARY}"
-    "-DPython_INCLUDE_DIR=${Python3_INCLUDE_DIRS}/.."
+    "-DRV_Python_LIBRARIES=${Python_LIBRARY}"
+    "-DPython_INCLUDE_DIR=${Python_INCLUDE_DIRS}/.."
     "-DOCIO_PYTHON_VERSION=${RV_DEPS_PYTHON_VERSION_SHORT}"
     "-DBUILD_SHARED_LIBS=ON"
     "-DOCIO_BUILD_PYTHON=ON"
@@ -217,9 +219,9 @@ ELSE() # Windows
 
   IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
     # Use debug Python executable.
-    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${Python3_EXECUTABLE_DEBUG}")
+    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${Python_EXECUTABLE_DEBUG}")
   ELSE()
-    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${Python3_EXECUTABLE}")
+    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${Python_EXECUTABLE}")
   ENDIF()
 
   LIST(APPEND _ocio_build_options "--build" "${_build_dir}" "--config" "${CMAKE_BUILD_TYPE}"
