@@ -138,8 +138,8 @@ SET(_include_dir
     ${Python_INCLUDE_DIRS}
 )
 
-cmake_path(ABSOLUTE_PATH ${Python_INCLUDE_DIRS}/../../lib OUTPUT_VARIABLE Python_BIN_DIR)
-cmake_path(ABSOLUTE_PATH ${Python_INCLUDE_DIRS}/../../bin OUTPUT_VARIABLE Python_LIB_DIR)
+cmake_path(SET Python_BIN_DIR ${Python_INCLUDE_DIRS}/../../lib)
+cmake_path(SET Python_LIB_DIR ${Python_INCLUDE_DIRS}/../../bin)
 
 # Legacy variable for compatibility
 SET(_python3_executable
