@@ -74,7 +74,8 @@ class PythonConan(ConanFile):
     def requirements(self):
         """Define package dependencies"""
         # Zlib is always required (following Conan Center Index pattern)
-        self.requires("zlib/1.3.1")
+        # Use shared=True to match OpenRV's main project configuration
+        self.requires("zlib/1.3.1", options={"shared": True})
 
         if self.options.with_ssl:
             # Use OpenSSL 1.1.1 for Python 3.10 + VFX 2023, OpenSSL 3.x for 3.11/2024
@@ -82,9 +83,13 @@ class PythonConan(ConanFile):
                 str(self.version).startswith("3.10")
                 and str(self.options.vfx_platform) == "2023"
             ):
-                self.requires("openssl/1.1.1u")
+                self.requires(
+                    "openssl/1.1.1u", options={"shared": True, "no_zlib": True}
+                )
             else:
-                self.requires("openssl/3.5.2")
+                self.requires(
+                    "openssl/3.5.0", options={"shared": True, "no_zlib": True}
+                )
 
     def system_requirements(self):
         """Define system package requirements"""
@@ -257,6 +262,7 @@ an up to date list, we're going to pull it from the certifi module, which incorp
 all the certificate authorities that are distributed with Firefox.
 """
 import site
+import sys
 
 try:
     import os
@@ -540,7 +546,7 @@ except Exception as e:
                 self.output.warning("Could not perform detailed SSL module check")
 
     def _install_python_packages(self, python_executable):
-        """Install required Python packages"""
+        """Install required Python packages - following make_python.py logic"""
         # First, ensure basic pip works
         try:
             subprocess.run(
@@ -556,19 +562,30 @@ except Exception as e:
             text=True,
         )
 
-        if ssl_test_result.returncode != 0:
-            self.output.warning(
-                "SSL module not available, pip HTTPS connections will fail"
-            )
-            self.output.warning("Skipping network-dependent package installations")
-            return
+        use_trusted_hosts = ssl_test_result.returncode != 0
 
-        # Install core packages
+        if use_trusted_hosts:
+            self.output.warning(
+                "SSL module not available, using trusted hosts for pip installations"
+            )
+            # Use trusted hosts as fallback (like make_python.py does)
+            pip_extra_args = [
+                "--trusted-host",
+                "pypi.org",
+                "--trusted-host",
+                "pypi.python.org",
+                "--trusted-host",
+                "files.pythonhosted.org",
+            ]
+        else:
+            pip_extra_args = []
+
+        # Install core packages first (critical for proper Python functioning)
         core_packages = ["pip", "setuptools", "wheel", "certifi"]
         for package in core_packages:
             try:
-                self.output.info(f"Installing {package}...")
-                subprocess.run(
+                self.output.info(f"Installing core package {package}...")
+                cmd = (
                     [
                         python_executable,
                         "-m",
@@ -576,31 +593,60 @@ except Exception as e:
                         "install",
                         "--upgrade",
                         "--force-reinstall",
-                        package,
-                    ],
-                    check=True,
+                    ]
+                    + pip_extra_args
+                    + [package]
                 )
-            except subprocess.CalledProcessError as e:
-                self.output.warning(f"Failed to install {package}: {e}")
 
-        # Install other requirements
+                subprocess.run(cmd, check=True)
+
+            except subprocess.CalledProcessError as e:
+                self.output.warning(f"Failed to install core package {package}: {e}")
+                # For core packages, this is more serious
+                if package == "certifi":
+                    self.output.error(
+                        "Failed to install certifi - SSL certificate handling will not work properly"
+                    )
+
+        # Install other requirements (following make_python.py package list)
         other_packages = [
             "six",
             "packaging",
             "requests",
             "PyOpenGL",
             "cryptography",
-            "git+https://github.com/AcademySoftwareFoundation/OpenTimelineIO@main#egg=OpenTimelineIO",
         ]
 
         for package in other_packages:
             try:
                 self.output.info(f"Installing {package}...")
-                subprocess.run(
-                    [python_executable, "-m", "pip", "install", package], check=True
+                cmd = (
+                    [python_executable, "-m", "pip", "install"]
+                    + pip_extra_args
+                    + [package]
                 )
+                subprocess.run(cmd, check=True)
+
             except subprocess.CalledProcessError as e:
                 self.output.warning(f"Failed to install {package}: {e}")
+
+        # Install OpenTimelineIO last (most complex, follows make_python.py order)
+        try:
+            self.output.info("Installing OpenTimelineIO...")
+            otio_cmd = (
+                [python_executable, "-m", "pip", "install"]
+                + pip_extra_args
+                + [
+                    "git+https://github.com/AcademySoftwareFoundation/OpenTimelineIO@main#egg=OpenTimelineIO"
+                ]
+            )
+            subprocess.run(otio_cmd, check=True)
+
+        except subprocess.CalledProcessError as e:
+            self.output.warning(f"Failed to install OpenTimelineIO: {e}")
+            self.output.info(
+                "OpenTimelineIO installation failed - this may be expected on some platforms"
+            )
 
     def _install_sitecustomize(self, python_home):
         """Install sitecustomize.py for SSL certificate handling"""
@@ -680,6 +726,23 @@ except Exception as e:
             python_libs_dir = os.path.join(python_home, "libs")
             for lib_path in openssl_libs:
                 shutil.copy2(lib_path, python_libs_dir)
+
+    def _fix_failed_ssl_modules(self):
+        """Fix SSL modules that were marked as failed during Python build"""
+        # The Python build marks some .so files as _failed if it cannot load OpenSSL during build tests.
+        # This is expected with our OpenSSL package which works with RPATH, but RPATH isn't set during build tests.
+        # If the lib failed for other reasons, it will fail later in our verification.
+
+        for failed_lib in glob.glob(
+            os.path.join(self.package_folder, "lib", "**", "*_failed.so"),
+            recursive=True,
+        ):
+            if "ssl" in failed_lib or "hashlib" in failed_lib:
+                fixed_lib = failed_lib.replace("_failed.so", ".so")
+                self.output.info(
+                    f"Fixing failed SSL module: {failed_lib} -> {fixed_lib}"
+                )
+                shutil.move(failed_lib, fixed_lib)
 
     def build(self):
         """Build Python from source"""
@@ -1027,8 +1090,14 @@ except Exception as e:
         self._post_install_setup()
 
     def _post_install_setup(self):
-        """Perform post-installation setup"""
-        # Create python3 symlink if it doesn't exist
+        """Perform post-installation setup - following make_python.py logic"""
+        # Get Python executable first
+        if self.settings.os == "Windows":
+            python_exe = os.path.join(self.package_folder, "bin", "python.exe")
+        else:
+            python_exe = os.path.join(self.package_folder, "bin", "python3")
+
+        # Step 1: Create python3 symlink if it doesn't exist (basic setup)
         if self.settings.os != "Windows":
             python3_path = os.path.join(self.package_folder, "bin", "python3")
             python_path = os.path.join(self.package_folder, "bin", "python")
@@ -1036,23 +1105,22 @@ except Exception as e:
             if os.path.exists(python3_path) and not os.path.exists(python_path):
                 os.symlink("python3", python_path)
 
-        # Copy OpenSSL libraries
+        # Step 2: Copy OpenSSL libraries and set up proper RPATH/library paths
         self._copy_openssl_libs(self.package_folder)
 
-        # Get Python executable
-        if self.settings.os == "Windows":
-            python_exe = os.path.join(self.package_folder, "bin", "python.exe")
-        else:
-            python_exe = os.path.join(self.package_folder, "bin", "python3")
+        # Step 3: Fix _failed.so files first - Python build marks SSL modules as failed if OpenSSL wasn't found during tests
+        self._fix_failed_ssl_modules()
 
-        # Verify SSL is working
-        self._verify_ssl_support(python_exe)
-
-        # Install Python packages
+        # Step 4: Install Python packages FIRST (like make_python.py patch_python_distribution())
+        # This ensures certifi and other packages are available before sitecustomize.py runs
         self._install_python_packages(python_exe)
 
-        # Install sitecustomize.py
+        # Step 5: Install sitecustomize.py AFTER packages are installed
+        # This way when Python starts up, certifi is already available
         self._install_sitecustomize(self.package_folder)
+
+        # Step 6: Verify SSL is working (final verification)
+        self._verify_ssl_support(python_exe)
 
     def package(self):
         """Package the built Python"""

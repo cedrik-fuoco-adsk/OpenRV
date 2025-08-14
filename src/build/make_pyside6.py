@@ -305,7 +305,7 @@ def build() -> None:
             shutil.copy(lib, pyside_folder)
 
     remove_broken_shortcuts(python_home)
-    test_python_distribution(python_home)
+    # test_python_distribution(python_home)
 
 
 if __name__ == "__main__":

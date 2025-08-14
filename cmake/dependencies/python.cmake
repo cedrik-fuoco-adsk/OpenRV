@@ -4,8 +4,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-SET(_python3_target
+SET(_target
     "RV_DEPS_PYTHON3"
+)
+
+SET(_find_target
+    Python
 )
 
 SET(_opentimelineio_target
@@ -66,7 +70,7 @@ SET(Python_FIND_UNVERSIONED_NAMES
 
 # Look for the specific version we need
 FIND_PACKAGE(
-  Python ${RV_DEPS_PYTHON_VERSION_SHORT} EXACT REQUIRED
+  ${_find_target} ${RV_DEPS_PYTHON_VERSION_SHORT} EXACT REQUIRED
   COMPONENTS Interpreter Development.Module Development.Embed
 )
 
@@ -79,10 +83,10 @@ CONAN_PRINT_TARGET_VARIABLES("Python")
 
 # Set up install directory for staging
 SET(_install_dir
-    ${RV_DEPS_BASE_DIR}/${_python3_target}/install
+    ${RV_DEPS_BASE_DIR}/${_target}/install
 )
 SET(_build_dir
-    ${RV_DEPS_BASE_DIR}/${_python3_target}/build
+    ${RV_DEPS_BASE_DIR}/${_target}/build
 )
 
 # Windows-specific library naming
@@ -146,6 +150,11 @@ SET(Python3_ROOT
     "${Python_INCLUDE_DIRS}/../.."
 )
 
+CONAN_SETUP_STAGING(${_target} ${_find_target})
+
+# Add dependencies to the main target so it actually does something when built
+ADD_DEPENDENCIES(${_target} ${_target}-stage-target)
+
 # OpenTimelineIO setup (Windows only)
 IF(RV_TARGET_WINDOWS)
   FETCHCONTENT_DECLARE(
@@ -177,22 +186,22 @@ SET(_requirements_install_command
 )
 
 # Create a custom target for Python requirements installation
-SET(${_python3_target}-requirements-flag
-    ${_install_dir}/${_python3_target}-requirements-flag
+SET(${_target}-requirements-flag
+    ${_install_dir}/${_target}-requirements-flag
 )
 
 ADD_CUSTOM_COMMAND(
   COMMENT "Installing requirements from ${_requirements_file}"
-  OUTPUT ${${_python3_target}-requirements-flag}
+  OUTPUT ${${_target}-requirements-flag}
   COMMAND ${CMAKE_COMMAND} -E make_directory ${_install_dir}
   COMMAND ${_requirements_install_command}
-  COMMAND ${CMAKE_COMMAND} -E touch ${${_python3_target}-requirements-flag}
+  COMMAND ${CMAKE_COMMAND} -E touch ${${_target}-requirements-flag}
   DEPENDS ${_requirements_file}
 )
 
 ADD_CUSTOM_TARGET(
-  ${_python3_target}-requirements
-  DEPENDS ${${_python3_target}-requirements-flag}
+  ${_target}-requirements
+  DEPENDS ${${_target}-requirements-flag}
 )
 
 # ##############################################################################################################################################################
@@ -220,7 +229,7 @@ IF(APPLE
     BUILD_COMMAND "${_python3_executable}" -m pip install ./accelerate
     INSTALL_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/pyopengl_accelerate/.pip_installed
     BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/pyopengl_accelerate/setup.py
-    DEPENDS ${_python3_target}-requirements
+    DEPENDS ${_target}-requirements
     BUILD_IN_SOURCE TRUE
     USES_TERMINAL_BUILD TRUE
   )
@@ -255,7 +264,7 @@ IF(RV_VFX_PLATFORM STREQUAL CY2023)
   ENDIF()
 
   LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python_STDLIB}) # Use found Python stdlib
+  LIST(APPEND _pyside_make_command ${Python3_ROOT})
   LIST(APPEND _pyside_make_command "--qt-dir")
   LIST(APPEND _pyside_make_command ${RV_DEPS_QT5_LOCATION})
   LIST(APPEND _pyside_make_command "--python-version")
@@ -283,7 +292,7 @@ ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
   ENDIF()
 
   LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python_STDLIB}) # Use found Python stdlib
+  LIST(APPEND _pyside_make_command ${Python3_ROOT})
   LIST(APPEND _pyside_make_command "--qt-dir")
   LIST(APPEND _pyside_make_command ${RV_DEPS_QT6_LOCATION})
   LIST(APPEND _pyside_make_command "--python-version")
@@ -304,7 +313,7 @@ IF(RV_VFX_PLATFORM STREQUAL CY2023)
             ${rv_deps_pyside2_SOURCE_DIR}/build_scripts/platforms/windows_desktop.py
     COMMAND ${_pyside_make_command} --prepare --build
     COMMAND ${CMAKE_COMMAND} -E touch ${${_pyside_target}-build-flag}
-    DEPENDS ${_pyside_make_command_script} ${${_python3_target}-requirements-flag}
+    DEPENDS ${_pyside_make_command_script} ${${_target}-requirements-flag}
     USES_TERMINAL
   )
 
@@ -317,7 +326,7 @@ ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
     OUTPUT ${${_pyside_target}-build-flag}
     COMMAND ${_pyside_make_command} --prepare --build
     COMMAND ${CMAKE_COMMAND} -E touch ${${_pyside_target}-build-flag}
-    DEPENDS ${_pyside_make_command_script} ${${_python3_target}-requirements-flag}
+    DEPENDS ${_pyside_make_command_script} ${${_target}-requirements-flag}
     USES_TERMINAL
   )
 
@@ -329,9 +338,8 @@ ENDIF()
 # Staging targets - copy Python installation to staging area
 IF(RV_TARGET_WINDOWS)
   SET(_copy_commands
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_STDLIB} ${RV_STAGE_LIB_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir}
-      ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable} ${RV_STAGE_BIN_DIR}/ COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib}
-      ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable}
+      ${RV_STAGE_BIN_DIR}/ COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib} ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
   )
 
   IF(RV_VFX_CY2024)
@@ -357,26 +365,26 @@ IF(RV_TARGET_WINDOWS)
   ENDIF()
 
   ADD_CUSTOM_COMMAND(
-    COMMENT "Installing ${_python3_target}'s include and libs into staging area"
+    COMMENT "Installing ${_target}'s include and libs into staging area"
     OUTPUT ${RV_STAGE_BIN_DIR}/${_python3_lib_name} ${_copy_commands}
-    DEPENDS ${${_python3_target}-requirements-flag} ${_build_flag_depends}
+    DEPENDS ${${_target}-requirements-flag} ${_build_flag_depends}
   )
 
   ADD_CUSTOM_TARGET(
-    ${_python3_target}-stage-target ALL
+    ${_target}-stage-target ALL
     DEPENDS ${RV_STAGE_BIN_DIR}/${_python3_lib_name}
   )
 ELSE()
   ADD_CUSTOM_COMMAND(
-    COMMENT "Installing ${_python3_target}'s include and libs into staging area"
+    COMMENT "Installing ${_target}'s include and libs into staging area"
     OUTPUT ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${_python3_executable} ${RV_STAGE_BIN_DIR}/
     COMMAND ${CMAKE_COMMAND} -E copy ${_python3_lib} ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
-    DEPENDS ${${_python3_target}-requirements-flag} ${_build_flag_depends}
+    DEPENDS ${${_target}-requirements-flag} ${_build_flag_depends}
   )
   ADD_CUSTOM_TARGET(
-    ${_python3_target}-stage-target ALL
+    ${_target}-stage-target ALL
     DEPENDS ${RV_STAGE_LIB_DIR}/${_python3_lib_name}
   )
 ENDIF()
@@ -384,7 +392,7 @@ ENDIF()
 # Python::Python target is already created by Conan, so we just add it to the deps list
 LIST(APPEND RV_DEPS_LIST Python::Python)
 
-ADD_DEPENDENCIES(dependencies ${_python3_target}-stage-target)
+ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
 
 # Set cache variables for compatibility
 SET(RV_DEPS_PYTHON3_VERSION

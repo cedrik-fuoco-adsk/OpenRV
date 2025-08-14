@@ -87,7 +87,9 @@ class OpenRVBase:
         )
 
         # Override openssl version for ffmpeg, but do not use it for OpenRV right now.
-        self.requires("openssl/3.5.0", force=True, options={"shared": True, "no_zlib": True})
+        self.requires(
+            "openssl/3.5.0", force=True, options={"shared": True, "no_zlib": True}
+        )
 
         # Override boost version for other dependencies.
         self.requires(
@@ -172,7 +174,7 @@ class OpenRVBase:
 
         cmake = CMake(self)
         cmake.configure()
-        cmake.build(target="main_executable")
+        cmake.build(target="RV_DEPS_PYTHON3")
 
 
 class PyReq(ConanFile):
