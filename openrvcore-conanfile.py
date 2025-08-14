@@ -174,7 +174,7 @@ class OpenRVBase:
 
         cmake = CMake(self)
         cmake.configure()
-        cmake.build(target="RV_DEPS_PYTHON3")
+        cmake.build(target="main_executable")
 
 
 class PyReq(ConanFile):
