@@ -16,7 +16,7 @@ SET(_opentimelineio_target
     "RV_DEPS_OPENTIMELINEIO"
 )
 
-RV_VFX_SET_VARIABLE(_pyside_target CY2023 "RV_DEPS_PYSIDE2" CY2024 "RV_DEPS_PYSIDE6")
+# PySide target variables removed - now handled by Conan
 
 SET(PYTHON_VERSION_MAJOR
     3
@@ -41,7 +41,7 @@ SET(_opentimelineio_version
     "0.16.0"
 )
 
-RV_VFX_SET_VARIABLE(_pyside_version CY2023 "5.15.10" CY2024 "6.5.3")
+# PySide version variables removed - now handled by Conan
 
 SET(_opentimelineio_download_url
     "https://github.com/AcademySoftwareFoundation/OpenTimelineIO"
@@ -50,15 +50,9 @@ SET(_opentimelineio_git_tag
     "v${_opentimelineio_version}"
 )
 
-RV_VFX_SET_VARIABLE(
-  _pyside_archive_url
-  CY2023
-  "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside2/PySide2-${_pyside_version}-src/pyside-setup-opensource-src-${_pyside_version}.zip"
-  CY2024
-  "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside6/PySide6-${_pyside_version}-src/pyside-setup-everywhere-src-${_pyside_version}.zip"
-)
+# PySide archive URL variables removed - now handled by Conan
 
-RV_VFX_SET_VARIABLE(_pyside_download_hash CY2023 "87841aaced763b6b52e9b549e31a493f" CY2024 "515d3249c6e743219ff0d7dd25b8c8d8")
+# PySide download hash variables removed - now handled by Conan
 
 # Find Python using find_package instead of building from source
 SET(Python_FIND_STRATEGY
@@ -74,12 +68,15 @@ FIND_PACKAGE(
   COMPONENTS Interpreter Development.Module Development.Embed
 )
 
+FIND_PACKAGE(pyside6 CONFIG REQUIRED)
+
 # Verify we found the right version
 IF(NOT Python_VERSION VERSION_EQUAL "${_python3_version}")
   MESSAGE(WARNING "Found Python ${Python_VERSION}, but expected ${_python3_version}")
 ENDIF()
 
 CONAN_PRINT_TARGET_VARIABLES("Python")
+CONAN_PRINT_TARGET_VARIABLES("pyside6")
 
 # Set up install directory for staging
 SET(_install_dir
@@ -138,8 +135,8 @@ SET(_include_dir
     ${Python_INCLUDE_DIRS}
 )
 
-cmake_path(SET Python_LIB_DIR ${Python_INCLUDE_DIRS}/../../lib)
-cmake_path(SET Python_BIN_DIR ${Python_INCLUDE_DIRS}/../../bin)
+CMAKE_PATH(SET Python_LIB_DIR ${Python_INCLUDE_DIRS}/../../lib)
+CMAKE_PATH(SET Python_BIN_DIR ${Python_INCLUDE_DIRS}/../../bin)
 
 # Legacy variable for compatibility
 SET(_python3_executable
@@ -176,15 +173,7 @@ IF(RV_TARGET_WINDOWS)
   FETCHCONTENT_MAKEAVAILABLE(${_opentimelineio_target})
 ENDIF()
 
-# PySide setup
-FETCHCONTENT_DECLARE(
-  ${_pyside_target}
-  URL ${_pyside_archive_url}
-  URL_HASH MD5=${_pyside_download_hash}
-  SOURCE_SUBDIR "sources" # Avoids the top level CMakeLists.txt
-)
-
-FETCHCONTENT_MAKEAVAILABLE(${_pyside_target})
+# PySide6 is now handled by Conan - see openrvcore-conanfile.py
 
 # Requirements installation
 SET(_requirements_file
@@ -248,108 +237,18 @@ IF(APPLE
 ENDIF()
 # ##############################################################################################################################################################
 
-# PySide build commands TODO_QT: Maybe we could use something like NOT CY2023 since after 2023, it is Qt6 TODO_QT: Below code could be simplified, but for now
-# it is faster to test.
-IF(RV_VFX_PLATFORM STREQUAL CY2023)
-  SET(_pyside_make_command_script
-      "${PROJECT_SOURCE_DIR}/src/build/make_pyside.py"
-  )
-  SET(_pyside_make_command
-      python3 "${_pyside_make_command_script}"
-  )
+# PySide build commands removed - now handled by Conan pyside6/6.5.3@openrv package
 
-  LIST(APPEND _pyside_make_command "--variant")
-  LIST(APPEND _pyside_make_command ${CMAKE_BUILD_TYPE})
-  LIST(APPEND _pyside_make_command "--source-dir")
-  LIST(APPEND _pyside_make_command ${rv_deps_pyside2_SOURCE_DIR})
-  LIST(APPEND _pyside_make_command "--output-dir")
-  LIST(APPEND _pyside_make_command ${_install_dir})
-  LIST(APPEND _pyside_make_command "--temp-dir")
-  LIST(APPEND _pyside_make_command ${_build_dir})
-
-  IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
-    LIST(APPEND _pyside_make_command "--openssl-dir")
-    LIST(APPEND _pyside_make_command ${RV_DEPS_OPENSSL_INSTALL_DIR})
-  ENDIF()
-
-  LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python_ROOT})
-  LIST(APPEND _pyside_make_command "--qt-dir")
-  LIST(APPEND _pyside_make_command ${RV_DEPS_QT5_LOCATION})
-  LIST(APPEND _pyside_make_command "--python-version")
-  LIST(APPEND _pyside_make_command "${RV_DEPS_PYTHON_VERSION_SHORT}")
-ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
-  SET(_pyside_make_command_script
-      "${PROJECT_SOURCE_DIR}/src/build/make_pyside6.py"
-  )
-  SET(_pyside_make_command
-      python3 "${_pyside_make_command_script}"
-  )
-
-  LIST(APPEND _pyside_make_command "--variant")
-  LIST(APPEND _pyside_make_command ${CMAKE_BUILD_TYPE})
-  LIST(APPEND _pyside_make_command "--source-dir")
-  LIST(APPEND _pyside_make_command ${rv_deps_pyside6_SOURCE_DIR})
-  LIST(APPEND _pyside_make_command "--output-dir")
-  LIST(APPEND _pyside_make_command ${_install_dir})
-  LIST(APPEND _pyside_make_command "--temp-dir")
-  LIST(APPEND _pyside_make_command ${_build_dir})
-
-  IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
-    LIST(APPEND _pyside_make_command "--openssl-dir")
-    LIST(APPEND _pyside_make_command ${RV_DEPS_OPENSSL_INSTALL_DIR})
-  ENDIF()
-
-  LIST(APPEND _pyside_make_command "--python-dir")
-  LIST(APPEND _pyside_make_command ${Python_ROOT})
-  LIST(APPEND _pyside_make_command "--qt-dir")
-  LIST(APPEND _pyside_make_command ${RV_DEPS_QT6_LOCATION})
-  LIST(APPEND _pyside_make_command "--python-version")
-  LIST(APPEND _pyside_make_command "${RV_DEPS_PYTHON_VERSION_SHORT}")
-ENDIF()
-
-SET(${_pyside_target}-build-flag
-    ${_install_dir}/${_pyside_target}-build-flag
+# Set empty build flag dependencies since PySide6 is handled by Conan
+SET(_build_flag_depends
+    ""
 )
-
-# TODO_QT: Maybe we could use something like NOT CY2023 since after 2023, it is Qt6 TODO_QT: Below code could be simplified, but for now it is faster to test.
-IF(RV_VFX_PLATFORM STREQUAL CY2023)
-  ADD_CUSTOM_COMMAND(
-    COMMENT "Building PySide2 using ${_pyside_make_command_script}"
-    OUTPUT ${${_pyside_target}-build-flag}
-    # First PySide build script on Windows which doesn't respect '--debug' option
-    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/src/build/patch_PySide2/windows_desktop.py
-            ${rv_deps_pyside2_SOURCE_DIR}/build_scripts/platforms/windows_desktop.py
-    COMMAND ${_pyside_make_command} --prepare --build
-    COMMAND ${CMAKE_COMMAND} -E touch ${${_pyside_target}-build-flag}
-    DEPENDS ${_pyside_make_command_script} ${${_target}-requirements-flag}
-    USES_TERMINAL
-  )
-
-  SET(_build_flag_depends
-      ${${_pyside_target}-build-flag}
-  )
-ELSEIF(RV_VFX_PLATFORM STREQUAL CY2024)
-  ADD_CUSTOM_COMMAND(
-    COMMENT "Building PySide6 using ${_pyside_make_command_script}"
-    OUTPUT ${${_pyside_target}-build-flag}
-    COMMAND ${_pyside_make_command} --prepare --build
-    COMMAND ${CMAKE_COMMAND} -E touch ${${_pyside_target}-build-flag}
-    DEPENDS ${_pyside_make_command_script} ${${_target}-requirements-flag}
-    USES_TERMINAL
-  )
-
-  SET(_build_flag_depends
-      ${${_pyside_target}-build-flag}
-  )
-ENDIF()
 
 # Staging targets - copy Python installation to staging area
 IF(RV_TARGET_WINDOWS)
   SET(_copy_commands
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR} 
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_BIN_DIR ${RV_STAGE_BIN_DIR} 
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_LIB_DIR} ${RV_STAGE_LIB_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_include_dir} ${RV_STAGE_INCLUDE_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_BIN_DIR}
+      ${RV_STAGE_BIN_DIR} COMMAND ${CMAKE_COMMAND} -E copy_directory ${Python_LIB_DIR} ${RV_STAGE_LIB_DIR}
   )
 
   IF(RV_VFX_CY2024)
@@ -402,6 +301,49 @@ ENDIF()
 # Python::Python target is already created by Conan, so we just add it to the deps list
 LIST(APPEND RV_DEPS_LIST Python::Python)
 
+# PySide6 staging - copy PySide6 files into Python staging area This maintains the original architecture where PySide6 appears inside Python
+IF(RV_VFX_PLATFORM STREQUAL CY2024)
+  # Get PySide6 package location from CMake target (set by Conan)
+  GET_TARGET_PROPERTY(_pyside6_root pyside6::pyside6 INTERFACE_INCLUDE_DIRECTORIES)
+  IF(_pyside6_root)
+    # PySide6 root should point to the site-packages directory containing PySide6
+    LIST(GET _pyside6_root 0 _pyside6_package_root)
+
+    # Determine destination site-packages in staging area
+    IF(RV_TARGET_WINDOWS)
+      SET(_staged_site_packages
+          ${RV_STAGE_LIB_DIR}/Lib/site-packages
+      )
+    ELSE()
+      SET(_staged_site_packages
+          ${RV_STAGE_LIB_DIR}/python${RV_DEPS_PYTHON_VERSION_SHORT}/site-packages
+      )
+    ENDIF()
+
+    # Create PySide6 staging flag
+    SET(_pyside6_stage_flag
+        ${_install_dir}/pyside6-stage-flag
+    )
+
+    ADD_CUSTOM_COMMAND(
+      COMMENT "Copying PySide6 into Python staging area"
+      OUTPUT ${_pyside6_stage_flag}
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${_staged_site_packages}
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_pyside6_package_root}/PySide6 ${_staged_site_packages}/PySide6
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${_pyside6_package_root}/shiboken6 ${_staged_site_packages}/shiboken6
+      COMMAND ${CMAKE_COMMAND} -E touch ${_pyside6_stage_flag}
+      DEPENDS ${_target}-stage-target pyside6::pyside6
+    )
+
+    ADD_CUSTOM_TARGET(
+      ${_target}-pyside6-stage ALL
+      DEPENDS ${_pyside6_stage_flag}
+    )
+
+    ADD_DEPENDENCIES(dependencies ${_target}-pyside6-stage)
+  ENDIF()
+ENDIF()
+
 ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
 
 # Set cache variables for compatibility
@@ -410,7 +352,7 @@ SET(RV_DEPS_PYTHON3_VERSION
     CACHE INTERNAL "" FORCE
 )
 SET(RV_DEPS_PYSIDE_VERSION
-    ${_pyside_version}
+    "6.5.3"
     CACHE INTERNAL "" FORCE
 )
 

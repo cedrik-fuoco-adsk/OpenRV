@@ -55,6 +55,7 @@ ENDIF()
 
 INCLUDE(openssl) # Python3 requirement
 INCLUDE(python)
+# TODO: Deal with imgui, nanobind, pyimgui, pyimplot once python is supported with Conan
 INCLUDE(imgui)
 INCLUDE(nanobind)
 INCLUDE(pyimgui)

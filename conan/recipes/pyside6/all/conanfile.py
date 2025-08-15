@@ -5,6 +5,7 @@ from conan.tools.files import get, replace_in_file, copy, rmdir, download
 from conan.errors import ConanException
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 import re
@@ -106,8 +107,12 @@ class PySide6Conan(ConanFile):
         return ""
 
     def _get_python_interpreter_args(self, python_home):
-        """Get python interpreter arguments similar to make_python.py"""
-        python_name_pattern = "python*"
+        """Get python interpreter arguments exactly matching make_python.py get_python_interpreter_args()"""
+        # Following make_python.py logic exactly - check for Windows Debug pattern
+        build_opentimelineio = (
+            self.settings.os == "Windows" and self.settings.build_type == "Debug"
+        )
+        python_name_pattern = "python*" if not build_opentimelineio else "python_d*"
 
         python_interpreters = glob.glob(
             os.path.join(python_home, python_name_pattern), recursive=True
@@ -116,7 +121,7 @@ class PySide6Conan(ConanFile):
             os.path.join(python_home, "bin", python_name_pattern)
         )
 
-        # Sort and filter executable files
+        # Sort and filter executable files - exactly matching make_python.py logic
         python_interpreters = sorted(
             [
                 p
@@ -128,11 +133,24 @@ class PySide6Conan(ConanFile):
         if not python_interpreters or not os.path.exists(python_interpreters[0]):
             raise FileNotFoundError(f"Python interpreter not found in {python_home}")
 
+        self.output.info(f"Found python interpreters {python_interpreters}")
+
         python_interpreter = sorted(python_interpreters)[0]
+
+        # Return exactly the same flags as make_python.py: [python_interpreter, "-s", "-E"]
         return [python_interpreter, "-s", "-E"]
+
+    def _get_python_interpreter_args_with_isolation(self, python_home):
+        """Get python interpreter args with -I flag for pip operations (following make_pyside6.py line 227)"""
+        base_args = self._get_python_interpreter_args(python_home)
+        # Add -I flag for isolation during pip operations (following make_python.py patch_python_distribution)
+        return base_args + ["-I"]
 
     def _setup_clang(self):
         """Setup libclang for PySide6 build"""
+        # IMPORTANT: Setup OpenSSL PATH first (following make_pyside6.py order)
+        self._setup_openssl_path_for_clang()
+
         self.output.info("Setting up Clang...")
 
         libclang_url_base = "https://mirrors.ocf.berkeley.edu/qt/development_releases/prebuilt/libclang/libclang-release_"
@@ -184,25 +202,54 @@ class PySide6Conan(ConanFile):
         temp_dir = os.path.join(self.build_folder, "temp")
         os.makedirs(temp_dir, exist_ok=True)
 
-        # Download libclang if not exists or corrupted
-        if not os.path.exists(libclang_zip) or not self._verify_7z_archive(
-            libclang_zip
+        # Download libclang if not exists or corrupted (following make_pyside6.py logic)
+        # Check for failed download and clean up first
+        if (
+            os.path.exists(libclang_zip)
+            and self._verify_7z_archive(libclang_zip) is False
         ):
-            if os.path.exists(libclang_zip):
-                os.remove(libclang_zip)
+            self.output.warning("Removing corrupted libclang archive")
+            os.remove(libclang_zip)
 
+        # Download if necessary
+        if not os.path.exists(libclang_zip):
             self.output.info(f"Downloading libclang from {download_url}")
+            download_ok = False
+
             try:
                 download(self, download_url, libclang_zip)
+                download_ok = True
             except Exception as e:
-                if fallback_clang_filename_suffix:
-                    fallback_url = libclang_url_base + fallback_clang_filename_suffix
-                    self.output.warning(
-                        f"Failed to download {download_url}, trying fallback {fallback_url}"
-                    )
+                self.output.warning(f"Failed to download {download_url}: {e}")
+                download_ok = False
+
+            # Try fallback if primary download failed
+            if not download_ok and fallback_clang_filename_suffix:
+                fallback_url = libclang_url_base + fallback_clang_filename_suffix
+                self.output.warning(
+                    f"Could not download or version does not exist: {download_url}"
+                )
+                self.output.warning(
+                    f"Attempting to fallback on known version: {fallback_url}..."
+                )
+
+                try:
                     download(self, fallback_url, libclang_zip)
-                else:
-                    raise e
+                    download_ok = True
+                except Exception as e:
+                    self.output.warning(f"Fallback download also failed: {e}")
+                    download_ok = False
+
+            if not download_ok:
+                raise ConanException(
+                    f"Could not download or version does not exist: {download_url}"
+                )
+
+            # Verify downloaded archive
+            if not self._verify_7z_archive(libclang_zip):
+                raise ConanException(
+                    f"Downloaded libclang archive is corrupted: {libclang_zip}"
+                )
 
         # Extract libclang
         libclang_extracted = os.path.join(temp_dir, "libclang")
@@ -221,12 +268,66 @@ class PySide6Conan(ConanFile):
 
         self.output.info(f"Set LLVM_INSTALL_DIR={libclang_install_dir}")
 
+    def _setup_openssl_path_for_clang(self):
+        """Setup OpenSSL PATH before clang setup (following make_pyside6.py prepare() order)"""
+        if self.options.with_ssl:
+            try:
+                openssl_deps_info = self.dependencies["openssl"].cpp_info
+                openssl_bin_path = os.path.join(
+                    self.dependencies["openssl"].package_folder, "bin"
+                )
+                if os.path.exists(openssl_bin_path):
+                    # Following make_pyside6.py lines 159-167: set PATH before clang setup
+                    current_path = os.environ.get("PATH", "")
+                    os.environ["PATH"] = os.pathsep.join(
+                        [openssl_bin_path, current_path]
+                    )
+                    self.output.info(
+                        f"Set OpenSSL PATH before clang setup: {openssl_bin_path}"
+                    )
+                    self.output.info(f"PATH={os.environ['PATH']}")
+            except Exception as e:
+                self.output.warning(f"Could not setup OpenSSL PATH for clang: {e}")
+
     def _verify_7z_archive(self, archive_path):
-        """Verify 7z archive integrity"""
+        """Verify 7z archive integrity - following make_pyside6.py logic"""
+        if not os.path.exists(archive_path):
+            return False
+
         try:
-            # Simple check - if file exists and has reasonable size
-            return os.path.exists(archive_path) and os.path.getsize(archive_path) > 1000
-        except:
+            # First check file size
+            if os.path.getsize(archive_path) < 1000:
+                return False
+
+            # Try to test archive integrity using py7zr if available
+            try:
+                import py7zr
+
+                with py7zr.SevenZipFile(archive_path, "r") as z:
+                    # Test archive by trying to list contents
+                    z.list()
+                return True
+            except ImportError:
+                # Fallback to 7z command if available
+                if shutil.which("7z"):
+                    try:
+                        result = subprocess.run(
+                            ["7z", "t", archive_path],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                        return result.returncode == 0
+                    except:
+                        pass
+
+                # Final fallback - just check file size (like original simple check)
+                return (
+                    os.path.getsize(archive_path) > 10000
+                )  # Larger threshold for safety
+
+        except Exception as e:
+            self.output.warning(f"Archive verification failed: {e}")
             return False
 
     def _extract_7z_archive(self, archive_path, extract_path):
@@ -266,10 +367,13 @@ class PySide6Conan(ConanFile):
             self.output.info("Patched shiboken6 CMakeLists.txt to disable LIBXSLT")
 
     def _install_numpy(self):
-        """Install numpy==1.26.3 required for PySide6 build"""
+        """Install numpy==1.26.3 required for PySide6 build - following make_pyside6.py logic"""
         python_deps_info = self.dependencies["python"].cpp_info
         python_home = self.dependencies["python"].package_folder
-        python_interpreter_args = self._get_python_interpreter_args(python_home)
+        # Use isolation flags for pip operations (following make_pyside6.py)
+        python_interpreter_args = self._get_python_interpreter_args_with_isolation(
+            python_home
+        )
 
         install_args = python_interpreter_args + [
             "-m",
@@ -345,15 +449,16 @@ class PySide6Conan(ConanFile):
         if self.settings.os == "Windows" and self.settings.build_type == "Debug":
             build_args.append("--debug")
 
-        self.output.info(f"Building PySide6 with: {' '.join(build_args)}")
+        # Following make_pyside6.py line 265: print the exact command being executed
+        self.output.info(f"Executing {build_args}")
         self.run(" ".join(build_args))
 
         # Post-build cleanup
         self._post_build_cleanup(python_interpreter_args, python_home)
 
     def _post_build_cleanup(self, python_interpreter_args, python_home):
-        """Cleanup after PySide6 build"""
-        # Remove shiboken6_generator
+        """Cleanup after PySide6 build - following make_pyside6.py cleanup logic exactly"""
+        # Remove shiboken6_generator using same approach as make_pyside6.py lines 268-277
         cleanup_args = python_interpreter_args + [
             "-m",
             "pip",
@@ -361,20 +466,29 @@ class PySide6Conan(ConanFile):
             "-y",
             "shiboken6_generator",
         ]
-        self.output.info("Removing shiboken6_generator")
+        self.output.info(f"Executing {cleanup_args}")
         self.run(" ".join(cleanup_args))
 
-        # Force remove shiboken6_generator files if still present
-        python_code = (
-            "import os, shutil\n"
-            "try:\n"
-            "    import shiboken6_generator\n"
-            "except Exception:\n"
-            "    exit(0)\n"
-            "shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))\n"
+        # Force remove shiboken6_generator files if still present - following make_pyside6.py lines 280-295
+        python_script = "\n".join(
+            [
+                "import os, shutil",
+                "try:",
+                "  import shiboken6_generator",
+                "except:",
+                "  exit(0)",
+                "shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))",
+            ]
         )
-        cleanup_python_args = python_interpreter_args + ["-c", f'"{python_code}"']
-        self.run(" ".join(cleanup_python_args))
+        generator_cleanup_args = python_interpreter_args + ["-c", python_script]
+
+        # Properly escape the command for shell execution
+        escaped_args = []
+        for arg in generator_cleanup_args:
+            escaped_args.append(shlex.quote(arg))
+
+        self.output.info(f"Executing {generator_cleanup_args}")
+        self.run(" ".join(escaped_args))
 
         # Copy OpenSSL libraries to PySide6 on Windows
         if self.options.with_ssl and self.settings.os == "Windows":
@@ -408,84 +522,113 @@ class PySide6Conan(ConanFile):
             self.output.warn(f"Failed to copy OpenSSL libraries: {e}")
 
     def _remove_broken_shortcuts(self, python_home):
-        """Remove broken Python shortcuts that depend on absolute paths"""
+        """Remove broken Python shortcuts - following make_pyside6.py remove_broken_shortcuts() exactly"""
+        # Extract python version (major.minor) from dependency
         python_version = str(self.options.python_version)
 
         if self.settings.os == "Windows":
-            # Remove all scripts on Windows
+            # All executables inside Scripts have a hardcoded absolute path to python
+            # which can't be relied upon, so remove all scripts. (following make_pyside6.py lines 215-219)
             scripts_dir = os.path.join(python_home, "Scripts")
             if os.path.exists(scripts_dir):
                 shutil.rmtree(scripts_dir)
                 self.output.info("Removed Windows Scripts directory")
         else:
-            # Remove scripts except python executables on Unix-like systems
+            # Aside from the python executables, every other file in the build
+            # is a script that does not support relocation (following make_pyside6.py lines 220-234)
             bin_dir = os.path.join(python_home, "bin")
             if os.path.exists(bin_dir):
-                keep_files = ["python", "python3", f"python{python_version}"]
+                keep_files = [
+                    "python",
+                    "python3",
+                    f"python{python_version}",
+                ]
                 for filename in os.listdir(bin_dir):
                     filepath = os.path.join(bin_dir, filename)
                     if filename not in keep_files:
-                        self.output.info(f"Removing {filepath}")
+                        self.output.info(f"Removing {filepath}...")
                         os.remove(filepath)
                     else:
-                        self.output.info(f"Keeping {filepath}")
+                        self.output.info(f"Keeping {filepath}...")
 
     def package(self):
-        # Get Python dependency info to find installation location
-        python_deps_info = self.dependencies["python"].cpp_info
+        # Get Python dependency info to find where PySide6 was installed
         python_home = self.dependencies["python"].package_folder
 
-        # Copy Python installation with PySide6 to package
-        copy(
-            self,
-            pattern="*",
-            src=python_home,
-            dst=os.path.join(self.package_folder, "python"),
-        )
-
-        # Copy any additional files from build
-        if os.path.exists(os.path.join(self.source_folder, "dist")):
-            copy(
-                self,
-                pattern="*",
-                src=os.path.join(self.source_folder, "dist"),
-                dst=os.path.join(self.package_folder, "dist"),
-            )
-
-    def package_info(self):
-        # Set up package info for consumers
-        self.cpp_info.libs = ["PySide6"]
-
-        # Add Python path to environment
-        python_path = os.path.join(self.package_folder, "python")
-        self.cpp_info.bindirs.append(os.path.join(python_path, "bin"))
-        self.cpp_info.libdirs.append(os.path.join(python_path, "lib"))
-
-        # Set runtime environment variables for Python and PySide6
-        self.runenv_info.define_path("PYTHONHOME", python_path)
-        self.runenv_info.define_path("PYSIDE6_ROOT", python_path)
-
-        # Add Python executable to PATH
-        python_bin = os.path.join(python_path, "bin")
-        self.runenv_info.prepend_path("PATH", python_bin)
-
-        # Add to Python path
+        # Determine site-packages location where PySide6 was installed
         if self.settings.os == "Windows":
-            site_packages = os.path.join(python_path, "Lib", "site-packages")
+            site_packages_dir = os.path.join(python_home, "Lib", "site-packages")
         else:
-            site_packages = os.path.join(
-                python_path,
+            site_packages_dir = os.path.join(
+                python_home,
                 "lib",
                 f"python{self.options.python_version}",
                 "site-packages",
             )
+
+        # Package only PySide6 and shiboken6 modules (not the entire Python installation)
+        pyside6_src = os.path.join(site_packages_dir, "PySide6")
+        shiboken6_src = os.path.join(site_packages_dir, "shiboken6")
+
+        package_site_packages = os.path.join(self.package_folder, "site-packages")
+
+        if os.path.exists(pyside6_src):
+            self.output.info(f"Packaging PySide6 from {pyside6_src}")
+            copy(
+                self,
+                pattern="*",
+                src=pyside6_src,
+                dst=os.path.join(package_site_packages, "PySide6"),
+            )
+        else:
+            self.output.warning(f"PySide6 not found at {pyside6_src}")
+
+        if os.path.exists(shiboken6_src):
+            self.output.info(f"Packaging shiboken6 from {shiboken6_src}")
+            copy(
+                self,
+                pattern="*",
+                src=shiboken6_src,
+                dst=os.path.join(package_site_packages, "shiboken6"),
+            )
+        else:
+            self.output.warning(f"shiboken6 not found at {shiboken6_src}")
+
+        # Also look for .egg-info directories
+        for egg_pattern in ["PySide6*.egg-info", "shiboken6*.egg-info"]:
+            egg_dirs = glob.glob(os.path.join(site_packages_dir, egg_pattern))
+            for egg_dir in egg_dirs:
+                if os.path.exists(egg_dir):
+                    egg_name = os.path.basename(egg_dir)
+                    self.output.info(f"Packaging {egg_name}")
+                    copy(
+                        self,
+                        pattern="*",
+                        src=egg_dir,
+                        dst=os.path.join(package_site_packages, egg_name),
+                    )
+
+    def package_info(self):
+        # PySide6 is a Python package, not a linkable C++ library
+        # Do not declare cpp_info.libs - this was causing the CMake error
+
+        # Point to the packaged site-packages directory containing PySide6
+        site_packages = os.path.join(self.package_folder, "site-packages")
+
+        # Set include directories so CMake can find the package location
+        # This allows python.cmake to use GET_TARGET_PROPERTY for INTERFACE_INCLUDE_DIRECTORIES
+        self.cpp_info.includedirs = [site_packages]
+
+        # Set PySide6 root for CMake integration
+        self.runenv_info.define_path("PYSIDE6_ROOT", site_packages)
         self.runenv_info.prepend_path("PYTHONPATH", site_packages)
 
         # Also set for build environment (legacy compatibility)
-        self.buildenv_info.define_path("PYTHONHOME", python_path)
-        self.buildenv_info.define_path("PYSIDE6_ROOT", python_path)
-        self.buildenv_info.prepend_path("PATH", python_bin)
+        self.buildenv_info.define_path("PYSIDE6_ROOT", site_packages)
         self.buildenv_info.prepend_path("PYTHONPATH", site_packages)
+
+        # Set package directories for CMake
+        self.cpp_info.builddirs = ["site-packages"]
 
     def test_python_distribution(self, python_home):
         """Test the Python distribution with PySide6"""

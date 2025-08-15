@@ -1,4 +1,5 @@
 import os
+import shlex
 import shutil
 import subprocess
 import glob
@@ -38,14 +39,12 @@ class TestPackageConan(ConanFile):
     def _find_pyside6_package(self):
         """Find PySide6 package installation details"""
         try:
-            # Look for the Python installation with PySide6 using Conan 2.x syntax
-            pyside6_dep = self.dependencies["pyside6"]
-            if pyside6_dep:
-                python_path = os.path.join(pyside6_dep.package_folder, "python")
-                if os.path.exists(python_path):
-                    return {"path": python_path, "type": "package"}
+            # Use Python dependency - PySide6 modules are available via PYTHONPATH
+            python_dep = self.dependencies["python"]
+            if python_dep:
+                return {"path": python_dep.package_folder, "type": "package"}
         except Exception as e:
-            self.output.info(f"Could not find PySide6 package: {e}")
+            self.output.info(f"Could not find Python dependency: {e}")
 
         # Fallback to system Python
         return {"path": "/usr", "type": "system"}
@@ -90,15 +89,26 @@ class TestPackageConan(ConanFile):
         """Test basic PySide6 imports"""
         self.output.info("Testing PySide6 imports...")
 
+        # Get PySide6 package location from Conan package
+        pyside6_dep = self.dependencies["pyside6"]
+        pyside6_site_packages = os.path.join(
+            pyside6_dep.package_folder, "site-packages"
+        )
+
         python_args = self._get_python_interpreter_args(package_info["path"])
         test_command = python_args + [
             "-c",
-            "try: from PySide6 import QtCore, QtGui, QtWidgets; print('PASS: Basic PySide6 modules import OK')\nexcept ImportError as e: print(f'ERROR: PySide6 basic import failed: {e}'); exit(1)",
+            "from PySide6 import QtCore, QtGui, QtWidgets; print('PASS: Basic PySide6 modules import OK')",
         ]
 
+        self.output.info(f"Using PySide6 from: {pyside6_site_packages}")
+
         try:
+            # Source the Conan environment and run the test with proper shell escaping
+            escaped_command = " ".join(shlex.quote(arg) for arg in test_command)
+            shell_command = f"source conanrun.sh && {escaped_command}"
             result = subprocess.run(
-                test_command, capture_output=True, text=True, timeout=30
+                shell_command, shell=True, capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
                 self.output.info(result.stdout.strip())
@@ -118,15 +128,24 @@ class TestPackageConan(ConanFile):
         """Test Qt WebEngine functionality"""
         self.output.info("Testing Qt WebEngine...")
 
+        # Get PySide6 package location from Conan package
+        pyside6_dep = self.dependencies["pyside6"]
+        pyside6_site_packages = os.path.join(
+            pyside6_dep.package_folder, "site-packages"
+        )
+
         python_args = self._get_python_interpreter_args(package_info["path"])
         test_command = python_args + [
             "-c",
-            "try: from PySide6 import QtWebEngineCore, QtWebEngineWidgets; print('PASS: Qt WebEngine modules import OK')\nexcept ImportError as e: print(f'WARNING: Qt WebEngine import failed: {e}')",
+            "try:\n  from PySide6 import QtWebEngineCore, QtWebEngineWidgets\n  print('PASS: Qt WebEngine modules import OK')\nexcept ImportError as e:\n  print(f'WARNING: Qt WebEngine import failed: {e}')",
         ]
 
         try:
+            # Source the Conan environment and run the test with proper shell escaping
+            escaped_command = " ".join(shlex.quote(arg) for arg in test_command)
+            shell_command = f"source conanrun.sh && {escaped_command}"
             result = subprocess.run(
-                test_command, capture_output=True, text=True, timeout=30
+                shell_command, shell=True, capture_output=True, text=True, timeout=30
             )
             self.output.info(result.stdout.strip())
             if result.stderr.strip():
@@ -143,12 +162,15 @@ class TestPackageConan(ConanFile):
         python_args = self._get_python_interpreter_args(package_info["path"])
         test_command = python_args + [
             "-c",
-            "try: import ssl, _ssl; print(f'PASS: SSL modules OK - {ssl.OPENSSL_VERSION}')\nexcept ImportError as e: print(f'ERROR: SSL import failed: {e}'); exit(1)\ntry: import certifi; print('PASS: certifi module OK')\nexcept ImportError as e: print(f'WARNING: certifi import failed: {e}')",
+            "try:\n  import ssl, _ssl\n  print(f'PASS: SSL modules OK - {ssl.OPENSSL_VERSION}')\nexcept ImportError as e:\n  print(f'ERROR: SSL import failed: {e}')\n  exit(1)\ntry:\n  import certifi\n  print('PASS: certifi module OK')\nexcept ImportError as e:\n  print(f'WARNING: certifi import failed: {e}')",
         ]
 
         try:
+            # Source the Conan environment and run the test with proper shell escaping
+            escaped_command = " ".join(shlex.quote(arg) for arg in test_command)
+            shell_command = f"source conanrun.sh && {escaped_command}"
             result = subprocess.run(
-                test_command, capture_output=True, text=True, timeout=30
+                shell_command, shell=True, capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
                 self.output.info(result.stdout.strip())

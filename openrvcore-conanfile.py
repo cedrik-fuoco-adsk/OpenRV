@@ -115,6 +115,17 @@ class OpenRVBase:
             },
         )
 
+        # PySide6 for Qt6 bindings - replaces manual build in python.cmake
+        self.requires(
+            "pyside6/6.5.3@openrv",
+            options={
+                "python_version": "3.11",
+                "vfx_platform": "2024",
+                "shared": True,
+                "with_ssl": True,
+            },
+        )
+
     def generate(self):
         buildenv = VirtualBuildEnv(self)
         buildenv.generate()

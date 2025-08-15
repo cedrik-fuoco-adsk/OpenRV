@@ -545,6 +545,90 @@ except Exception as e:
             except subprocess.CalledProcessError:
                 self.output.warning("Could not perform detailed SSL module check")
 
+    def _comprehensive_validation(self, python_executable):
+        """Comprehensive validation following make_python.py test_python_distribution logic"""
+        self.output.info("Running comprehensive Python validation...")
+
+        # Main validation test (following make_python.py)
+        validation_script = "\n".join(
+            [
+                # Check for tkinter
+                "try:",
+                "    import tkinter",
+                "except:",
+                "    import Tkinter as tkinter",
+                # Make sure certifi is available
+                "import certifi",
+                # Make sure the SSL_CERT_FILE variable is set
+                "import os",
+                "assert certifi.where() == os.environ['SSL_CERT_FILE']",
+                # Make sure ssl is correctly built and linked
+                "import ssl",
+                # Misc modules
+                "import sqlite3",
+                "import ctypes",
+                "import ssl",
+                "import _ssl",
+                "import zlib",
+            ]
+        )
+
+        try:
+            self.output.info("Validating core Python functionality...")
+            subprocess.run(
+                [python_executable, "-c", validation_script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.output.info("Core validation passed")
+        except subprocess.CalledProcessError as e:
+            self.output.warning(f"Core validation failed: {e}")
+            self.output.warning(f"stdout: {e.stdout}")
+            self.output.warning(f"stderr: {e.stderr}")
+
+        # Test SSL_CERT_FILE override behavior (following make_python.py)
+        dummy_ssl_file = os.path.join("Path", "To", "Dummy", "File")
+        try:
+            self.output.info("Testing SSL_CERT_FILE override behavior...")
+            env_with_ssl = os.environ.copy()
+            env_with_ssl["SSL_CERT_FILE"] = dummy_ssl_file
+            subprocess.run(
+                [
+                    python_executable,
+                    "-c",
+                    f"import os; assert os.environ['SSL_CERT_FILE'] == '{dummy_ssl_file}'",
+                ],
+                env=env_with_ssl,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.output.info("SSL_CERT_FILE override test passed")
+        except subprocess.CalledProcessError as e:
+            self.output.warning(f"SSL_CERT_FILE override test failed: {e}")
+
+        # Test DO_NOT_SET_SSL_CERT_FILE behavior (following make_python.py)
+        try:
+            self.output.info("Testing DO_NOT_SET_SSL_CERT_FILE behavior...")
+            env_no_ssl = os.environ.copy()
+            env_no_ssl["DO_NOT_SET_SSL_CERT_FILE"] = "1"
+            env_no_ssl.pop("SSL_CERT_FILE", None)  # Remove if present
+            subprocess.run(
+                [
+                    python_executable,
+                    "-c",
+                    "import os; assert 'SSL_CERT_FILE' not in os.environ",
+                ],
+                env=env_no_ssl,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.output.info("DO_NOT_SET_SSL_CERT_FILE test passed")
+        except subprocess.CalledProcessError as e:
+            self.output.warning(f"DO_NOT_SET_SSL_CERT_FILE test failed: {e}")
+
     def _install_python_packages(self, python_executable):
         """Install required Python packages - following make_python.py logic"""
         # First, ensure basic pip works
@@ -580,8 +664,8 @@ except Exception as e:
         else:
             pip_extra_args = []
 
-        # Install core packages first (critical for proper Python functioning)
-        core_packages = ["pip", "setuptools", "wheel", "certifi"]
+        # Install core packages first (following make_python.py patch_python_distribution order)
+        core_packages = ["pip", "certifi", "six", "wheel", "packaging", "requests"]
         for package in core_packages:
             try:
                 self.output.info(f"Installing core package {package}...")
@@ -608,16 +692,13 @@ except Exception as e:
                         "Failed to install certifi - SSL certificate handling will not work properly"
                     )
 
-        # Install other requirements (following make_python.py package list)
-        other_packages = [
-            "six",
-            "packaging",
-            "requests",
+        # Install additional packages (following make_python.py test_python_distribution order)
+        additional_packages = [
             "PyOpenGL",
             "cryptography",
         ]
 
-        for package in other_packages:
+        for package in additional_packages:
             try:
                 self.output.info(f"Installing {package}...")
                 cmd = (
@@ -786,8 +867,11 @@ except Exception as e:
         self.output.info(f"Building Python with: {build_args}")
         subprocess.run(build_args, cwd=pcbuild_dir, check=True)
 
-        # Install using the layout script
-        self._install_windows_layout()
+        # Install using VFX platform-specific method
+        if self.options.vfx_platform == "2023":
+            self._install_windows_vfx2023()
+        else:  # VFX 2024
+            self._install_windows_layout()
 
     def _apply_windows_patches(self):
         """Apply Windows-specific patches for Python 3.11"""
@@ -813,6 +897,46 @@ except Exception as e:
                         self.output.info(f"Applied patch: {patch_file}")
                     except subprocess.CalledProcessError as e:
                         self.output.warning(f"Failed to apply patch {patch_file}: {e}")
+
+    def _install_windows_vfx2023(self):
+        """Install Python on Windows using VFX 2023 approach (manual file copying)"""
+        build_dir = os.path.join(self.source_folder, "PCBuild", "amd64")
+
+        # include
+        src_dir = os.path.join(self.source_folder, "Include")
+        dst_dir = os.path.join(self.package_folder, "include")
+        shutil.copytree(src_dir, dst_dir)
+        src_file = os.path.join(self.source_folder, "PC", "pyconfig.h")
+        dst_file = os.path.join(dst_dir, "pyconfig.h")
+        shutil.copyfile(src_file, dst_file)
+
+        # lib
+        src_dir = os.path.join(self.source_folder, "Lib")
+        dst_dir = os.path.join(self.package_folder, "lib")
+        shutil.copytree(src_dir, dst_dir)
+
+        # libs - required by pyside2
+        dst_dir = os.path.join(self.package_folder, "libs")
+        os.makedirs(dst_dir, exist_ok=True)
+        python_libs = glob.glob(os.path.join(build_dir, "python*.lib"))
+        for python_lib in python_libs:
+            shutil.copy(python_lib, dst_dir)
+
+        # bin
+        src_dir = build_dir
+        dst_dir = os.path.join(self.package_folder, "bin")
+        shutil.copytree(src_dir, dst_dir)
+
+        # Create a python3.exe file to mimic Mac+Linux
+        python_exe = (
+            "python_d.exe" if self.settings.build_type == "Debug" else "python.exe"
+        )
+        src_file = os.path.join(dst_dir, python_exe)
+        dst_file = os.path.join(dst_dir, "python3.exe")
+        shutil.copyfile(src_file, dst_file)
+
+        # Post-install Windows-specific setup
+        self._post_install_windows_setup()
 
     def _install_windows_layout(self):
         """Install Python on Windows using the layout script"""
@@ -861,8 +985,67 @@ except Exception as e:
         self.output.info(f"Installing Python with layout script: {install_args}")
         subprocess.run(install_args, cwd=self.source_folder, check=True)
 
+        # VFX 2024 specific file handling (following make_python.py install_python_vfx2024)
+        self._handle_vfx2024_windows_files(build_dir)
+
         # Post-install Windows-specific setup
         self._post_install_windows_setup()
+
+    def _handle_vfx2024_windows_files(self, build_dir):
+        """Handle VFX 2024 specific file operations (following make_python.py install_python_vfx2024)"""
+        # Create necessary directories
+        bin_dir = os.path.join(self.package_folder, "bin")
+        libs_dir = os.path.join(self.package_folder, "libs")
+        os.makedirs(bin_dir, exist_ok=True)
+        os.makedirs(libs_dir, exist_ok=True)
+
+        # Create python3.exe file to mimic Mac+Linux
+        python_exe = (
+            "python_d.exe" if self.settings.build_type == "Debug" else "python.exe"
+        )
+        src_file = os.path.join(self.package_folder, python_exe)
+        dst_file = os.path.join(bin_dir, "python3.exe")
+
+        if os.path.exists(src_file):
+            self.output.info(f"Copy {src_file} to {dst_file}")
+            shutil.copyfile(src_file, dst_file)
+
+        # Move files under root directory into the bin folder
+        for filename in os.listdir(self.package_folder):
+            file_path = os.path.join(self.package_folder, filename)
+            if os.path.isfile(file_path) and not filename.startswith("."):
+                dst_path = os.path.join(bin_dir, filename)
+                if not os.path.exists(dst_path):
+                    shutil.move(file_path, dst_path)
+
+        # Manually copy python3.lib and python{version}.lib because the layout script may not copy them
+        python_version_nodot = self._get_python_version_nodot()
+        python3_lib = (
+            "python3_d.lib" if self.settings.build_type == "Debug" else "python3.lib"
+        )
+        python_version_lib = (
+            f"python{python_version_nodot}_d.lib"
+            if self.settings.build_type == "Debug"
+            else f"python{python_version_nodot}.lib"
+        )
+
+        for lib_name in [python3_lib, python_version_lib]:
+            src_lib = os.path.join(build_dir, lib_name)
+            if os.path.exists(src_lib):
+                # Copy to both bin and libs directories
+                dst_bin = os.path.join(bin_dir, lib_name)
+                dst_libs = os.path.join(libs_dir, lib_name)
+                shutil.copy(src_lib, dst_bin)
+                shutil.copy(src_lib, dst_libs)
+
+        # Copy Tcl and Tk DLLs for Debug builds (following make_python.py logic)
+        if self.settings.build_type == "Debug":
+            for dll_name in ["tcl86t.dll", "tk86t.dll"]:
+                src_dll = os.path.join(build_dir, dll_name)
+                if os.path.exists(src_dll):
+                    dst_dll = os.path.join(bin_dir, dll_name)
+                    shutil.copyfile(src_dll, dst_dll)
+                    self.output.info(f"Copied {dll_name} for Debug build")
 
     def _post_install_windows_setup(self):
         """Perform Windows-specific post-installation setup"""
@@ -1121,6 +1304,9 @@ except Exception as e:
 
         # Step 6: Verify SSL is working (final verification)
         self._verify_ssl_support(python_exe)
+
+        # Step 7: Run comprehensive validation (following make_python.py test_python_distribution)
+        self._comprehensive_validation(python_exe)
 
     def package(self):
         """Package the built Python"""
