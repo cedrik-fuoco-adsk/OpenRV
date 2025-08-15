@@ -130,7 +130,7 @@ class PythonConan(ConanFile):
             self,
             data["url"],
             destination=self.source_folder,
-            md5=data["md5"],
+            sha256=data["sha256"],
             strip_root=True,
         )
 

@@ -1,10 +1,10 @@
 sources:
   "3.10.13":
-    url: "https://github.com/python/cpython/archive/refs/tags/v3.10.13.zip"
-    md5: "21b32503f31386b37f0c42172dfe5637"
+    url: "https://www.python.org/ftp/python/3.10.13/Python-3.10.13.tgz"
+    sha256: "11c9f6f75d3e7b1d4a68ee39d86fbdb88b72b364a4a06e4725e68d95d4e9e6c0"
   "3.11.9":
-    url: "https://github.com/python/cpython/archive/refs/tags/v3.11.9.zip" 
-    md5: "392eccd4386936ffcc46ed08057db3e7"
+    url: "https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz"
+    sha256: "e7de3240a8bc2b1e1ba5c81bf943f06861ff494b69fda990ce2722a504c6153d"
 
 patches:
   "3.11.9":
