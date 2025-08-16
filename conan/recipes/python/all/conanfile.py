@@ -498,6 +498,10 @@ except Exception as e:
             "packaging",
             "requests",
             "cryptography",
+            "six",
+            "patch-ng>=1.18.0,<1.19",
+            "requests>=2.25,<3.0.0",
+            "urllib3>=1.26.6,<2.1"
         ]
 
     def _verify_ssl_support(self, python_executable):
