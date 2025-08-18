@@ -1,8 +1,13 @@
-# This file contains all of RV's python build requirements. They are NOT packaged with the app.
+# This file contains all of RV's python build requirements and system Python dependencies for CI.
+# These packages are NOT packaged with the app - they're for the build environment only.
+# Includes dependencies needed by Conan and other build tools.
 
 pyyaml                                   # License: MIT License (MIT)
 requests                                 # License: Apache Software License (Apache 2.0)
 wheel                                    # License: MIT License (MIT)
+six                                      # License: MIT License (MIT)
+python-dateutil                          # License: Apache Software License, BSD License (Apache 2.0 OR BSD-3-Clause)
+setuptools                               # License: MIT License (MIT)
 pyzstd==0.15.9; python_version <= '3.8'  # License: BSD License (BSD-3-Clause)
 pyzstd; python_version > '3.8'           # License: BSD License (BSD-3-Clause)
 py7zr==0.22.0; python_version <= '3.8'   # License: GNU Lesser General  Public License v2 or later (LGPLv2+) (LGPL-2.1-or-later)

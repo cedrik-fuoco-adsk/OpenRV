@@ -210,6 +210,27 @@ jobs:
           python3 -m pip install --user "six" "patch-ng>=1.18.0,<1.19" "requests>=2.25,<3.0.0" "urllib3>=1.26.6,<2.1"
           python3 -m pip install --user conan
 
+      - name: Verify Python environment and Conan installation
+        run: |
+          echo "=== Python Environment Debug Info ==="
+          python3 -c "import sys; print(f'Python executable: {sys.executable}')"
+          python3 -c "import sys; print(f'Python version: {sys.version}')"
+          python3 -c "import sys; print(f'Python path: {sys.path}')"
+          
+          echo "=== Verifying critical dependencies ==="
+          python3 -c "import six; print(f'six version: {six.__version__}')" || echo "ERROR: six module not found"
+          python3 -c "import dateutil; print(f'python-dateutil version: {dateutil.__version__}')" || echo "ERROR: python-dateutil module not found" 
+          python3 -c "import yaml; print(f'pyyaml version: {yaml.__version__}')" || echo "ERROR: pyyaml module not found"
+          
+          echo "=== Verifying Conan installation ==="
+          /github/home/.local/bin/conan --version || {
+            echo "ERROR: Conan installation verification failed"
+            echo "Attempting to reinstall Conan with dependencies..."
+            python3 -m pip install --user --force-reinstall six python-dateutil setuptools
+            python3 -m pip install --user --force-reinstall conan
+            /github/home/.local/bin/conan --version
+          }
+
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2023' }}
         run: |
@@ -218,7 +239,16 @@ jobs:
           cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
 
       - name: Set Conan Home Path
-        run: echo "CONAN_HOME=$(/github/home/.local/bin/conan config home)" >> $GITHUB_ENV
+        run: |
+          echo "=== Setting Conan Home Path ==="
+          CONAN_HOME_OUTPUT=$(/github/home/.local/bin/conan config home 2>&1) || {
+            echo "ERROR: Failed to get Conan home path"
+            echo "Conan output: $CONAN_HOME_OUTPUT"
+            echo "Attempting to run Conan with debug info..."
+            python3 -c "import six; import dateutil;"
+          }
+          echo "Conan home path: $CONAN_HOME_OUTPUT"
+          echo "CONAN_HOME=$CONAN_HOME_OUTPUT" >> $GITHUB_ENV
         
       - uses: actions/cache/restore@v4
         id: cache
