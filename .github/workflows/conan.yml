@@ -205,31 +205,58 @@ jobs:
         
       - name: Install Python dependencies
         run: |
+          echo "=== Python Environment Setup ==="
           which python3
-          python3 -m pip install --user --upgrade -r requirements.txt
-          python3 -m pip install --user "six" "patch-ng>=1.18.0,<1.19" "requests>=2.25,<3.0.0" "urllib3>=1.26.6,<2.1"
-          python3 -m pip install --user conan
+          python3 -c "import sys; print(f'Python executable: {sys.executable}')"
+          python3 -c "import sys; print(f'Python prefix: {sys.prefix}')"
+          python3 -c "import site; print(f'Site packages: {site.getsitepackages()}')"
+          
+          echo "=== Installing dependencies to pyenv environment ==="
+          # Install to pyenv environment directly (no --user flag)
+          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install --upgrade -r requirements.txt
+          python3 -m pip install "six" "patch-ng>=1.18.0,<1.19" "requests>=2.25,<3.0.0" "urllib3>=1.26.6,<2.1"
+          python3 -m pip install conan
+          
+          echo "=== Post-installation verification ==="
+          python3 -c "import sys; print('Python path after installation:'); [print(f'  {p}') for p in sys.path]"
 
       - name: Verify Python environment and Conan installation
         run: |
           echo "=== Python Environment Debug Info ==="
           python3 -c "import sys; print(f'Python executable: {sys.executable}')"
           python3 -c "import sys; print(f'Python version: {sys.version}')"
-          python3 -c "import sys; print(f'Python path: {sys.path}')"
+          python3 -c "import sys; print(f'Python prefix: {sys.prefix}')"
+          python3 -c "import site; print(f'Site packages dirs: {site.getsitepackages()}')"
           
-          echo "=== Verifying critical dependencies ==="
-          python3 -c "import six; print(f'six version: {six.__version__}')" || echo "ERROR: six module not found"
-          python3 -c "import dateutil; print(f'python-dateutil version: {dateutil.__version__}')" || echo "ERROR: python-dateutil module not found" 
-          python3 -c "import yaml; print(f'pyyaml version: {yaml.__version__}')" || echo "ERROR: pyyaml module not found"
+          echo "=== Installed packages location check ==="
+          python3 -c "import six; import dateutil; import yaml;"
           
           echo "=== Verifying Conan installation ==="
-          /github/home/.local/bin/conan --version || {
-            echo "ERROR: Conan installation verification failed"
-            echo "Attempting to reinstall Conan with dependencies..."
-            python3 -m pip install --user --force-reinstall six python-dateutil setuptools
-            python3 -m pip install --user --force-reinstall conan
-            /github/home/.local/bin/conan --version
-          }
+          # Try to find conan in the Python environment first
+          CONAN_PATH=$(python3 -c "import sys, os; print(os.path.join(sys.prefix, 'bin', 'conan'))" 2>/dev/null) || CONAN_PATH=""
+          if [ -f "$CONAN_PATH" ]; then
+            echo "Found Conan in pyenv environment: $CONAN_PATH"
+            $CONAN_PATH --version
+          elif [ -f "/github/home/.local/bin/conan" ]; then
+            echo "Found Conan in user bin: /github/home/.local/bin/conan"
+            /github/home/.local/bin/conan --version || {
+              echo "ERROR: Conan in user bin failed, attempting to reinstall to pyenv environment..."
+              python3 -m pip install --force-reinstall six python-dateutil setuptools
+              python3 -m pip install --force-reinstall conan
+              # Try again with pyenv conan
+              NEW_CONAN_PATH=$(python3 -c "import sys, os; print(os.path.join(sys.prefix, 'bin', 'conan'))" 2>/dev/null)
+              if [ -f "$NEW_CONAN_PATH" ]; then
+                $NEW_CONAN_PATH --version
+              else
+                echo "ERROR: Could not install Conan to pyenv environment"
+                exit 1
+              fi
+            }
+          else
+            echo "ERROR: Conan not found in expected locations"
+            exit 1
+          fi
 
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2023' }}
@@ -240,12 +267,30 @@ jobs:
 
       - name: Set Conan Home Path
         run: |
+          echo "=== Determining Conan executable path ==="
+          # Try to find conan in pyenv environment first
+          CONAN_PYENV_PATH=$(python3 -c "import sys, os; print(os.path.join(sys.prefix, 'bin', 'conan'))" 2>/dev/null) || CONAN_PYENV_PATH=""
+          
+          if [ -f "$CONAN_PYENV_PATH" ]; then
+            echo "Using Conan from pyenv environment: $CONAN_PYENV_PATH"
+            echo "CONAN_EXECUTABLE=$CONAN_PYENV_PATH" >> $GITHUB_ENV
+            CONAN_CMD="$CONAN_PYENV_PATH"
+          elif [ -f "/github/home/.local/bin/conan" ]; then
+            echo "Using Conan from user bin: /github/home/.local/bin/conan"
+            echo "CONAN_EXECUTABLE=/github/home/.local/bin/conan" >> $GITHUB_ENV
+            CONAN_CMD="/github/home/.local/bin/conan"
+          else
+            echo "ERROR: Conan executable not found"
+            exit 1
+          fi
+          
           echo "=== Setting Conan Home Path ==="
-          CONAN_HOME_OUTPUT=$(/github/home/.local/bin/conan config home 2>&1) || {
-            echo "ERROR: Failed to get Conan home path"
+          CONAN_HOME_OUTPUT=$($CONAN_CMD config home 2>&1) || {
+            echo "ERROR: Failed to get Conan home path with $CONAN_CMD"
             echo "Conan output: $CONAN_HOME_OUTPUT"
-            echo "Attempting to run Conan with debug info..."
+            echo "Last attempt - trying to import required modules..."
             python3 -c "import six; import dateutil;"
+            exit 1
           }
           echo "Conan home path: $CONAN_HOME_OUTPUT"
           echo "CONAN_HOME=$CONAN_HOME_OUTPUT" >> $GITHUB_ENV
@@ -259,15 +304,16 @@ jobs:
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
-          /github/home/.local/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
-          /github/home/.local/bin/conan create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8 -o python/*:vfx_platform=2024 -o python/*:shared=True -o python/*:optimizations=True -o python/*:with_tkinter=True -o python/*:with_ssl=True
-          /github/home/.local/bin/conan create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
-          /github/home/.local/bin/conan export openrvcore-conanfile.py
+          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          echo "QT_HOME=$QT_HOME" >> $GITHUB_ENV
+          $CONAN_EXECUTABLE create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
+          $CONAN_EXECUTABLE create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8 -o python/*:vfx_platform=2024 -o python/*:shared=True -o python/*:optimizations=True -o python/*:with_tkinter=True -o python/*:with_ssl=True
+          $CONAN_EXECUTABLE create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
+          $CONAN_EXECUTABLE export openrvcore-conanfile.py
           
       - name: Build OpenRV dependencies
         run: |
-          echo "QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64" >> $GITHUB_ENV
-          /github/home/.local/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
+          $CONAN_EXECUTABLE install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
       - name: Cache Conan Dependencies
         id: cache-conan
@@ -278,7 +324,7 @@ jobs:
           
       - name: Build OpenRV main executable
         run: |
-          /github/home/.local/bin/conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
+          $CONAN_EXECUTABLE build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
       - name: Tests
         run: |
