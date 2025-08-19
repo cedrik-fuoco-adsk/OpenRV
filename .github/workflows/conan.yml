@@ -751,9 +751,9 @@ jobs:
           echo "$PATH"
           cat ~/.bash_profile
           conan --version
-          echo "export CONAN_HOME=$(conan config home)" >> ~/.bash_profile
+          echo 'export CONAN_HOME="$(conan config home)"' >> ~/.bash_profile
           # Used for cache actions.
-          echo "CONAN_HOME=$(conan config home)" >> $GITHUB_ENV
+          echo 'CONAN_HOME="$(conan config home)"' >> $GITHUB_ENV
         shell: msys2 {0}
 
       - name: Set QT_HOME
