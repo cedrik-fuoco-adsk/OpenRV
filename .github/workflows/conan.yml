@@ -301,7 +301,7 @@ jobs:
           path: ${{ env.CONAN_HOME }}
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
       
-      - name: Configure OpenRV
+      - name: Build dependencies with custom recipes
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
           export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
@@ -310,12 +310,17 @@ jobs:
           $CONAN_EXECUTABLE create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8 -o python/*:vfx_platform=2024 -o python/*:shared=True -o python/*:optimizations=True -o python/*:with_tkinter=True -o python/*:with_ssl=True
           $CONAN_EXECUTABLE create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
           $CONAN_EXECUTABLE export openrvcore-conanfile.py
-          
+
+      - name: Export OpenRVCore recipe to Conan's cache
+        if: ${{ matrix.vfx-platform == 'CY2024' }}
+        run: |
+          $CONAN_EXECUTABLE export openrvcore-conanfile.py
+
       - name: Build OpenRV dependencies
         run: |
           $CONAN_EXECUTABLE install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
-      - name: Cache Conan Dependencies
+      - name: Cache Conan's cache
         id: cache-conan
         uses: actions/cache/save@v4
         with:
@@ -524,7 +529,7 @@ jobs:
           path: ${{ env.CONAN_HOME }}
           key: ${{ runner.os }}-conan-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-${{ hashFiles('**/conanfile.py') }}
           
-      - name: Configure OpenRV
+      - name: Build dependencies with custom recipes
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
           /Users/runner/Library/Python/3.11/bin/conan config install ${{ github.workspace }}/conan
@@ -534,11 +539,16 @@ jobs:
           /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
           /Users/runner/Library/Python/3.11/bin/conan export openrvcore-conanfile.py
 
+      - name: Export OpenRVCore recipe to Conan's cache
+        if: ${{ matrix.vfx-platform == 'CY2024' }}
+        run: |
+          /Users/runner/Library/Python/3.11/bin/conan export openrvcore-conanfile.py
+
       - name: Build OpenRV dependencies
         run: |
           /Users/runner/Library/Python/3.11/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/arm64_apple_release
 
-      - name: Cache Conan Dependencies
+      - name: Cache Conan's cache
         id: cache-conan
         uses: actions/cache/save@v4
         with:
@@ -622,7 +632,6 @@ jobs:
           update: true
           # False because it keep creating new cache entry.
           cache: false
-          path-type: inherit
           install: >-
             mingw-w64-x86_64-autotools
             mingw-w64-x86_64-cmake
@@ -667,7 +676,7 @@ jobs:
           
       - name: Set PATH environment variable
         run: |
-          echo "export PATH=\"/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
+          echo 'export PATH="/c/Program\ Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin"' >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Set ACLOCAL_PATH environment variable
@@ -733,21 +742,30 @@ jobs:
         run: |
           python3 -m pip install --user --upgrade -r ./requirements.txt
           python3 -m pip install --user conan
-          echo "PATH=$PATH:/c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts" >> $GITHUB_ENV
+          echo 'export PATH="$PATH:/c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts"' >> ~/.bash_profile
+          ls -al /c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts
         shell: msys2 {0}
 
       - name: Set Conan Home Path
         run: |
-          conan --version || true
-          echo "CONAN_HOME=$(conan config home)" >> $GITHUB_ENV
-          export PATH="$PATH:/c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts"
+          echo "$PATH"
+          cat ~/.bash_profile
           conan --version
+          echo "export CONAN_HOME=$(conan config home)" >> ~/.bash_profile
+          # Used for cache actions.
+          echo "CONAN_HOME=$(conan config home)" >> $GITHUB_ENV
         shell: msys2 {0}
 
       - name: Set QT_HOME
         run: |
-          echo "QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64" >> $GITHUB_ENV
+          echo "export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64" >> ~/.bash_profile
         shell: msys2 {0}
+
+      - uses: actions/cache/restore@v4
+        id: cache
+        with:
+          path: ${{ env.CONAN_HOME }}
+          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
 
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2023' }}
@@ -755,23 +773,34 @@ jobs:
           cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
         shell: msys2 {0}
 
-      - name: Configure OpenRV
+      - name: Build dependencies with custom recipes
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT6_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
+          conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_windows
+          conan create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_windows -o python/*:vfx_platform=2024 -o python/*:shared=True -o python/*:optimizations=True -o python/*:with_tkinter=True -o python/*:with_ssl=True
+          conan create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_windows
         shell: msys2 {0}
-          
-      - name: Build OpenRV dependencies
-        if: steps.cmake-dependencies.outputs.cache-hit != 'true'
-        run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
-        shell: msys2 {0}
-        id: build_deps
 
+      - name: Export OpenRVCore recipe to Conan's cache
+        if: ${{ matrix.vfx-platform == 'CY2024' }}
+        run: |
+          conan export openrvcore-conanfile.py
+        shell: msys2 {0}
+
+      - name: Build and install OpenRV dependencies
+        run: |
+          conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_windows
+
+      - name: Cache Conan's cache
+        id: cache-conan
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CONAN_HOME }}
+          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+          
       - name: Build OpenRV main executable
         run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target main_executable --parallel=$(python -c 'import os; print(os.cpu_count())') -v
-        shell: msys2 {0}
+          conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_windows
 
       - name: Tests
         continue-on-error: true
