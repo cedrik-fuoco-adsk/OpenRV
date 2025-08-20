@@ -848,24 +848,38 @@ except Exception as e:
 
         # Build arguments
         build_args = [
-            "python.exe",
-            "build.bat",
-            f"-c {build_config}",
-            f"-p {platform_name}",
+            os.path.join(pcbuild_dir, "build.bat"),
+            "-c",
+            build_config,
+            "-p",
+            platform_name,
+            "-t",
+            "Rebuild",
         ]
 
-        # Add OpenSSL configuration if available
+        self.output.info(f"Building Python with: {build_args}")
+
+        # Set up environment variables (following make_python.py approach)
+        import sys
+
+        path_env = os.path.pathsep.join(
+            [
+                os.path.dirname(sys.executable),
+                os.environ.get("PATH", ""),
+            ]
+        )
+
+        subprocess_env = {**os.environ, "PYTHON": sys.executable, "PATH": path_env}
+
+        # Add OpenSSL configuration via environment variables if available
         if self.options.with_ssl and "openssl" in self.dependencies:
             openssl_dep = self.dependencies["openssl"]
             openssl_root = openssl_dep.package_folder
-            build_args.extend(
-                [
-                    f"--openssl-dir={openssl_root}",
-                ]
-            )
+            subprocess_env["LC_RPATH"] = os.path.join(openssl_root, "lib")
 
-        self.output.info(f"Building Python with: {build_args}")
-        subprocess.run(build_args, cwd=pcbuild_dir, check=True)
+        subprocess.run(
+            build_args, cwd=self.source_folder, env=subprocess_env, check=True
+        )
 
         # Install using VFX platform-specific method
         if self.options.vfx_platform == "2023":

@@ -782,6 +782,8 @@ jobs:
           echo 'export PKG_CONFIG_PATH="/c/users/runneradmin/.conan2/p:$PKG_CONFIG_PATH"' >> ~/.bash_profile
           # Also try to set it for any build that might need it
           echo 'export PKG_CONFIG_PATH="${PWD}:$PKG_CONFIG_PATH"' >> ~/.bash_profile
+          # Suppress MSYS2 warnings about /dev/shm and /dev/mqueue (harmless on Windows)
+          mkdir -p /tmp/dev 2>/dev/null || true
           echo "PKG_CONFIG_PATH setup completed"
           cat ~/.bash_profile | tail -5
         shell: msys2 {0}
