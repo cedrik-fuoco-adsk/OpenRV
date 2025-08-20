@@ -146,6 +146,114 @@ class PySide6Conan(ConanFile):
         # Add -I flag for isolation during pip operations (following make_python.py patch_python_distribution)
         return base_args + ["-I"]
 
+    def _setup_msvc_environment(self):
+        """Setup MSVC environment on Windows"""
+        if self.settings.os != "Windows":
+            return
+            
+        # Try to find and setup Visual Studio environment
+        vs_paths = [
+            r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat", 
+            r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat",
+        ]
+        
+        vcvars_bat = None
+        for path in vs_paths:
+            if os.path.exists(path):
+                vcvars_bat = path
+                break
+                
+        if not vcvars_bat:
+            # Try to find vcvars64.bat using vswhere
+            try:
+                vswhere_output = subprocess.check_output([
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe",
+                    "-latest", "-property", "installationPath"
+                ], text=True).strip()
+                
+                if vswhere_output:
+                    potential_vcvars = os.path.join(vswhere_output, "VC", "Auxiliary", "Build", "vcvars64.bat")
+                    if os.path.exists(potential_vcvars):
+                        vcvars_bat = potential_vcvars
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+        
+        if vcvars_bat:
+            self.output.info(f"Found Visual Studio environment setup: {vcvars_bat}")
+            # Get environment variables after running vcvars64.bat
+            try:
+                result = subprocess.run([
+                    'cmd', '/c', f'"{vcvars_bat}" && set'
+                ], capture_output=True, text=True, shell=True)
+                
+                if result.returncode == 0:
+                    # Parse environment variables and set them
+                    for line in result.stdout.splitlines():
+                        if '=' in line:
+                            key, value = line.split('=', 1)
+                            # Only set important variables, avoid overriding system vars
+                            if key.upper() in ['PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'VCINSTALLDIR', 
+                                             'WINDOWSSDKDIR', 'WINDOWSSDKVERSION', 'CL', 'LINK']:
+                                if key.upper() == 'PATH':
+                                    # Prepend to existing PATH
+                                    existing_path = os.environ.get('PATH', '')
+                                    os.environ['PATH'] = value + os.pathsep + existing_path
+                                else:
+                                    os.environ[key] = value
+                    
+                    self.output.info("MSVC environment variables set successfully")
+                    # Verify cl.exe is now available
+                    try:
+                        subprocess.run(['cl.exe'], capture_output=True, check=False)
+                        self.output.info("cl.exe is now available in PATH")
+                    except FileNotFoundError:
+                        self.output.warning("cl.exe still not found after setting MSVC environment")
+                else:
+                    self.output.warning(f"Failed to setup MSVC environment: {result.stderr}")
+            except Exception as e:
+                self.output.warning(f"Error setting up MSVC environment: {e}")
+        else:
+            self.output.warning("Could not find Visual Studio vcvars64.bat")
+            # Alternative: try to set basic compiler paths
+            self._try_alternative_msvc_setup()
+
+    def _try_alternative_msvc_setup(self):
+        """Alternative method to setup MSVC when vcvars64.bat is not found"""
+        # Try to find cl.exe in common locations
+        cl_paths = [
+            r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+            r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+            r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+        ]
+        
+        cl_exe = None
+        for pattern in cl_paths:
+            matches = glob.glob(pattern)
+            if matches:
+                cl_exe = matches[0]  # Take the first (usually latest version)
+                break
+                
+        if cl_exe:
+            cl_dir = os.path.dirname(cl_exe)
+            current_path = os.environ.get('PATH', '')
+            os.environ['PATH'] = cl_dir + os.pathsep + current_path
+            
+            # Set CMAKE compilers explicitly
+            os.environ['CMAKE_C_COMPILER'] = cl_exe
+            os.environ['CMAKE_CXX_COMPILER'] = cl_exe
+            
+            self.output.info(f"Added cl.exe to PATH: {cl_dir}")
+            self.output.info(f"Set CMAKE_CXX_COMPILER to: {cl_exe}")
+        else:
+            self.output.warning("Could not find cl.exe in standard Visual Studio locations")
+            
     def _setup_clang(self):
         """Setup libclang for PySide6 build"""
         # IMPORTANT: Setup OpenSSL PATH first (following make_pyside6.py order)
@@ -400,6 +508,8 @@ class PySide6Conan(ConanFile):
                 pass
 
     def build(self):
+        self._setup_msvc_environment()
+        
         # Setup environment
         self._setup_clang()
         self._setup_openssl_path()
