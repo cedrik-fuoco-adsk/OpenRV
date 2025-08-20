@@ -1,6 +1,6 @@
 from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, cmake_layout
-from conan.tools.env import VirtualBuildEnv
+from conan.tools.env import VirtualBuildEnv, Environment
 from conan.tools.files import get, replace_in_file, copy, rmdir, download
 from conan.errors import ConanException
 import os
@@ -384,6 +384,10 @@ class PySide6Conan(ConanFile):
         self.output.info(f"Installing numpy with {install_args}")
         self.run(" ".join(install_args))
 
+    # NOTE: Replaced manual MSVC setup with Conan's Environment tool approach
+    # See build() method where we use env.define("CC", "cl.exe") and env.define("CXX", "cl.exe")
+    # This is cleaner and more reliable than manually sourcing vcvars64.bat
+
     def _setup_openssl_path(self):
         """Setup OpenSSL in PATH if available"""
         if self.options.with_ssl:
@@ -420,6 +424,26 @@ class PySide6Conan(ConanFile):
         if not os.path.exists(qtpaths_exe):
             raise ConanException(f"Qt qtpaths executable not found: {qtpaths_exe}")
 
+        # Setup Windows-specific environment using Conan's Environment tool
+        env = Environment()
+        if self.settings.os == "Windows":
+            # Force MSVC compiler usage (following other PySide recipes)
+            env.define("CC", "cl.exe")
+            env.define("CXX", "cl.exe")
+
+            # Add Qt bin to PATH for DLL loading
+            qt_bin_path = os.path.join(qt_location, "bin")
+            env.prepend_path("PATH", qt_bin_path)
+
+            # For Python 3.8+ DLL loading restrictions
+            if os.path.exists(qt_bin_path):
+                try:
+                    os.add_dll_directory(qt_bin_path)
+                    self.output.info(f"Added Qt DLL directory: {qt_bin_path}")
+                except (AttributeError, OSError) as e:
+                    # os.add_dll_directory() may not be available or may fail
+                    self.output.warning(f"Could not add DLL directory: {e}")
+
         # Build PySide6
         build_args = python_interpreter_args + [
             os.path.join(self.source_folder, "setup.py"),
@@ -449,9 +473,11 @@ class PySide6Conan(ConanFile):
         if self.settings.os == "Windows" and self.settings.build_type == "Debug":
             build_args.append("--debug")
 
-        # Following make_pyside6.py line 265: print the exact command being executed
+        # Execute build with environment applied
+        env_vars = env.vars(self)
         self.output.info(f"Executing {build_args}")
-        self.run(" ".join(build_args))
+        with env_vars.apply():
+            self.run(" ".join(build_args))
 
         # Post-build cleanup
         self._post_build_cleanup(python_interpreter_args, python_home)
