@@ -186,9 +186,14 @@ class PySide6Conan(ConanFile):
             self.output.info(f"Found Visual Studio environment setup: {vcvars_bat}")
             # Get environment variables after running vcvars64.bat
             try:
-                result = subprocess.run([
-                    'cmd', '/c', f'"{vcvars_bat}" && set'
-                ], capture_output=True, text=True, shell=True)
+                # Use proper command formatting for Windows batch file execution
+                cmd = f'call "{vcvars_bat}" && set'
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True, 
+                    shell=True
+                )
                 
                 if result.returncode == 0:
                     # Parse environment variables and set them
@@ -220,7 +225,7 @@ class PySide6Conan(ConanFile):
             self.output.warning("Could not find Visual Studio vcvars64.bat")
             # Alternative: try to set basic compiler paths
             self._try_alternative_msvc_setup()
-
+            
     def _try_alternative_msvc_setup(self):
         """Alternative method to setup MSVC when vcvars64.bat is not found"""
         # Try to find cl.exe in common locations
