@@ -764,7 +764,9 @@ jobs:
       - uses: actions/cache/restore@v4
         id: cache
         with:
-          path: ${{ env.CONAN_HOME }}
+          # TODO: Id like to use CONAN_HOME but it doesn't work well with the cache actions.
+          #       I need to escape the forward slash for windows path.
+          path: "C:\\users\\runneradmin\\.conan2"
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
 
       - name: Configure OpenRV
@@ -814,12 +816,13 @@ jobs:
         id: cache-conan
         uses: actions/cache/save@v4
         with:
+          # TODO: Id like to use CONAN_HOME but it doesn't work well with the cache actions.
+          #       I need to escape the forward slash for windows path.
           path: "C:\\users\\runneradmin\\.conan2"
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
           
       - name: Build OpenRV main executable
         run: |
-          source ~/.bash_profile
           conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_windows
         shell: msys2 {0}
 
