@@ -814,7 +814,7 @@ jobs:
         id: cache-conan
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.CONAN_HOME }}
+          path: "C:\\users\\runneradmin\\.conan2"
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
           
       - name: Build OpenRV main executable
