@@ -766,6 +766,147 @@ shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))
                     else:
                         self.output.info(f"Keeping {filepath}...")
 
+    def _strip_qt_frameworks_for_arm64(self, package_site_packages):
+        """Strip x86_64 architecture from Qt frameworks for ARM64 builds to reduce package size"""
+        # Only run on macOS ARM64 builds
+        if self.settings.os != "Macos" or self.settings.arch != "armv8":
+            return
+
+        self.output.info(
+            "Stripping x86_64 architecture from Qt frameworks for ARM64 build..."
+        )
+
+        import concurrent.futures
+        import multiprocessing
+
+        # Find all binary files in PySide6 directory
+        pyside6_dir = os.path.join(package_site_packages, "PySide6")
+        if not os.path.exists(pyside6_dir):
+            self.output.warning(f"PySide6 directory not found: {pyside6_dir}")
+            return
+
+        # Collect all potential binary files
+        binary_files = []
+
+        # Common binary extensions and framework patterns
+        binary_extensions = [".dylib", ".so", ".framework"]
+        executable_patterns = ["Qt*", "lib*"]
+
+        # Walk through PySide6 directory to find binaries
+        for root, dirs, files in os.walk(pyside6_dir):
+            for file in files:
+                filepath = os.path.join(root, file)
+
+                # Skip symbolic links
+                if os.path.islink(filepath):
+                    continue
+
+                # Check by extension
+                if any(file.endswith(ext) for ext in binary_extensions):
+                    binary_files.append(filepath)
+                    continue
+
+                # Check executable files without extension (Qt binaries, etc.)
+                if os.access(filepath, os.X_OK) and any(
+                    file.startswith(pattern.rstrip("*"))
+                    for pattern in executable_patterns
+                ):
+                    binary_files.append(filepath)
+                    continue
+
+                # Check files inside .framework directories
+                if ".framework" in root:
+                    # Skip text files and obvious non-binaries
+                    if not any(
+                        file.endswith(ext)
+                        for ext in [".plist", ".txt", ".h", ".hpp", ".xml", ".json"]
+                    ):
+                        binary_files.append(filepath)
+
+        if not binary_files:
+            self.output.info("No binary files found to process")
+            return
+
+        self.output.info(f"Found {len(binary_files)} potential binary files to process")
+
+        def process_file(filepath):
+            """Process a single file with lipo"""
+            try:
+                # First check if file is a multi-architecture binary
+                lipo_info_result = subprocess.run(
+                    ["lipo", "-info", filepath],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                if lipo_info_result.returncode != 0:
+                    # Not a binary file or lipo can't process it
+                    return None
+
+                # Check if it contains x86_64 architecture
+                if "x86_64" not in lipo_info_result.stdout:
+                    # Already doesn't contain x86_64, skip
+                    return None
+
+                if "arm64" not in lipo_info_result.stdout:
+                    # No ARM64 architecture, skip (shouldn't happen but be safe)
+                    return None
+
+                # Strip x86_64 architecture, keeping only arm64
+                lipo_result = subprocess.run(
+                    ["lipo", filepath, "-thin", "arm64", "-output", filepath],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                if lipo_result.returncode == 0:
+                    return f"Successfully processed: {filepath}"
+                else:
+                    return f"Failed to process {filepath}: {lipo_result.stderr}"
+
+            except Exception as e:
+                return f"Error processing {filepath}: {e}"
+
+        # Process files in parallel (similar to the Jenkinsfile approach)
+        max_workers = min(
+            4, multiprocessing.cpu_count()
+        )  # Limit to 4 workers like the original script
+        processed_count = 0
+        failed_count = 0
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all files for processing
+            future_to_file = {
+                executor.submit(process_file, filepath): filepath
+                for filepath in binary_files
+            }
+
+            for future in concurrent.futures.as_completed(future_to_file):
+                filepath = future_to_file[future]
+                try:
+                    result = future.result()
+                    if result:
+                        if "Successfully processed" in result:
+                            processed_count += 1
+                            self.output.info(result)
+                        else:
+                            failed_count += 1
+                            self.output.warning(result)
+                except Exception as e:
+                    failed_count += 1
+                    self.output.warning(f"Exception processing {filepath}: {e}")
+
+        self.output.info(
+            f"Architecture stripping completed: {processed_count} files processed, {failed_count} failed"
+        )
+
+        if processed_count > 0:
+            self.output.info(
+                "Successfully reduced package size by removing x86_64 architecture from Qt frameworks"
+            )
+
     def package(self):
         # Get Python dependency info to find where PySide6 was installed
         python_home = self.dependencies["python"].package_folder
@@ -822,6 +963,9 @@ shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))
                         src=egg_dir,
                         dst=os.path.join(package_site_packages, egg_name),
                     )
+
+        # Strip x86_64 architecture from Qt frameworks for ARM64 builds
+        self._strip_qt_frameworks_for_arm64(package_site_packages)
 
     def package_info(self):
         # PySide6 is a Python package, not a linkable C++ library
