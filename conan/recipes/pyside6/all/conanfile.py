@@ -150,82 +150,99 @@ class PySide6Conan(ConanFile):
         """Setup MSVC environment on Windows"""
         if self.settings.os != "Windows":
             return
-            
+
         # Try to find and setup Visual Studio environment
         vs_paths = [
             r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
-            r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat", 
+            r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
             r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
             r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
             r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvars64.bat",
             r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat",
         ]
-        
+
         vcvars_bat = None
         for path in vs_paths:
             if os.path.exists(path):
                 vcvars_bat = path
                 break
-                
+
         if not vcvars_bat:
             # Try to find vcvars64.bat using vswhere
             try:
-                vswhere_output = subprocess.check_output([
-                    r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe",
-                    "-latest", "-property", "installationPath"
-                ], text=True).strip()
-                
+                vswhere_output = subprocess.check_output(
+                    [
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe",
+                        "-latest",
+                        "-property",
+                        "installationPath",
+                    ],
+                    text=True,
+                ).strip()
+
                 if vswhere_output:
-                    potential_vcvars = os.path.join(vswhere_output, "VC", "Auxiliary", "Build", "vcvars64.bat")
+                    potential_vcvars = os.path.join(
+                        vswhere_output, "VC", "Auxiliary", "Build", "vcvars64.bat"
+                    )
                     if os.path.exists(potential_vcvars):
                         vcvars_bat = potential_vcvars
             except (subprocess.CalledProcessError, FileNotFoundError):
                 pass
-        
+
         if vcvars_bat:
             self.output.info(f"Found Visual Studio environment setup: {vcvars_bat}")
             # Get environment variables after running vcvars64.bat
             try:
                 # Use proper command formatting for Windows batch file execution
                 cmd = f'call "{vcvars_bat}" && set'
-                result = subprocess.run(
-                    cmd, 
-                    capture_output=True, 
-                    text=True, 
-                    shell=True
-                )
-                
+                result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+
                 if result.returncode == 0:
                     # Parse environment variables and set them
                     for line in result.stdout.splitlines():
-                        if '=' in line:
-                            key, value = line.split('=', 1)
+                        if "=" in line:
+                            key, value = line.split("=", 1)
                             # Only set important variables, avoid overriding system vars
-                            if key.upper() in ['PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'VCINSTALLDIR', 
-                                             'WINDOWSSDKDIR', 'WINDOWSSDKVERSION', 'CL', 'LINK']:
-                                if key.upper() == 'PATH':
+                            if key.upper() in [
+                                "PATH",
+                                "INCLUDE",
+                                "LIB",
+                                "LIBPATH",
+                                "VCINSTALLDIR",
+                                "WINDOWSSDKDIR",
+                                "WINDOWSSDKVERSION",
+                                "CL",
+                                "LINK",
+                            ]:
+                                if key.upper() == "PATH":
                                     # Prepend to existing PATH
-                                    existing_path = os.environ.get('PATH', '')
-                                    os.environ['PATH'] = value + os.pathsep + existing_path
+                                    existing_path = os.environ.get("PATH", "")
+                                    os.environ["PATH"] = (
+                                        value + os.pathsep + existing_path
+                                    )
                                 else:
                                     os.environ[key] = value
-                    
+
                     self.output.info("MSVC environment variables set successfully")
                     # Verify cl.exe is now available
                     try:
-                        subprocess.run(['cl.exe'], capture_output=True, check=False)
+                        subprocess.run(["cl.exe"], capture_output=True, check=False)
                         self.output.info("cl.exe is now available in PATH")
                     except FileNotFoundError:
-                        self.output.warning("cl.exe still not found after setting MSVC environment")
+                        self.output.warning(
+                            "cl.exe still not found after setting MSVC environment"
+                        )
                 else:
-                    self.output.warning(f"Failed to setup MSVC environment: {result.stderr}")
+                    self.output.warning(
+                        f"Failed to setup MSVC environment: {result.stderr}"
+                    )
             except Exception as e:
                 self.output.warning(f"Error setting up MSVC environment: {e}")
         else:
             self.output.warning("Could not find Visual Studio vcvars64.bat")
             # Alternative: try to set basic compiler paths
             self._try_alternative_msvc_setup()
-            
+
     def _try_alternative_msvc_setup(self):
         """Alternative method to setup MSVC when vcvars64.bat is not found"""
         # Try to find cl.exe in common locations
@@ -237,28 +254,30 @@ class PySide6Conan(ConanFile):
             r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
             r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
         ]
-        
+
         cl_exe = None
         for pattern in cl_paths:
             matches = glob.glob(pattern)
             if matches:
                 cl_exe = matches[0]  # Take the first (usually latest version)
                 break
-                
+
         if cl_exe:
             cl_dir = os.path.dirname(cl_exe)
-            current_path = os.environ.get('PATH', '')
-            os.environ['PATH'] = cl_dir + os.pathsep + current_path
-            
+            current_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = cl_dir + os.pathsep + current_path
+
             # Set CMAKE compilers explicitly
-            os.environ['CMAKE_C_COMPILER'] = cl_exe
-            os.environ['CMAKE_CXX_COMPILER'] = cl_exe
-            
+            os.environ["CMAKE_C_COMPILER"] = cl_exe
+            os.environ["CMAKE_CXX_COMPILER"] = cl_exe
+
             self.output.info(f"Added cl.exe to PATH: {cl_dir}")
             self.output.info(f"Set CMAKE_CXX_COMPILER to: {cl_exe}")
         else:
-            self.output.warning("Could not find cl.exe in standard Visual Studio locations")
-            
+            self.output.warning(
+                "Could not find cl.exe in standard Visual Studio locations"
+            )
+
     def _setup_clang(self):
         """Setup libclang for PySide6 build"""
         # IMPORTANT: Setup OpenSSL PATH first (following make_pyside6.py order)
@@ -514,7 +533,7 @@ class PySide6Conan(ConanFile):
 
     def build(self):
         self._setup_msvc_environment()
-        
+
         # Setup environment
         self._setup_clang()
         self._setup_openssl_path()
@@ -585,6 +604,7 @@ class PySide6Conan(ConanFile):
         self.run(" ".join(cleanup_args))
 
         # Force remove shiboken6_generator files if still present - following make_pyside6.py lines 280-295
+        # Use the same approach as the original make_pyside6.py without shell escaping the multiline script
         python_script = "\n".join(
             [
                 "import os, shutil",
@@ -595,15 +615,42 @@ class PySide6Conan(ConanFile):
                 "shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))",
             ]
         )
-        generator_cleanup_args = python_interpreter_args + ["-c", python_script]
 
-        # Properly escape the command for shell execution
-        escaped_args = []
-        for arg in generator_cleanup_args:
-            escaped_args.append(shlex.quote(arg))
+        try:
+            # Use subprocess directly like make_pyside6.py, avoiding shell interpretation issues
+            import subprocess
 
-        self.output.info(f"Executing {generator_cleanup_args}")
-        self.run(" ".join(escaped_args))
+            generator_cleanup_args = python_interpreter_args + ["-c", python_script]
+            self.output.info(
+                f"Executing shiboken6_generator cleanup with args: {generator_cleanup_args}"
+            )
+            result = subprocess.run(
+                generator_cleanup_args, capture_output=True, text=True
+            )
+            if result.returncode != 0:
+                self.output.warning(
+                    f"shiboken6_generator cleanup failed with return code {result.returncode}"
+                )
+                self.output.warning(f"stdout: {result.stdout}")
+                self.output.warning(f"stderr: {result.stderr}")
+                # Try alternative approach with temporary file on Windows
+                if self.settings.os == "Windows":
+                    self.output.info(
+                        "Attempting cleanup using temporary file approach..."
+                    )
+                    self._cleanup_shiboken6_generator_with_tempfile(
+                        python_interpreter_args
+                    )
+                # Don't fail the build if cleanup fails - it's not critical
+            else:
+                self.output.info("shiboken6_generator cleanup completed successfully")
+        except Exception as e:
+            self.output.warning(f"Failed to cleanup shiboken6_generator: {e}")
+            # Try alternative approach with temporary file on Windows
+            if self.settings.os == "Windows":
+                self.output.info("Attempting cleanup using temporary file approach...")
+                self._cleanup_shiboken6_generator_with_tempfile(python_interpreter_args)
+            # Continue with build - cleanup failure is not critical
 
         # Copy OpenSSL libraries to PySide6 on Windows
         if self.options.with_ssl and self.settings.os == "Windows":
@@ -611,6 +658,59 @@ class PySide6Conan(ConanFile):
 
         # Remove broken shortcuts
         self._remove_broken_shortcuts(python_home)
+
+    def _cleanup_shiboken6_generator_with_tempfile(self, python_interpreter_args):
+        """Alternative cleanup approach using temporary file - more reliable on Windows"""
+        try:
+            import subprocess
+            import tempfile
+
+            # Create the cleanup script content
+            cleanup_script = """import os, shutil
+try:
+    import shiboken6_generator
+except:
+    exit(0)
+shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))
+"""
+
+            # Write to temporary file
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False
+            ) as temp_file:
+                temp_file.write(cleanup_script)
+                temp_file_path = temp_file.name
+
+            try:
+                # Execute the temporary file
+                cleanup_args = python_interpreter_args + [temp_file_path]
+                self.output.info(f"Executing cleanup script: {temp_file_path}")
+                result = subprocess.run(cleanup_args, capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    self.output.info(
+                        "shiboken6_generator cleanup via temporary file completed successfully"
+                    )
+                else:
+                    self.output.warning(
+                        f"Temporary file cleanup failed with return code {result.returncode}"
+                    )
+                    self.output.warning(f"stdout: {result.stdout}")
+                    self.output.warning(f"stderr: {result.stderr}")
+
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_file_path)
+                except Exception as cleanup_err:
+                    self.output.warning(
+                        f"Failed to remove temporary file {temp_file_path}: {cleanup_err}"
+                    )
+
+        except Exception as e:
+            self.output.warning(
+                f"Failed to cleanup shiboken6_generator using temporary file: {e}"
+            )
 
     def _copy_openssl_libs_windows(self, python_home):
         """Copy OpenSSL libraries to PySide6 folder on Windows"""
