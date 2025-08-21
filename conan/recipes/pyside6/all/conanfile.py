@@ -785,53 +785,143 @@ shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))
             self.output.warning(f"PySide6 directory not found: {pyside6_dir}")
             return
 
-        # Collect all potential binary files
+        # Collect all potential binary files with improved detection
         binary_files = []
+        skipped_files = []
 
-        # Common binary extensions and framework patterns
-        binary_extensions = [".dylib", ".so", ".framework"]
-        executable_patterns = ["Qt*", "lib*"]
+        # Expanded binary extensions and patterns
+        binary_extensions = [".dylib", ".so", ".pyd", ".bundle"]
+        text_extensions = [
+            ".plist",
+            ".txt",
+            ".h",
+            ".hpp",
+            ".xml",
+            ".json",
+            ".py",
+            ".qml",
+            ".js",
+            ".css",
+            ".html",
+            ".md",
+            ".rst",
+            ".cfg",
+            ".ini",
+            ".conf",
+        ]
+
+        self.output.info(f"Scanning directory: {pyside6_dir}")
+        total_files_found = 0
 
         # Walk through PySide6 directory to find binaries
         for root, dirs, files in os.walk(pyside6_dir):
             for file in files:
                 filepath = os.path.join(root, file)
+                total_files_found += 1
 
                 # Skip symbolic links
                 if os.path.islink(filepath):
+                    skipped_files.append(f"SYMLINK: {filepath}")
                     continue
 
-                # Check by extension
+                # Get relative path for better logging
+                rel_path = os.path.relpath(filepath, pyside6_dir)
+
+                # Skip obvious text files first
+                if any(file.lower().endswith(ext) for ext in text_extensions):
+                    skipped_files.append(f"TEXT: {rel_path}")
+                    continue
+
+                # Check for explicit binary extensions
                 if any(file.endswith(ext) for ext in binary_extensions):
                     binary_files.append(filepath)
                     continue
 
-                # Check executable files without extension (Qt binaries, etc.)
-                if os.access(filepath, os.X_OK) and any(
-                    file.startswith(pattern.rstrip("*"))
-                    for pattern in executable_patterns
-                ):
+                # Check for framework directories - include all non-text files
+                if any(part.endswith(".framework") for part in root.split(os.sep)):
+                    # Inside a framework - include if not obviously a text file
                     binary_files.append(filepath)
                     continue
 
-                # Check files inside .framework directories
-                if ".framework" in root:
-                    # Skip text files and obvious non-binaries
-                    if not any(
-                        file.endswith(ext)
-                        for ext in [".plist", ".txt", ".h", ".hpp", ".xml", ".json"]
-                    ):
-                        binary_files.append(filepath)
+                # Check for plugin directories (Qt plugins are often in subdirs)
+                if any(
+                    subdir in root.lower()
+                    for subdir in ["plugins", "qml", "resources", "translations"]
+                ):
+                    # Skip only obvious text files, include everything else
+                    binary_files.append(filepath)
+                    continue
+
+                # Check if file is executable (any executable file, not just Qt/lib prefixed)
+                if os.access(filepath, os.X_OK):
+                    binary_files.append(filepath)
+                    continue
+
+                # For remaining files, try to detect if they might be binary
+                # Check if file has no extension (could be a binary)
+                if "." not in file or file.startswith("."):
+                    try:
+                        # Try to read first few bytes to detect binary content
+                        with open(filepath, "rb") as f:
+                            header = f.read(16)
+                            # Look for common binary magic numbers
+                            if (
+                                header.startswith(
+                                    b"\xca\xfe\xba\xbe"
+                                )  # Mach-O universal
+                                or header.startswith(
+                                    b"\xce\xfa\xed\xfe"
+                                )  # Mach-O 32-bit
+                                or header.startswith(
+                                    b"\xcf\xfa\xed\xfe"
+                                )  # Mach-O 64-bit
+                                or header.startswith(
+                                    b"\xfe\xed\xfa\xce"
+                                )  # Mach-O reverse
+                                or header.startswith(
+                                    b"\xfe\xed\xfa\xcf"
+                                )  # Mach-O 64-bit reverse
+                                or header.startswith(b"\x7fELF")  # ELF
+                                or b"\x00" in header[:8]
+                            ):  # Contains null bytes (likely binary)
+                                binary_files.append(filepath)
+                                continue
+                    except (IOError, OSError, PermissionError):
+                        pass
+
+                skipped_files.append(f"UNKNOWN: {rel_path}")
+
+        self.output.info(f"Total files scanned: {total_files_found}")
+        self.output.info(f"Binary files to process: {len(binary_files)}")
+        self.output.info(f"Skipped files: {len(skipped_files)}")
+
+        # Show sample of files being processed and skipped for debugging
+        if binary_files:
+            self.output.info("Sample binary files to process:")
+            for filepath in binary_files[:10]:  # Show first 10
+                rel_path = os.path.relpath(filepath, pyside6_dir)
+                self.output.info(f"  BINARY: {rel_path}")
+            if len(binary_files) > 10:
+                self.output.info(f"  ... and {len(binary_files) - 10} more")
+
+        if skipped_files:
+            self.output.info("Sample skipped files (first 20):")
+            for skip_info in skipped_files[:20]:
+                self.output.info(f"  SKIP: {skip_info}")
+            if len(skipped_files) > 20:
+                self.output.info(f"  ... and {len(skipped_files) - 20} more skipped")
 
         if not binary_files:
             self.output.info("No binary files found to process")
             return
 
-        self.output.info(f"Found {len(binary_files)} potential binary files to process")
-
         def process_file(filepath):
             """Process a single file with lipo"""
             try:
+                # Get file size before processing
+                file_size_before = os.path.getsize(filepath)
+                rel_path = os.path.relpath(filepath, pyside6_dir)
+
                 # First check if file is a multi-architecture binary
                 lipo_info_result = subprocess.run(
                     ["lipo", "-info", filepath],
@@ -842,16 +932,35 @@ shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))
 
                 if lipo_info_result.returncode != 0:
                     # Not a binary file or lipo can't process it
-                    return None
+                    return {
+                        "status": "skipped",
+                        "reason": "not_binary",
+                        "filepath": rel_path,
+                        "size_before": file_size_before,
+                        "details": f"lipo -info failed: {lipo_info_result.stderr.strip()}",
+                    }
 
                 # Check if it contains x86_64 architecture
-                if "x86_64" not in lipo_info_result.stdout:
+                info_output = lipo_info_result.stdout.strip()
+                if "x86_64" not in info_output:
                     # Already doesn't contain x86_64, skip
-                    return None
+                    return {
+                        "status": "skipped",
+                        "reason": "no_x86_64",
+                        "filepath": rel_path,
+                        "size_before": file_size_before,
+                        "details": f"Architecture info: {info_output}",
+                    }
 
-                if "arm64" not in lipo_info_result.stdout:
+                if "arm64" not in info_output:
                     # No ARM64 architecture, skip (shouldn't happen but be safe)
-                    return None
+                    return {
+                        "status": "skipped",
+                        "reason": "no_arm64",
+                        "filepath": rel_path,
+                        "size_before": file_size_before,
+                        "details": f"Architecture info: {info_output}",
+                    }
 
                 # Strip x86_64 architecture, keeping only arm64
                 lipo_result = subprocess.run(
@@ -861,20 +970,49 @@ shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))
                     check=False,
                 )
 
+                file_size_after = os.path.getsize(filepath)
+                space_saved = file_size_before - file_size_after
+
                 if lipo_result.returncode == 0:
-                    return f"Successfully processed: {filepath}"
+                    return {
+                        "status": "success",
+                        "filepath": rel_path,
+                        "size_before": file_size_before,
+                        "size_after": file_size_after,
+                        "space_saved": space_saved,
+                        "details": f"Architectures before: {info_output}",
+                    }
                 else:
-                    return f"Failed to process {filepath}: {lipo_result.stderr}"
+                    return {
+                        "status": "failed",
+                        "filepath": rel_path,
+                        "size_before": file_size_before,
+                        "details": f"lipo thin failed: {lipo_result.stderr.strip()}",
+                    }
 
             except Exception as e:
-                return f"Error processing {filepath}: {e}"
+                return {
+                    "status": "error",
+                    "filepath": os.path.relpath(filepath, pyside6_dir),
+                    "details": f"Exception: {str(e)}",
+                }
 
         # Process files in parallel (similar to the Jenkinsfile approach)
         max_workers = min(
             4, multiprocessing.cpu_count()
         )  # Limit to 4 workers like the original script
-        processed_count = 0
-        failed_count = 0
+
+        # Track detailed results
+        success_results = []
+        failed_results = []
+        skipped_results = []
+        error_results = []
+
+        total_space_saved = 0
+
+        self.output.info(
+            f"Processing {len(binary_files)} files with {max_workers} parallel workers..."
+        )
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all files for processing
@@ -887,25 +1025,102 @@ shutil.rmtree(os.path.dirname(shiboken6_generator.__file__))
                 filepath = future_to_file[future]
                 try:
                     result = future.result()
-                    if result:
-                        if "Successfully processed" in result:
-                            processed_count += 1
-                            self.output.info(result)
-                        else:
-                            failed_count += 1
-                            self.output.warning(result)
-                except Exception as e:
-                    failed_count += 1
-                    self.output.warning(f"Exception processing {filepath}: {e}")
+                    if not result:
+                        continue
 
+                    status = result.get("status", "unknown")
+
+                    if status == "success":
+                        success_results.append(result)
+                        total_space_saved += result.get("space_saved", 0)
+                        space_saved_mb = result.get("space_saved", 0) / (1024 * 1024)
+                        self.output.info(
+                            f"✓ PROCESSED: {result['filepath']} "
+                            f"(saved {space_saved_mb:.2f} MB, {result.get('size_before', 0)} → {result.get('size_after', 0)} bytes)"
+                        )
+                    elif status == "skipped":
+                        skipped_results.append(result)
+                        reason = result.get("reason", "unknown")
+                        if reason == "not_binary":
+                            # Don't log every non-binary file to avoid spam
+                            pass
+                        else:
+                            self.output.info(
+                                f"- SKIP ({reason}): {result['filepath']} - {result.get('details', '')}"
+                            )
+                    elif status == "failed":
+                        failed_results.append(result)
+                        self.output.warning(
+                            f"✗ FAILED: {result['filepath']} - {result.get('details', '')}"
+                        )
+                    elif status == "error":
+                        error_results.append(result)
+                        self.output.warning(
+                            f"✗ ERROR: {result['filepath']} - {result.get('details', '')}"
+                        )
+
+                except Exception as e:
+                    error_results.append(
+                        {
+                            "filepath": os.path.relpath(filepath, pyside6_dir),
+                            "details": str(e),
+                        }
+                    )
+                    self.output.warning(
+                        f"✗ EXCEPTION: {os.path.relpath(filepath, pyside6_dir)} - {e}"
+                    )
+
+        # Summary reporting
+        self.output.info("\n" + "=" * 80)
+        self.output.info("ARCHITECTURE STRIPPING SUMMARY")
+        self.output.info("=" * 80)
+
+        self.output.info(f"Total files scanned: {total_files_found}")
+        self.output.info(f"Binary files identified: {len(binary_files)}")
+        self.output.info(f"Successfully processed: {len(success_results)}")
         self.output.info(
-            f"Architecture stripping completed: {processed_count} files processed, {failed_count} failed"
+            f"Skipped (no x86_64): {len([r for r in skipped_results if r.get('reason') == 'no_x86_64'])}"
+        )
+        self.output.info(
+            f"Skipped (not binary): {len([r for r in skipped_results if r.get('reason') == 'not_binary'])}"
+        )
+        self.output.info(f"Failed: {len(failed_results)}")
+        self.output.info(f"Errors: {len(error_results)}")
+
+        total_space_saved_mb = total_space_saved / (1024 * 1024)
+        self.output.info(
+            f"Total space saved: {total_space_saved_mb:.2f} MB ({total_space_saved:,} bytes)"
         )
 
-        if processed_count > 0:
+        if len(success_results) > 0:
             self.output.info(
-                "Successfully reduced package size by removing x86_64 architecture from Qt frameworks"
+                f"✓ Successfully reduced package size by {total_space_saved_mb:.2f} MB by removing x86_64 architecture"
             )
+
+            # Show top space savers
+            success_results.sort(key=lambda x: x.get("space_saved", 0), reverse=True)
+            self.output.info("\nTop space savers:")
+            for result in success_results[:10]:
+                space_saved_mb = result.get("space_saved", 0) / (1024 * 1024)
+                self.output.info(f"  {space_saved_mb:.2f} MB: {result['filepath']}")
+        else:
+            self.output.warning(
+                "No files were successfully processed for architecture stripping"
+            )
+
+        # Show files that had x86_64 but failed to process
+        if failed_results:
+            self.output.warning(f"\n{len(failed_results)} files failed to process:")
+            for result in failed_results[:5]:  # Show first 5 failures
+                self.output.warning(
+                    f"  FAILED: {result['filepath']} - {result.get('details', '')}"
+                )
+            if len(failed_results) > 5:
+                self.output.warning(
+                    f"  ... and {len(failed_results) - 5} more failures"
+                )
+
+        self.output.info("=" * 80)
 
     def package(self):
         # Get Python dependency info to find where PySide6 was installed
