@@ -22,7 +22,7 @@ FIND_PACKAGE(${_find_target} 10.43 CONFIG REQUIRED)
 # Prints the variables.
 CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
 
-LIST(APPEND RV_DEPS_LIST pcre2::8-bit pcre2::posix)
+LIST(APPEND RV_DEPS_LIST PCRE2::8BIT PCRE2::POSIX)
 
 # Library naming conventions for Windows
 SET(_pcre2_libname
