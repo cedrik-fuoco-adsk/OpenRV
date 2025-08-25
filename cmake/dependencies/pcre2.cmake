@@ -23,8 +23,31 @@ FIND_PACKAGE(${_find_target} CONFIG REQUIRED)
 MESSAGE(STATUS "Found ${_find_target}")
 # Prints the variables.
 CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
-MESSAGE(STATUS "Appending to RV_DEPS_LIST")
-LIST(APPEND RV_DEPS_LIST PCRE2::8BIT PCRE2::POSIX)
+# Create wrapper interface targets since we can't modify imported Conan targets
+ADD_LIBRARY(RV_PCRE2_8BIT INTERFACE)
+ADD_LIBRARY(RV_PCRE2_POSIX INTERFACE)
+
+# Link to the Conan targets and add the required compile definitions
+TARGET_LINK_LIBRARIES(
+  RV_PCRE2_8BIT
+  INTERFACE PCRE2::8BIT
+)
+TARGET_COMPILE_DEFINITIONS(
+  RV_PCRE2_8BIT
+  INTERFACE PCRE2_CODE_UNIT_WIDTH=8
+)
+
+TARGET_LINK_LIBRARIES(
+  RV_PCRE2_POSIX
+  INTERFACE PCRE2::POSIX
+)
+TARGET_COMPILE_DEFINITIONS(
+  RV_PCRE2_POSIX
+  INTERFACE PCRE2_CODE_UNIT_WIDTH=8
+)
+
+MESSAGE(STATUS "Appending wrapper targets to RV_DEPS_LIST")
+LIST(APPEND RV_DEPS_LIST RV_PCRE2_8BIT RV_PCRE2_POSIX)
 
 # Library naming conventions for Windows
 SET(_pcre2_libname

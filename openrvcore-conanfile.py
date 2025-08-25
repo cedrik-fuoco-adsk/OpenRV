@@ -100,7 +100,18 @@ class OpenRVBase:
 
         # PCRE2 for Windows (boost regex used on other platforms)
         if self.settings.os == "Windows":
-            self.requires("pcre2/10.44", force=True, options={"shared": True})
+            self.requires(
+                "pcre2/10.44",
+                force=True,
+                options={
+                    "shared": True,
+                    "with_zlib": False,
+                    "with_bzip2": False,
+                    "support_jit": False,
+                    "build_pcre2_16": False,
+                    "build_pcre2_32": False,
+                },
+            )
 
         # Override imath version for other dependencies.
         self.requires("imath/3.1.6", force=True, options={"shared": True})

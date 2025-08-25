@@ -92,7 +92,7 @@ IF(RV_TARGET_WINDOWS)
   TARGET_LINK_LIBRARIES(
     ${_target}
     PRIVATE nedmalloc win_posix win_pthreads TwkQtCoreUtil
-    PUBLIC PCRE2::8BIT PCRE2::POSIX
+    PUBLIC RV_PCRE2_8BIT RV_PCRE2_POSIX
   )
 ENDIF()
 

@@ -199,8 +199,7 @@ ELSE() # Windows
     "-DPython_LIBRARY=${Python_LIBRARY}" # with this param
     # DRV_Python_LIBRARIES: A Patch RV created for PyOpenColorIO inside OCIO: Hardcode to Release since FindPython.cmake will find the Debug lib, which we don't
     # want and doesn't build.
-    "-DRV_Python_LIBRARIES=${Python_LIBRARY}"
-    "-DPython_INCLUDE_DIR=${Python_INCLUDE_DIRS}/.."
+    "-DPython_INCLUDE_DIR=${Python_INCLUDE_DIRS}"
     "-DOCIO_PYTHON_VERSION=${RV_DEPS_PYTHON_VERSION_SHORT}"
     "-DBUILD_SHARED_LIBS=ON"
     "-DOCIO_BUILD_PYTHON=ON"
@@ -229,6 +228,7 @@ ELSE() # Windows
        # isn't compatible with OCIO: tons of STD C++ missing symbols errors.
   )
 
+  MESSAGE(STATUS "CEDRIK: ${_configure_options}")
   EXTERNALPROJECT_ADD(
     ${_target}
     URL ${_download_url}
