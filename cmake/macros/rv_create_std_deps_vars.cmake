@@ -255,8 +255,12 @@ MACRO(CONAN_SETUP_STAGING RV_DEPS_TARGET FIND_TARGET)
       SET(_current_path
           ${_parent_dir}
       )
-      # Safety check to avoid infinite loop - stop at root directory
-      IF(_current_path STREQUAL "/")
+      # Safety check to avoid infinite loop - stop at root directory Check for both Unix (/) and Windows (C:\, D:\, etc.) root directories
+      GET_FILENAME_COMPONENT(_current_path_name "${_current_path}" NAME)
+      IF(_current_path STREQUAL "/"
+         OR _current_path_name STREQUAL ""
+         OR _current_path MATCHES "^[A-Za-z]:[\\\\/]?$"
+      )
         MESSAGE(WARNING "Could not find root directory containing lib and include for ${FIND_TARGET}")
         # Fallback to original behavior
         SET(_install_dir

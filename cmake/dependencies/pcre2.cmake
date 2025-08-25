@@ -17,11 +17,13 @@ SET(_find_target
     pcre2
 )
 
-FIND_PACKAGE(${_find_target} 10.43 CONFIG REQUIRED)
+MESSAGE(STATUS "Finding ${_find_target}")
+FIND_PACKAGE(${_find_target} CONFIG REQUIRED)
 
+MESSAGE(STATUS "Found ${_find_target}")
 # Prints the variables.
 CONAN_PRINT_TARGET_VARIABLES("${_find_target}")
-
+MESSAGE(STATUS "Appending to RV_DEPS_LIST")
 LIST(APPEND RV_DEPS_LIST PCRE2::8BIT PCRE2::POSIX)
 
 # Library naming conventions for Windows
@@ -38,9 +40,9 @@ SET(_pcre2_implibname
 SET(_pcre2_implibname_posix
     libpcre2-posix.dll.a
 )
-
+MESSAGE(STATUS "Setting up staging")
 CONAN_SETUP_STAGING(${_target} ${_find_target})
-
+MESSAGE(STATUS "Staging done")
 # Custom command to copy the library to the staging area
 ADD_CUSTOM_COMMAND(
   TARGET ${_target}
