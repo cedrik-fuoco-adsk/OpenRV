@@ -57,6 +57,8 @@ class OpenRVBase:
         else:
             self.tool_requires("ninja/1.11.1")
 
+        self.tool_requires("cmake/3.31.8")
+
     def requirements(self):
 
         self.requires("zlib/1.3.1", force=True, options={"shared": True})

@@ -135,6 +135,8 @@ LIST(APPEND _configure_options "-DZLIB_ROOT=${RV_DEPS_ZLIB_ROOT_DIR}")
 # OCIO apps are not needed.
 LIST(APPEND _configure_options "-DOCIO_BUILD_APPS=OFF")
 
+LIST(APPEND _configure_options "-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
+
 MESSAGE(STATUS "Configure options: ${_configure_options}")
 
 IF(NOT RV_TARGET_WINDOWS)
@@ -187,6 +189,7 @@ ELSE() # Windows
     _configure_options
     # Not using Ninja: Ninja doesn't build due to Minizip wrong include style, VS uses search paths even for double-quotes includes.
     "-G ${CMAKE_GENERATOR}"
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
     "-DOCIO_VERBOSE=ON"
     "-DCMAKE_INSTALL_PREFIX=${_install_dir}"
     "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
