@@ -137,6 +137,7 @@ SET(_include_dir
 
 CMAKE_PATH(SET Python_LIB_DIR ${Python_INCLUDE_DIRS}/../../lib)
 CMAKE_PATH(SET Python_BIN_DIR ${Python_INCLUDE_DIRS}/../../bin)
+CMAKE_PATH(SET _Python_ROOT_ ${Python_INCLUDE_DIRS}/../..)
 
 # Legacy variable for compatibility
 SET(_python3_executable
@@ -152,9 +153,16 @@ SET(Python_EXECUTABLE
 SET(Python_LIBRARY
     ${_python3_lib}
 )
+IF(RV_TARGET_WINDOWS)
+    SET(Python_LIBRARY
+        "${Python_BIN_DIR}/python${PYTHON_VERSION_SHORT_NO_DOT}.lib"
+    )
+ENDIF()
+
 SET(Python_ROOT
-    "${Python_INCLUDE_DIRS}/../.."
+    "${_Python_ROOT_}"
 )
+# ${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python${PYTHON_VERSION_SHORT_NO_DOT}.lib
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
 
