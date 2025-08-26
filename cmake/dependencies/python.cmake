@@ -135,10 +135,18 @@ SET(_include_dir
     ${Python_INCLUDE_DIRS}
 )
 
-CMAKE_PATH(SET Python_LIB_DIR ${Python_INCLUDE_DIRS}/../../lib)
-CMAKE_PATH(SET Python_BIN_DIR ${Python_INCLUDE_DIRS}/../../bin)
-CMAKE_PATH(SET _Python_ROOT_ ${Python_INCLUDE_DIRS}/../..)
+IF(RV_TARGET_WINDOWS)
+  CMAKE_PATH(SET _Python_ROOT_ NORMALIZE ${Python_INCLUDE_DIRS}/..)
+ELSE()
+  CMAKE_PATH(SET _Python_ROOT_ NORMALIZE ${Python_INCLUDE_DIRS}/../..)
+ENDIF()
 
+CMAKE_PATH(SET Python_LIB_DIR NORMALIZE ${_Python_ROOT_}/lib)
+CMAKE_PATH(SET Python_BIN_DIR NORMALIZE ${_Python_ROOT_}/bin)
+
+MESSAGE(STATUS "Cedrik debug: ${Python_LIB_DIR}")
+MESSAGE(STATUS "Cedrik debug: ${Python_BIN_DIR}")
+MESSAGE(STATUS "Cedrik debug: ${_Python_ROOT_}")
 # Legacy variable for compatibility
 SET(_python3_executable
     "${Python_BIN_DIR}/python3"
@@ -153,16 +161,17 @@ SET(Python_EXECUTABLE
 SET(Python_LIBRARY
     ${_python3_lib}
 )
+
+STRING(REPLACE "." "" PYTHON_VERSION_SHORT_NO_DOT ${RV_DEPS_PYTHON_VERSION_SHORT})
 IF(RV_TARGET_WINDOWS)
-    SET(Python_LIBRARY
-        "${Python_BIN_DIR}/python${PYTHON_VERSION_SHORT_NO_DOT}.lib"
-    )
+  SET(Python_LIBRARY
+      "${Python_BIN_DIR}/python${PYTHON_VERSION_SHORT_NO_DOT}.lib"
+  )
 ENDIF()
 
 SET(Python_ROOT
     "${_Python_ROOT_}"
 )
-# ${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python${PYTHON_VERSION_SHORT_NO_DOT}.lib
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
 
