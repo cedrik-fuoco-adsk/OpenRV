@@ -252,9 +252,32 @@ ENDIF()
 SET(_requirements_file
     "${PROJECT_SOURCE_DIR}/src/build/requirements.txt"
 )
-SET(_requirements_install_command
-    "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
-)
+
+SET(_pip_env_vars "")
+IF(RV_TARGET_WINDOWS)
+  IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+    # Use debug Python executable.
+    LIST(APPEND _pip_env_vars "-DPython_EXECUTABLE=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python_d.exe")
+  ELSE()
+    LIST(APPEND _pip_env_vars "-DPython_EXECUTABLE=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python.exe")
+  ENDIF()
+  
+  LIST(APPEND _pip_env_vars "-DPYTHON_LIBRARY=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python${PYTHON_VERSION_SHORT_NO_DOT}.lib")
+  LIST(APPEND _pip_env_vars "-DPython_INCLUDE_DIR=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/include")
+ENDIF()
+
+# Build the pip install command with environment variables
+IF(_pip_env_vars)
+    string (REPLACE ";" " " _pip_env_vars_str "${_pip_env_vars}")
+    message(STATUS "Pip env vars: ${_pip_env_vars_str}")
+    SET(_requirements_install_command
+        ${CMAKE_COMMAND} -E env CMAKE_ARGS="${_pip_env_vars_str}" "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
+    )
+ELSE()
+    SET(_requirements_install_command
+        "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
+    )
+ENDIF()
 
 IF(RV_TARGET_WINDOWS)
   SET(_patch_python3_11_command
