@@ -13,6 +13,7 @@
 #include <Mu/FunctionObject.h>
 #include <Mu/FunctionType.h>
 #include <Mu/GarbageCollector.h>
+#include <gc/gc.h>
 #include <Mu/List.h>
 #include <Mu/ListType.h>
 #include <Mu/MemberFunction.h>
@@ -504,7 +505,51 @@ namespace Mu
 
         ostringstream str;
 
+        // ----------------------------------------------------------------------
+        // Log GC stats before evaluation
+        size_t heap_before = GC_get_heap_size();
+        size_t total_before = GC_get_total_bytes();
+        // ----------------------------------------------------------------------
+
+        // Temporarily re-enable GC for eval (RV disables it during playback)
+        bool wasDisabled = !GarbageCollector::isEnabled();
+        if (wasDisabled)
+        {
+            GarbageCollector::enable();
+        }
+
         TypedValue v = c->evalText(s->c_str(), "runtime.eval", p, modules);
+
+        // Force collection after eval to prevent accumulation (only if GC is
+        // enabled)
+        if (GarbageCollector::isEnabled())
+        {
+            GarbageCollector::collect();
+        }
+
+        // Restore previous GC state
+        if (wasDisabled)
+        {
+            GarbageCollector::disable();
+        }
+
+        // ----------------------------------------------------------------------
+        // Log GC stats after evaluation
+        size_t heap_after = GC_get_heap_size();
+        size_t total_after = GC_get_total_bytes();
+        size_t bytes_since_gc = GC_get_bytes_since_gc();
+
+        static int eval_count = 0;
+        eval_count++;
+        if (eval_count % 10 == 0)
+        { // Log every 10th eval to avoid spam
+            fprintf(stderr,
+                    "RUNTIME_EVAL_GC[%d]: heap %zu->%zu, total %zu->%zu, "
+                    "since_gc %zu\n",
+                    eval_count, heap_before, heap_after, total_before,
+                    total_after, bytes_since_gc);
+        }
+        // ----------------------------------------------------------------------
 
         StringType::String* o = 0;
 
