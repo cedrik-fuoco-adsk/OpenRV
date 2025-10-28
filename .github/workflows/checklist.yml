@@ -12,50 +12,46 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
-      - name: Create Checklist Comment
+      - name: Add Checklist to PR Description
         uses: actions/github-script@v7
         with:
           script: |
-            const body = `## 🔍 PR Checklist
+            const pr = context.payload.pull_request;
+            const currentBody = pr.body || '';
             
-            Please check the boxes below to approve the corresponding CI checks:
+            // Check if checklist already exists
+            if (currentBody.includes('## 🔍 PR Checklist')) {
+              console.log('Checklist already exists in PR description');
+              return;
+            }
             
-            - [ ] **lint-format** - Lint and format checks passed
-            - [ ] **rocky-linux** - Rocky Linux builds passed
-            - [ ] **macos** - macOS builds passed  
-            - [ ] **windows** - Windows builds passed
+            const checklistSection = `
+
+---
+
+## 🔍 PR Checklist
+
+Please check the boxes below to approve the corresponding CI checks:
+
+- [ ] **lint-format** - Lint and format checks passed
+- [ ] **rocky-linux** - Rocky Linux builds passed
+- [ ] **macos** - macOS builds passed  
+- [ ] **windows** - Windows builds passed
+
+> ⚠️ **Note**: Checking a box will mark the corresponding CI check as passing, even if it was skipped or failed initially.
+`;
             
-            > ⚠️ **Note**: Checking a box will mark the corresponding CI check as passing, even if it was skipped or failed initially.
-            `;
+            // Append checklist to PR description
+            const newBody = currentBody + checklistSection;
             
-            // Find existing checklist comment
-            const comments = await github.rest.issues.listComments({
+            await github.rest.pulls.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
+              pull_number: pr.number,
+              body: newBody
             });
             
-            const checklistComment = comments.data.find(comment => 
-              comment.user.type === 'Bot' && comment.body.includes('PR Checklist')
-            );
-            
-            if (checklistComment) {
-              // Update existing comment
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: checklistComment.id,
-                body: body
-              });
-            } else {
-              // Create new comment
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                body: body
-              });
-            }
+            console.log('Checklist added to PR description');
       
       - name: Create Pending Status Checks
         uses: actions/github-script@v7

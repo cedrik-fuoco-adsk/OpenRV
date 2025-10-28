@@ -1,7 +1,7 @@
 name: 'Handle Checkbox Changes'
 on:
-  issue_comment:
-    types: [created, edited]
+  pull_request:
+    types: [edited]
   pull_request_target:
     types: [edited]
 
@@ -14,105 +14,46 @@ permissions:
 jobs:
   execute:
     runs-on: ubuntu-latest
-    # Only run on PR comments or PR description edits
-    if: github.event.issue.pull_request || github.event.pull_request
     steps:
       - name: Debug Event
         uses: actions/github-script@v7
         with:
           script: |
+            console.log('=== DEBUG INFO ===');
             console.log('Event name:', context.eventName);
             console.log('Event action:', context.payload.action);
-            console.log('Has issue:', !!context.payload.issue);
-            console.log('Has PR:', !!context.payload.pull_request);
-            console.log('Has comment:', !!context.payload.comment);
+            console.log('PR number:', context.payload.pull_request?.number);
+            console.log('PR SHA:', context.payload.pull_request?.head?.sha);
+            console.log('==================');
       
-      - name: Get PR Details
-        id: pr
+      - name: Parse Checklist and Update Statuses
         uses: actions/github-script@v7
         with:
           script: |
-            let prNumber, pr;
+            const pr = context.payload.pull_request;
+            const checklistBody = pr.body || '';
             
-            if (context.payload.pull_request) {
-              // From pull_request event
-              prNumber = context.payload.pull_request.number;
-              pr = context.payload.pull_request;
-            } else if (context.payload.issue) {
-              // From issue_comment event
-              prNumber = context.payload.issue.number;
-              const prData = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber
-              });
-              pr = prData.data;
-            } else {
-              throw new Error('Could not determine PR number');
-            }
-            
-            console.log('PR number:', prNumber);
-            console.log('PR SHA:', pr.head.sha);
-            
-            return pr;
-          result-encoding: json
-
-      - name: Find and Parse Checklist
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = ${{ steps.pr.outputs.result }};
-            
-            // Get the checklist content (from comment or PR body)
-            let checklistBody = '';
-            
-            if (context.payload.comment) {
-              // From issue_comment event
-              checklistBody = context.payload.comment.body;
-              console.log('Source: comment body');
-            } else if (context.payload.pull_request) {
-              // From pull_request event - check if PR body has checklist
-              checklistBody = context.payload.pull_request.body || '';
-              console.log('Source: PR body');
-              
-              // If not in PR body, search comments for the checklist
-              if (!checklistBody.includes('PR Checklist')) {
-                console.log('Checklist not in PR body, searching comments...');
-                const comments = await github.rest.issues.listComments({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                });
-                
-                const checklistComment = comments.data.find(comment => 
-                  comment.body.includes('PR Checklist')
-                );
-                
-                if (checklistComment) {
-                  checklistBody = checklistComment.body;
-                  console.log('Found checklist in comment #' + checklistComment.id);
-                }
-              }
-            }
-            
-            if (!checklistBody || !checklistBody.includes('PR Checklist')) {
-              console.log('No checklist found, skipping');
+            // Check if this PR has a checklist
+            if (!checklistBody.includes('PR Checklist')) {
+              console.log('❌ No checklist found in PR description, skipping');
               return;
             }
             
-            console.log('Checklist content preview:', checklistBody.substring(0, 200));
+            console.log('✓ Checklist found in PR description');
+            console.log('PR body length:', checklistBody.length);
             
-            // Parse checkbox states
+            // Parse checkbox states with improved regex
             const checkboxes = {
-              'lint-format': /- \[(x|X| )\] \*\*lint-format\*\*/.exec(checklistBody)?.[1]?.toLowerCase() === 'x',
-              'rocky-linux': /- \[(x|X| )\] \*\*rocky-linux\*\*/.exec(checklistBody)?.[1]?.toLowerCase() === 'x',
-              'macos': /- \[(x|X| )\] \*\*macos\*\*/.exec(checklistBody)?.[1]?.toLowerCase() === 'x',
-              'windows': /- \[(x|X| )\] \*\*windows\*\*/.exec(checklistBody)?.[1]?.toLowerCase() === 'x'
+              'lint-format': /- \[(x|X| )\] \*\*lint-format\*\*/.exec(checklistBody)?.[1]?.trim().toLowerCase() === 'x',
+              'rocky-linux': /- \[(x|X| )\] \*\*rocky-linux\*\*/.exec(checklistBody)?.[1]?.trim().toLowerCase() === 'x',
+              'macos': /- \[(x|X| )\] \*\*macos\*\*/.exec(checklistBody)?.[1]?.trim().toLowerCase() === 'x',
+              'windows': /- \[(x|X| )\] \*\*windows\*\*/.exec(checklistBody)?.[1]?.trim().toLowerCase() === 'x'
             };
             
-            console.log('Checkbox states:', checkboxes);
+            console.log('📋 Checkbox states:', JSON.stringify(checkboxes, null, 2));
             
             // Update status for each checkbox
+            let updatedCount = 0;
             for (const [check, isChecked] of Object.entries(checkboxes)) {
               const state = isChecked ? 'success' : 'pending';
               const description = isChecked 
@@ -127,10 +68,13 @@ jobs:
                   state: state,
                   context: `checklist/${check}`,
                   description: description,
-                  target_url: context.payload.comment?.html_url || context.payload.pull_request?.html_url
+                  target_url: pr.html_url
                 });
-                console.log(`✓ Updated ${check} to ${state}`);
+                console.log(`✓ Updated checklist/${check} → ${state}`);
+                updatedCount++;
               } catch (error) {
-                console.error(`✗ Failed to update ${check}:`, error.message);
+                console.error(`✗ Failed to update checklist/${check}:`, error.message);
               }
             }
+            
+            console.log(`\n🎉 Successfully updated ${updatedCount}/4 status checks`);
