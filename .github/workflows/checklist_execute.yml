@@ -15,7 +15,7 @@ jobs:
         uses: wadackel/checkbox-workflow-action@v1
         with:
           id: pr-checklist
-          number: ${{ github.event.issue.number }}
+          number: ${{ github.event.pull_request.number || github.event.issue.number }}
           # No config parameter = Detection Mode
 
       - name: Run tests
