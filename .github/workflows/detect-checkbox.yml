@@ -1,0 +1,46 @@
+name: Detect Checkbox Change
+
+on:
+  issue_comment:
+    types: [edited]
+
+jobs:
+  detect-checkbox-change:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+      pull-requests: read
+
+    steps:
+      - name: Compare old vs. new comment
+        id: diff
+        run: |
+          echo "Old comment:"
+          echo "${{ github.event.changes.body.from }}"
+          echo "New comment:"
+          echo "${{ github.event.comment.body }}"
+          
+          # Save diff to a file for parsing (optional)
+          echo "${{ github.event.changes.body.from }}" > old.txt
+          echo "${{ github.event.comment.body }}" > new.txt
+          diff old.txt new.txt || true
+
+      - name: Detect checkbox toggles
+        id: check_toggle
+        run: |
+          old="${{ github.event.changes.body.from }}"
+          new="${{ github.event.comment.body }}"
+          if [[ "$old" =~ "- [ ] Testing done" && "$new" =~ "- [x] Testing done" ]]; then
+            echo "Testing checkbox checked!"
+            echo "checked=true" >> $GITHUB_OUTPUT
+          fi
+          if [[ "$old" =~ "- [x] Testing done" && "$new" =~ "- [ ] Testing done" ]]; then
+            echo "Testing checkbox unchecked!"
+            echo "checked=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run follow-up if checked
+        if: steps.check_toggle.outputs.checked == 'true'
+        run: |
+          echo "✅ Running tests since 'Testing done' was checked!"
+          # You can trigger another workflow, run a job, etc.
