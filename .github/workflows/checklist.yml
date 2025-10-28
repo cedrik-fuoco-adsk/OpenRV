@@ -1,7 +1,5 @@
 name: 'Create PR Checklist'
 on:
-  push:
-  
   pull_request:
     types: [opened, synchronize, reopened]
 
