@@ -1,0 +1,80 @@
+name: 'Create PR Checklist'
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  statuses: write
+  checks: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Checklist Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## 🔍 PR Checklist
+            
+            Please check the boxes below to approve the corresponding CI checks:
+            
+            - [ ] **lint-format** - Lint and format checks passed
+            - [ ] **rocky-linux** - Rocky Linux builds passed
+            - [ ] **macos** - macOS builds passed  
+            - [ ] **windows** - Windows builds passed
+            
+            > ⚠️ **Note**: Checking a box will mark the corresponding CI check as passing, even if it was skipped or failed initially.
+            `;
+            
+            // Find existing checklist comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
+            
+            const checklistComment = comments.data.find(comment => 
+              comment.user.type === 'Bot' && comment.body.includes('PR Checklist')
+            );
+            
+            if (checklistComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: checklistComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: body
+              });
+            }
+      
+      - name: Create Pending Status Checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const checks = [
+              'checklist/lint-format',
+              'checklist/rocky-linux',
+              'checklist/macos',
+              'checklist/windows'
+            ];
+            
+            for (const check of checks) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.payload.pull_request.head.sha,
+                state: 'pending',
+                context: check,
+                description: 'Waiting for checklist approval'
+              });
+            }

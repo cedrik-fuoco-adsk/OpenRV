@@ -1,0 +1,75 @@
+name: 'Handle Checkbox Changes'
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  pull-requests: write
+  statuses: write
+  checks: write
+  contents: read
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    # Only run on PR comments
+    if: github.event.issue.pull_request
+    steps:
+      - name: Get PR Details
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            return pr.data;
+          result-encoding: json
+
+      - name: Parse Checklist and Update Statuses
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+            const pr = ${{ steps.pr.outputs.result }};
+            
+            // Only process if this is the checklist comment
+            if (!comment.includes('PR Checklist')) {
+              console.log('Not a checklist comment, skipping');
+              return;
+            }
+            
+            // Parse checkbox states
+            const checkboxes = {
+              'lint-format': /- \[(x|X| )\] \*\*lint-format\*\*/.exec(comment)?.[1]?.toLowerCase() === 'x',
+              'rocky-linux': /- \[(x|X| )\] \*\*rocky-linux\*\*/.exec(comment)?.[1]?.toLowerCase() === 'x',
+              'macos': /- \[(x|X| )\] \*\*macos\*\*/.exec(comment)?.[1]?.toLowerCase() === 'x',
+              'windows': /- \[(x|X| )\] \*\*windows\*\*/.exec(comment)?.[1]?.toLowerCase() === 'x'
+            };
+            
+            console.log('Checkbox states:', checkboxes);
+            
+            // Update status for each checkbox
+            for (const [check, isChecked] of Object.entries(checkboxes)) {
+              const state = isChecked ? 'success' : 'pending';
+              const description = isChecked 
+                ? '✅ Approved via checklist' 
+                : 'Waiting for checklist approval';
+              
+              try {
+                await github.rest.repos.createCommitStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: pr.head.sha,
+                  state: state,
+                  context: `checklist/${check}`,
+                  description: description,
+                  target_url: `${context.payload.comment.html_url}`
+                });
+                console.log(`Updated ${check} to ${state}`);
+              } catch (error) {
+                console.error(`Failed to update ${check}:`, error.message);
+              }
+            }
