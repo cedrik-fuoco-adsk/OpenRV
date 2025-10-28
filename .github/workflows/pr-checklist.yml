@@ -1,0 +1,128 @@
+# .github/workflows/pr-checklist.yml
+name: PR Checklist
+
+on:
+  pull_request:
+    types: [opened, reopened]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  create-checklist:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Checklist Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## Pre-merge Checklist
+            
+            Please complete the following before merging:
+            
+            - [ ] Testing done
+            - [ ] Documentation updated
+            - [ ] Code review completed
+            - [ ] Breaking changes documented
+            
+            *Check the boxes above to trigger validation checks*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+  validate-checklist:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Comment Content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+            const prNumber = context.issue.number;
+            
+            // Parse checkboxes
+            const testingDone = /- \[x\] Testing done/i.test(comment);
+            const docsUpdated = /- \[x\] Documentation updated/i.test(comment);
+            const codeReview = /- \[x\] Code review completed/i.test(comment);
+            const breakingChanges = /- \[x\] Breaking changes documented/i.test(comment);
+            
+            // Only proceed if this is the checklist comment
+            if (!comment.includes('Pre-merge Checklist')) {
+              console.log('Not a checklist comment, skipping');
+              return;
+            }
+            
+            let statusMessage = '## ✅ Checklist Status\n\n';
+            let allComplete = true;
+            
+            if (testingDone) {
+              statusMessage += '✅ Testing validated\n';
+            } else {
+              statusMessage += '⏳ Testing pending\n';
+              allComplete = false;
+            }
+            
+            if (docsUpdated) {
+              statusMessage += '✅ Documentation validated\n';
+            } else {
+              statusMessage += '⏳ Documentation pending\n';
+              allComplete = false;
+            }
+            
+            if (codeReview) {
+              statusMessage += '✅ Code review validated\n';
+            } else {
+              statusMessage += '⏳ Code review pending\n';
+              allComplete = false;
+            }
+            
+            if (breakingChanges) {
+              statusMessage += '✅ Breaking changes validated\n';
+            } else {
+              statusMessage += '⏳ Breaking changes check pending\n';
+              allComplete = false;
+            }
+            
+            if (allComplete) {
+              statusMessage += '\n🎉 **All checks complete! PR is ready to merge.**';
+            } else {
+              statusMessage += '\n⚠️ **Some checks are still pending.**';
+            }
+            
+            // Post status update
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: statusMessage
+            });
+            
+            // Optionally update PR labels based on status
+            if (allComplete) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                labels: ['ready-to-merge']
+              });
+            } else {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  name: 'ready-to-merge'
+                });
+              } catch (error) {
+                // Label might not exist, that's okay
+              }
+            }
