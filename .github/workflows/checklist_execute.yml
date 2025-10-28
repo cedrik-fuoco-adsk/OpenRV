@@ -1,0 +1,27 @@
+name: 'Handle Checkbox Changes'
+on:
+  issue_comment:
+    types: [edited]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Detect changes
+        id: tasks
+        uses: wadackel/checkbox-workflow-action@v1
+        with:
+          id: pr-checklist
+          number: ${{ github.event.pull_request.number || github.event.issue.number }}
+          # No config parameter = Detection Mode
+
+      - name: Run tests
+        if: ${{ steps.tasks.outputs.changed == 'true' && fromJSON(steps.tasks.outputs.state).tests }}
+        run: echo "Running test suite..."
+
+      - name: Deploy
+        if: ${{ steps.tasks.outputs.changed == 'true' && fromJSON(steps.tasks.outputs.state).deploy }}
+        run: echo "Deploying to production..."
