@@ -1,0 +1,23 @@
+name: PR Checklist Comment
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  create-checklist:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Add checklist comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## ✅ PR Checklist
+            - [ ] Testing done
+            - [ ] Documentation updated
+            - [ ] Code reviewed
