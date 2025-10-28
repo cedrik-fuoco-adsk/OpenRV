@@ -5,23 +5,55 @@ on:
 
 permissions:
   pull-requests: write
+  statuses: write
 
 jobs:
   execute:
     runs-on: ubuntu-latest
+    if: github.event.issue.pull_request
     steps:
       - name: Detect changes
         id: tasks
         uses: wadackel/checkbox-workflow-action@v1
         with:
           id: pr-checklist
-          number: ${{ github.event.pull_request.number || github.event.issue.number }}
+          number: ${{ github.event.issue.number }}
           # No config parameter = Detection Mode
 
-      - name: Run tests
-        if: ${{ steps.tasks.outputs.changed == 'true' && fromJSON(steps.tasks.outputs.state).tests }}
-        run: echo "Running test suite..."
+      - name: Get PR SHA
+        id: get_pr_sha
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            return pr.data.head.sha;
 
-      - name: Deploy
-        if: ${{ steps.tasks.outputs.changed == 'true' && fromJSON(steps.tasks.outputs.state).deploy }}
-        run: echo "Deploying to production..."
+      - name: Update status checks
+        if: steps.tasks.outputs.changed == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const sha = "${{ steps.get_pr_sha.outputs.result }}";
+            const state = JSON.parse('${{ steps.tasks.outputs.state }}');
+            const checklist = [
+              {"key": "tests", "context": "Run tests"},
+              {"key": "review", "context": "Code review approved"},
+              {"key": "deploy", "context": "Deploy to production"}
+            ];
+
+            for (const item of checklist) {
+              if (state[item.key]) {
+                await github.rest.repos.createCommitStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: sha,
+                  state: 'success',
+                  context: item.context,
+                  description: 'Approved via checklist'
+                });
+              }
+            }

@@ -5,11 +5,31 @@ on:
 
 permissions:
   pull-requests: write
+  statuses: write
 
 jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
+      - name: Create pending statuses
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const checklist = [
+              {"key": "tests", "context": "Run tests"},
+              {"key": "review", "context": "Code review approved"},
+              {"key": "deploy", "context": "Deploy to production"}
+            ];
+            for (const item of checklist) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.payload.pull_request.head.sha,
+                state: 'pending',
+                context: item.context,
+                description: 'Awaiting manual approval via checklist'
+              });
+            }
       - uses: wadackel/checkbox-workflow-action@v1
         with:
           id: pr-checklist
