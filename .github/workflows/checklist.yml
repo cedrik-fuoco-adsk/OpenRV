@@ -1,0 +1,25 @@
+name: 'Create PR Checklist'
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: wadackel/checkbox-workflow-action@v1
+        with:
+          id: pr-checklist
+          number: ${{ github.event.pull_request.number }}
+          config: |
+            [
+              {"tests": "Run tests"},
+              {"review": "Code review approved"},
+              {"deploy": "Deploy to production"}
+            ]
+          message: |
+            ## PR Checklist
+            {{body}}
