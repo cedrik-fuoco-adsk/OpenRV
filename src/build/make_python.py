@@ -223,7 +223,12 @@ def patch_python_distribution(python_home: str) -> None:
 
     pip_args = python_interpreter_args + ["-m", "pip"]
 
-    for package in ["pip", "certifi", "six", "wheel", "packaging", "requests", "pydantic"]:
+    # Install essential packages needed for Python to work properly:
+    # - pip, wheel, setuptools: Required for package management and building
+    # - certifi: Required by sitecustomize.py for SSL certificate validation
+    # Other packages (six, packaging, requests, pydantic) are installed via
+    # requirements.txt to avoid dependency conflicts during the build process.
+    for package in ["pip", "wheel", "setuptools", "certifi"]:
         package_install_args = pip_args + [
             "install",
             "--upgrade",
@@ -232,15 +237,6 @@ def patch_python_distribution(python_home: str) -> None:
         ]
         print(f"Installing {package} with {package_install_args}")
         subprocess.run(package_install_args).check_returncode()
-
-    wheel_install_args = pip_args + [
-        "install",
-        "--upgrade",
-        "--force-reinstall",
-        "wheel",
-    ]
-    print(f"Installing wheel with {wheel_install_args}")
-    subprocess.run(wheel_install_args).check_returncode()
 
     site_packages = glob.glob(os.path.join(python_home, "**", "site-packages"), recursive=True)[0]
 

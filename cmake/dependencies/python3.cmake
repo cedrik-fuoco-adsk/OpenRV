@@ -276,6 +276,10 @@ ENDIF()
 
 # Using --no-binary :all: to ensure all packages with native extensions are built from source
 # against our custom Python build, preventing ABI compatibility issues.
+# Using --force-reinstall to ensure deterministic builds and upgrade base packages (pip, wheel,
+# setuptools, certifi) installed by make_python.py. This is now safe because make_python.py only
+# installs minimal base packages, avoiding the previous dependency conflicts that occurred when
+# many packages were installed twice (first as wheels, then rebuilt from source).
 SET(_requirements_install_command
     ${CMAKE_COMMAND} -E env
     ${_otio_debug_env}

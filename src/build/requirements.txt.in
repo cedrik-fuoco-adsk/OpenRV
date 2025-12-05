@@ -2,27 +2,31 @@
 # NOTE: This is a CMake template file. The actual requirements.txt is generated during CMake configuration.
 #       To update OpenTimelineIO version, edit _opentimelineio_version in cmake/dependencies/python3.cmake
 # NOTE: Using --no-binary :all: in pip install ensures all packages are built from source against our custom Python.
+# NOTE: pip, wheel, setuptools, and certifi are pre-installed by make_python.py and are NOT listed here
+#       to avoid duplicate installations and dependency conflicts.
 
-pip                     # License: MIT License (MIT)
-setuptools              # License: MIT License
+# Core dependencies
+six                     # License: MIT License (MIT)
+packaging               # License: Apache Software License, BSD License
+
+# Network and security libraries
+requests                # License: Apache Software License (Apache 2.0)
+cryptography            # License: Apache Software License, BSD License ((Apache-2.0 OR BSD-3-Clause) AND PSF-2.0)
+
+# Data validation
+pydantic                # License: MIT License (MIT)
+
+# OpenTimelineIO - must be built from source with correct Python linkage
 opentimelineio==@_opentimelineio_version@ # License: Other/Proprietary License (Modified Apache 2.0 License)
+
+# OpenGL support
 PyOpenGL                # License: BSD License (BSD)
 
 # MacOS only - PyOpenGL_accelerate is built from source in python3.cmake as a workaround until the fix
 # is merged in the main branch.
 # See https://github.com/mcfletch/pyopengl/issues/147 and https://github.com/mcfletch/pyopengl/pull/146
 
-# PyOpenGL_accelerate as issue with native arm64 build on MacOS.
+# PyOpenGL_accelerate has issue with native arm64 build on MacOS.
 # Use PyOpenGL_accelerate only on x86_64 platform.
 PyOpenGL_accelerate ; (platform_system=='Windows' or platform_system=='Linux') and platform_machine=='x86_64' # License: BSD License (BSD)
-
-# Those are installed by the src/build/make_python.py script, adding them here to list their licenses.
-
-certifi                 # License: Mozilla Public License 2.0 (MPL 2.0) (MPL-2.0)
-six                     # License: MIT License (MIT)
-wheel                   # License: MIT License (MIT)
-packaging               # License: Apache Software License, BSD License
-requests                # License: Apache Software License (Apache 2.0)
-cryptography            # License: Apache Software License, BSD License ((Apache-2.0 OR BSD-3-Clause) AND PSF-2.0)
-pydantic                # License: MIT License (MIT)
 
