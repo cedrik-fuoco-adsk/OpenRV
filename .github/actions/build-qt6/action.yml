@@ -16,9 +16,6 @@ inputs:
   xcode-version:
     description: 'Xcode version'
     required: true
-  qt-output:
-    description: 'qt output'
-    required: true
     
 runs:
   using: "composite"
@@ -141,11 +138,4 @@ runs:
         run: |
           make install -j$(python -c 'import os; print(os.cpu_count())')
         working-directory: ${{ github.workspace }}/qt-build
-        shell: bash
-
-      - name: Display release folder and architecture
-        
-        run: |
-          ls -al ./${{ inputs.qt-output }}
-          file ./${{ inputs.qt-output }}/bin/qmake
         shell: bash
