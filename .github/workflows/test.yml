@@ -23,6 +23,28 @@ jobs:
             cmake-version: "3.31.6"
             vfx-platform: "CY2024"
     steps:
+      - name: Display disk space
+        run: |
+          df -h /
+          
+      - name: Clear up some spaces on disk
+        run: |
+          # Remove some unused XCode (Default is XCode 15.4).
+          sudo rm -rf /Applications/Xcode_15.3.app
+          sudo rm -rf /Applications/Xcode_15.2.app
+          sudo rm -rf /Applications/Xcode_15.1.app
+          sudo rm -rf /Applications/Xcode_15.0.1.app
+          sudo rm -rf /Users/runner/Library/Android
+
+      - name: Display disk space
+        run: |
+          df -h /
+
+      - name: Check out repository code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
+        with:
+          submodules: recursive
+          
       - name: Activate Python ${{ matrix.python-version }}
         uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
         with:
