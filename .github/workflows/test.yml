@@ -1,0 +1,43 @@
+name: OpenRV
+
+on:
+  push:
+
+  pull_request: # This handles PR creation and subsequent commits.
+
+  
+jobs:
+  macos:
+    name: bob
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: "macos-14"
+            arch-type: "arm64"
+            build-type: "Release"
+            qt-version: "6.5.3"
+            qt-version-short: "6.5"
+            python-version: "3.11"
+            cmake-version: "3.31.6"
+            vfx-platform: "CY2024"
+    steps:
+      - name: Activate Python ${{ matrix.python-version }}
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
+        with:
+          python-version: '${{ matrix.python-version }}'
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --user --upgrade -r requirements.txt
+
+      - name: Build Qt
+        if: matrix.arch-type == 'arm64'
+        id: build-qt6
+        uses: ./.github/actions/build-qt6
+        with:
+          qt-version: "6.5.3"
+          python3-version: "3.11.9"
+          python2-version: "2.7.18"
+          xcode-version: "14.3.1"
