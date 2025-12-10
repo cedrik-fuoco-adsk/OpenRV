@@ -223,7 +223,7 @@ def patch_python_distribution(python_home: str) -> None:
 
     pip_args = python_interpreter_args + ["-m", "pip"]
 
-    for package in ["pip", "certifi", "six", "wheel", "packaging", "requests", "pydantic"]:
+    for package in ["pip", "certifi"]:
         package_install_args = pip_args + [
             "install",
             "--upgrade",
@@ -232,15 +232,6 @@ def patch_python_distribution(python_home: str) -> None:
         ]
         print(f"Installing {package} with {package_install_args}")
         subprocess.run(package_install_args).check_returncode()
-
-    wheel_install_args = pip_args + [
-        "install",
-        "--upgrade",
-        "--force-reinstall",
-        "wheel",
-    ]
-    print(f"Installing wheel with {wheel_install_args}")
-    subprocess.run(wheel_install_args).check_returncode()
 
     site_packages = glob.glob(os.path.join(python_home, "**", "site-packages"), recursive=True)[0]
 
