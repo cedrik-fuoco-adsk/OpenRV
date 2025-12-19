@@ -419,19 +419,48 @@ class FFMpegConan(ConanFile):
             )
         if self.options.with_ssl == "openssl":
             # https://trac.ffmpeg.org/ticket/5675
+            cpp_info = self.dependencies["openssl"].cpp_info.aggregated_components()
             openssl_libraries = " ".join(
                 [
                     f"-l{lib}"
-                    for lib in self.dependencies["openssl"]
-                    .cpp_info.aggregated_components()
-                    .libs
+                    for lib in cpp_info.libs + cpp_info.system_libs
                 ]
             )
+            # OpenRV: OpenSSL 3.x can depend on zlib for compression support.
+            # When statically linking OpenSSL, we must also link zlib explicitly.
+            # Check if zlib is in the dependency graph (not just if the option is set).
+            if "zlib" in self.dependencies:
+                zlib_info = self.dependencies["zlib"].cpp_info.aggregated_components()
+                zlib_libs = " ".join([f"-l{lib}" for lib in zlib_info.libs])
+                openssl_libraries += f" {zlib_libs}"
+            
+            self.output.info(f"OpenRV: openssl_libraries for patching: {openssl_libraries}")
+
+            # Check for OpenSSL 1.1+ (OPENSSL_init_ssl)
+            replace_in_file(
+                self,
+                os.path.join(self.source_folder, "configure"),
+                "check_lib openssl openssl/ssl.h OPENSSL_init_ssl -lssl -lcrypto ||",
+                f"check_lib openssl openssl/ssl.h OPENSSL_init_ssl {openssl_libraries} || ",
+                strict=False,
+            )
+            # Check for OpenSSL < 1.1 (SSL_library_init)
+            # We also update this to use the correct libs and function if needed, 
+            # though usually the first check (OPENSSL_init_ssl) is what matters for modern OpenSSL.
+            replace_in_file(
+                self,
+                os.path.join(self.source_folder, "configure"),
+                "check_lib openssl openssl/ssl.h SSL_library_init -lssl -lcrypto ||",
+                f"check_lib openssl openssl/ssl.h OPENSSL_init_ssl {openssl_libraries} || ",
+                strict=False,
+            )
+            # Windows specific check
             replace_in_file(
                 self,
                 os.path.join(self.source_folder, "configure"),
                 "check_lib openssl openssl/ssl.h SSL_library_init -lssl -lcrypto -lws2_32 -lgdi32 ||",
                 f"check_lib openssl openssl/ssl.h OPENSSL_init_ssl {openssl_libraries} || ",
+                strict=False,
             )
 
         replace_in_file(

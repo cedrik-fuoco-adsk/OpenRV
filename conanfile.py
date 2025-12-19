@@ -68,6 +68,7 @@ class OpenRVRecipe(ConanFile):
                 "with_programs": False,
                 "with_large_tests": False,
                 "with_doc": False,
+                "with_vulkan": False,  # Disable Vulkan - FFmpeg 6.1.1 has incompatible MESA extensions
                 "disable_decoders": disabled_decoders_str,
                 "disable_encoders": disabled_encoders_str,
                 "disable_parsers": disabled_parsers_str,
