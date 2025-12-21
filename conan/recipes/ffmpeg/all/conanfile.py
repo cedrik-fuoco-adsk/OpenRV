@@ -173,7 +173,7 @@ class FFMpegConan(ConanFile):
         "with_pulse": None,
         "with_vaapi": None,
         "with_vdpau": None,
-        "with_vulkan": None,
+        "with_vulkan": False,
         "with_xcb": None,
         "with_appkit": None,
         "with_avfoundation": None,
