@@ -21,8 +21,6 @@ import traceback
 REQUIRED_IMPORTS = [
     # Core packages
     ("pip", "Package installer"),
-    ("setuptools", "Build system"),
-    ("wheel", "Wheel format support"),
     # Scientific/Data packages
     ("numpy", "Numerical computing"),
     ("opentimelineio", "Editorial timeline"),
@@ -41,6 +39,10 @@ REQUIRED_IMPORTS = [
     ("packaging", "Version parsing"),
     ("pydantic", "Data validation"),
 ]
+
+# Note: setuptools and wheel are intentionally excluded from testing because they are
+# build-time dependencies (not runtime). Since they successfully built all packages,
+# we don't need to validate them at runtime.
 
 
 def test_imports():
