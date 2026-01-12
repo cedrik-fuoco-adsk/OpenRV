@@ -279,6 +279,7 @@ ELSE()
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
       COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_crypto_lib_name} ${RV_STAGE_BIN_DIR}
       COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_ssl_lib_name} ${RV_STAGE_BIN_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/src/build/openssl.cnf ${RV_STAGE_LIB_DIR}/openssl.cnf
       DEPENDS ${_target}
     )
     ADD_CUSTOM_TARGET(
@@ -301,6 +302,7 @@ ELSE()
       COMMENT "Installing ${_target}'s libs into ${_openssl_stage_lib_dir}"
       OUTPUT ${_openssl_stage_lib_dir}/${_crypto_lib_name} ${_openssl_stage_lib_dir}/${_ssl_lib_name}
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${_openssl_stage_lib_dir}
+      COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/src/build/openssl.cnf ${_openssl_stage_lib_dir}/openssl.cnf
       DEPENDS ${_target}
     )
     ADD_CUSTOM_TARGET(

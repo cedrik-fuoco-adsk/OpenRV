@@ -414,6 +414,23 @@ ADD_CUSTOM_COMMAND(
   DEPENDS ${_python3_target} ${${_python3_target}-build-deps-flag} ${_requirements_output_file} ${_requirements_input_file}
 )
 
+# Test Python package imports after requirements are installed
+SET(${_python3_target}-imports-test-flag
+    ${_install_dir}/${_python3_target}-imports-test-flag
+)
+
+SET(_test_python_imports_script
+    "${PROJECT_SOURCE_DIR}/src/build/test_python_imports.py"
+)
+
+ADD_CUSTOM_COMMAND(
+  COMMENT "Testing Python package imports (build-time validation)"
+  OUTPUT ${${_python3_target}-imports-test-flag}
+  COMMAND "${_python3_executable}" "${_test_python_imports_script}"
+  COMMAND cmake -E touch ${${_python3_target}-imports-test-flag}
+  DEPENDS ${${_python3_target}-requirements-flag} ${_test_python_imports_script}
+)
+
 # Test the Python distribution after requirements are installed
 SET(${_python3_target}-test-flag
     ${_install_dir}/${_python3_target}-test-flag
@@ -428,7 +445,7 @@ ADD_CUSTOM_COMMAND(
   OUTPUT ${${_python3_target}-test-flag}
   COMMAND python3 "${_test_python_script}" --python-home "${_install_dir}" --variant "${CMAKE_BUILD_TYPE}"
   COMMAND cmake -E touch ${${_python3_target}-test-flag}
-  DEPENDS ${${_python3_target}-requirements-flag} ${_test_python_script}
+  DEPENDS ${${_python3_target}-imports-test-flag} ${_test_python_script}
 )
 
 IF(RV_TARGET_WINDOWS

@@ -1,0 +1,26 @@
+#
+# OpenSSL configuration file for RV
+# Copyright (c) 2025 Autodesk, Inc. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# This configuration file enables both the default and legacy providers
+# for OpenSSL 3.x, which is required for the cryptography Python module
+# when built from source.
+#
+
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+default = default_sect
+legacy = legacy_sect
+
+[default_sect]
+activate = 1
+
+[legacy_sect]
+activate = 1
+

@@ -18,6 +18,50 @@ import site
 import sys
 import os
 
+# Configure OpenSSL 3.x to enable legacy provider for cryptography module compatibility
+try:
+    if "OPENSSL_CONF" not in os.environ:
+        # Locate the OpenSSL configuration file relative to the Python installation
+        # This is critical for OpenSSL 3.x to load the legacy provider required by
+        # the cryptography module when built from source
+
+        # Determine the base directory (Contents on macOS app bundle, or parent of bin on Linux)
+        if sys.platform == "darwin":
+            # On macOS, Python is typically in Contents/Frameworks/Python.framework or Contents/lib/python
+            # Navigate up to find Contents, then look in Contents/lib/OpenSSL
+            current = os.path.dirname(sys.executable)
+            while current != "/" and os.path.basename(current) != "Contents":
+                current = os.path.dirname(current)
+            if os.path.basename(current) == "Contents":
+                base_dir = current
+            else:
+                # Fallback if not in app bundle structure
+                base_dir = os.path.dirname(os.path.dirname(sys.executable))
+        else:
+            # On Linux/Windows, Python is in bin/ directory
+            base_dir = os.path.dirname(os.path.dirname(sys.executable))
+
+        # Try multiple possible locations for the OpenSSL config
+        possible_config_paths = [
+            # Linux staging structure: lib/OpenSSL/openssl.cnf
+            os.path.join(base_dir, "lib", "OpenSSL", "openssl.cnf"),
+            # macOS/Windows staging structure: lib/openssl.cnf
+            os.path.join(base_dir, "lib", "openssl.cnf"),
+            # Alternative location in OpenSSL subdirectory
+            os.path.join(base_dir, "OpenSSL", "openssl.cnf"),
+        ]
+
+        for config_path in possible_config_paths:
+            normalized_path = os.path.normpath(os.path.abspath(config_path))
+            if os.path.exists(normalized_path):
+                os.environ["OPENSSL_CONF"] = normalized_path
+                break
+
+except Exception as e:
+    if "PYTHONVERBOSE" in os.environ:
+        print("Failed to set OPENSSL_CONF environment variable.", file=sys.stderr)
+        print(e, file=sys.stderr)
+
 try:
     import certifi
 

@@ -118,6 +118,22 @@ def patch_openssl_distribution() -> None:
                 subprocess.run(install_name_tool_change_args).check_returncode()
 
 
+def create_openssl_config() -> None:
+    """
+    Copy openssl.cnf configuration file with legacy provider enabled.
+    This is required for OpenSSL 3.x to work with the cryptography Python module
+    when built from source.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    source_config_path = os.path.join(script_dir, "openssl.cnf")
+    dest_config_path = os.path.join(OUTPUT_DIR, "openssl.cnf")
+
+    print(f"Copying OpenSSL configuration from {source_config_path} to {dest_config_path}")
+    shutil.copy2(source_config_path, dest_config_path)
+
+    print("OpenSSL configuration file installed successfully with legacy provider enabled")
+
+
 def test_openssl_distribution() -> None:
     """
     Test the OpenSSL distribution.
@@ -222,6 +238,7 @@ def install() -> None:
     print(f"Executing {install_args} from {SOURCE_DIR}")
     subprocess.run(install_args, cwd=SOURCE_DIR).check_returncode()
 
+    create_openssl_config()
     patch_openssl_distribution()
     test_openssl_distribution()
 
