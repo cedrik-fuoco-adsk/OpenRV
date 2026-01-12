@@ -1,0 +1,62 @@
+name: 'Update Status on Checkbox Change'
+
+on:
+  issue_comment:
+    types: [edited]
+
+permissions:
+  pull-requests: read
+  statuses: write
+  issues: read
+
+jobs:
+  update-status:
+    if: ${{ github.event.issue.pull_request }} # only trigger on PR comments
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Update commit statuses based on checklist
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Only handle comments from the GitHub Actions bot (checklist creator)
+            const commentUser = context.payload.comment.user.login;
+            if (commentUser !== 'github-actions[bot]') {
+              console.log("Ignoring non-bot comment edits");
+              return;
+            }
+
+            // Fetch the PR head commit SHA
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const sha = pr.data.head.sha;
+
+            const body = context.payload.comment.body;
+
+            const checklist = [
+              { key: "tests", context: "Run tests" },
+              { key: "review", context: "Code review approved" },
+              { key: "deploy", context: "Deploy to production" },
+            ];
+
+            for (const item of checklist) {
+              const regex = new RegExp(`- \\[x\\] .*${item.context}`, "i");
+              const isChecked = regex.test(body);
+              const state = isChecked ? "success" : "pending";
+
+              console.log(`${item.context}: ${isChecked ? "checked" : "unchecked"}`);
+
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                state,
+                context: item.context,
+                description: isChecked
+                  ? "Completed via checklist"
+                  : "Awaiting manual approval via checklist",
+              });
+            }
