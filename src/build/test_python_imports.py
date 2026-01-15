@@ -11,19 +11,15 @@
 """
 Test script to validate all Python package imports at build time.
 This catches issues like missing dependencies, ABI incompatibilities, and
-configuration problems (like OpenSSL legacy provider) before runtime.
+configuration problems (like OpenSSL legacy provider) before running the build.
 
 Package list is automatically generated from requirements.txt.in to prevent
 manual synchronization errors.
 """
 
-import glob
 import os
-import platform
 import re
-import shutil
 import sys
-import traceback
 
 # Packages to skip from requirements.txt.in (e.g., build dependencies that don't need import testing).
 SKIP_IMPORTS = [
@@ -52,63 +48,20 @@ def parse_requirements(file_path):
     packages = []
     with open(file_path, encoding="utf-8") as f:
         for line in f:
-            line = line.strip()
+            # Remove inline comments and whitespace
+            line = line.split("#", 1)[0].strip()
             # Skip comments and empty lines
             if not line or line.startswith("#"):
+                continue
+            # Handle VCS/URL form: name @ git+...
+            if " @ " in line:
+                packages.append(line.split(" @ ", 1)[0].strip())
                 continue
             # Extract package name (before ==, <, >, etc.)
             match = re.match(r"^([A-Za-z0-9_-]+)", line)
             if match:
                 packages.append(match.group(1))
     return packages
-
-
-def fix_opentimelineio_debug_windows():
-    """Fix OpenTimelineIO Debug extension naming on Windows.
-
-    In Debug builds, OTIO creates _opentimed.pyd but Python expects _opentime_d.pyd.
-    This copies the file to the correct name if needed.
-    """
-    if platform.system() != "Windows" or "_d.exe" not in sys.executable.lower():
-        return  # Only needed for Windows Debug builds
-
-    try:
-        import site
-
-        site_packages = site.getsitepackages()
-
-        for sp in site_packages:
-            otio_path = os.path.join(sp, "opentimelineio")
-            if not os.path.exists(otio_path):
-                continue
-
-            # Look for ALL misnamed Debug extensions that end with 'd' before the Python tag
-            # Examples: _opentimed.*.pyd, _otiod.*.pyd
-            # These should be: _opentime_d.*.pyd, _otio_d.*.pyd
-            all_pyd_files = glob.glob(os.path.join(otio_path, "*.pyd"))
-
-            for pyd_file in all_pyd_files:
-                basename = os.path.basename(pyd_file)
-
-                # Check if it matches pattern: _<name>d.cp<version>-win_amd64.pyd
-                # where <name> ends with 'd' but should be <name>_d
-                if basename.startswith("_") and "d.cp" in basename and "_d.cp" not in basename:
-                    # Extract the module name (between '_' and 'd.cp')
-                    # Example: _opentimed.cp311 -> _opentime
-                    parts = basename.split("d.cp")
-                    if len(parts) == 2:
-                        module_base = parts[0]  # e.g., "_opentime"
-
-                        # Create correct name with _d suffix
-                        correct_name = f"{module_base}_d.cp{parts[1]}"
-                        correct_path = os.path.join(otio_path, correct_name)
-
-                        if not os.path.exists(correct_path):
-                            shutil.copy2(pyd_file, correct_path)
-                            print(f"Fixed OTIO Debug extension: {basename} -> {correct_name}")
-    except Exception as e:
-        # Don't fail if fix doesn't work, let import fail naturally
-        print(f"Warning: Could not fix OTIO Debug naming: {e}")
 
 
 def try_import(package_name):
@@ -120,10 +73,6 @@ def try_import(package_name):
 
     Raises ImportError if both attempts fail.
     """
-    # Fix OpenTimelineIO Debug naming issue before importing
-    if "opentimelineio" in package_name.lower():
-        fix_opentimelineio_debug_windows()
-
     try:
         return __import__(package_name)
     except ImportError:
@@ -135,27 +84,7 @@ def try_import(package_name):
 
 def test_imports():
     """Test that all required packages can be imported."""
-    # On Windows, ensure Python bin directory is on PATH for DLL loading.
-    # This is required for .pyd extensions (like _opentime.pyd) to find Python DLL and dependencies.
-    if platform.system() == "Windows":
-        python_bin = os.path.dirname(sys.executable)
-        path_env = os.environ.get("PATH", "")
-        paths_to_add = []
-
-        if python_bin not in path_env:
-            paths_to_add.append(python_bin)
-
-        # For Python 3.11+, also check for DLLs directory.
-        python_root = os.path.dirname(python_bin)
-        dlls_dir = os.path.join(python_root, "DLLs")
-        if os.path.exists(dlls_dir) and dlls_dir not in path_env:
-            paths_to_add.append(dlls_dir)
-
-        if paths_to_add:
-            # Add paths to the front of PATH.
-            new_path = os.pathsep.join(paths_to_add) + os.pathsep + path_env
-            os.environ["PATH"] = new_path
-            print(f"Added to PATH for DLL loading: {', '.join(paths_to_add)}")
+    # No PATH manipulation needed.
 
     # Get requirements.txt.in from same directory as this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -194,16 +123,6 @@ def test_imports():
     if skipped_packages:
         print(f"Skipping: {', '.join(skipped_packages)}")
 
-    # On Windows, show PATH info for DLL debugging
-    if platform.system() == "Windows":
-        python_bin = os.path.dirname(sys.executable)
-        print(f"Python bin directory: {python_bin}")
-        path_env = os.environ.get("PATH", "")
-        if python_bin in path_env:
-            print("Python bin is on PATH: Yes")
-        else:
-            print("Python bin is on PATH: No (this should not happen - PATH was modified at startup)")
-
     print("=" * 80)
     print()
 
@@ -218,36 +137,7 @@ def test_imports():
             print(f"  Error: {type(e).__name__}: {e}")
             failed_imports.append((module_name, e))
 
-            # For opentimelineio failures, provide diagnostics
-            if "opentimelineio" in module_name.lower():
-                print("  Diagnostic info for OpenTimelineIO:")
-                try:
-                    import site
-
-                    site_packages = site.getsitepackages()
-                    print(f"  Site-packages: {site_packages}")
-
-                    # Check if opentimelineio is installed
-                    for sp in site_packages:
-                        otio_path = os.path.join(sp, "opentimelineio")
-                        if os.path.exists(otio_path):
-                            print(f"  Found opentimelineio at: {otio_path}")
-                            # List contents
-                            contents = os.listdir(otio_path)
-                            print(f"  Contents: {', '.join(contents[:10])}")
-                            # Check for _opentime
-                            opentime_files = [f for f in contents if "_opentime" in f]
-                            if opentime_files:
-                                print(f"  _opentime files: {opentime_files}")
-                            else:
-                                print("  WARNING: No _opentime extension found!")
-                except Exception as diag_e:
-                    print(f"  Could not get diagnostic info: {diag_e}")
-
-            # Print full traceback for debugging
-            if "--verbose" in sys.argv:
-                print("  Traceback:")
-                traceback.print_exc(file=sys.stdout)
+            # Keep failure output minimal; detailed diagnostics removed.
 
     print()
     print("=" * 80)
@@ -263,21 +153,6 @@ def test_imports():
         print("Build-time import test FAILED!")
         print("One or more required Python packages could not be imported.")
         print()
-        if any("OpenSSL" in str(e) or "legacy" in str(e).lower() for _, e in failed_imports):
-            print("NOTE: If you see OpenSSL legacy provider errors:")
-            print(
-                "  - Rebuild OpenSSL to generate openssl.cnf: ninja -t clean RV_DEPS_OPENSSL && ninja RV_DEPS_OPENSSL"
-            )
-            print("  - Check that OPENSSL_CONF is set in sitecustomize.py")
-            print()
-
-        if any("opentimelineio" in str(m).lower() for m, _ in failed_imports):
-            print("NOTE: If you see OpenTimelineIO import errors:")
-            print("  - Check that opentimelineio was built from source (not from wheel)")
-            print("  - Verify CMAKE_ARGS were passed correctly to pip install")
-            print("  - On Windows, check that the C++ extension (_opentime.pyd) was built")
-            print("  - Try rebuilding: ninja -t clean RV_DEPS_PYTHON3 && ninja RV_DEPS_PYTHON3")
-            print()
         return 1
     else:
         print()
