@@ -22,41 +22,27 @@ LIST(APPEND RV_DEPS_LIST libjpeg-turbo::turbojpeg)
 
 CONAN_SETUP_STAGING(${_target} ${_find_target})
 
-# Library naming conventions Needs _lib_dir and _bin_dir to be defined (from CONAN_SETUP_STAGING) CMake is not generating debug postfix for JpegTurbo
-RV_MAKE_STANDARD_LIB_NAME("jpeg" "62.3.0" "SHARED" "")
-SET(_winlibjpegname
-    jpeg62.dll
-)
+# Library naming conventions Needs _lib_dir and _bin_dir to be defined (from CONAN_SETUP_STAGING) Conan libjpeg-turbo produces jpeg8.dll and turbojpeg.dll on
+# Windows
+IF(RV_TARGET_WINDOWS)
+  SET(_winlibjpegname
+      jpeg8.dll
+  )
+  SET(_winlibturbojpegname
+      turbojpeg.dll
+  )
+ENDIF()
+
+# CMake is not generating debug postfix for JpegTurbo
+RV_MAKE_STANDARD_LIB_NAME("jpeg" "8.2.2" "SHARED" "")
 SET(_libjpegname
     ${_libname}
 )
 SET(_libjpegpath
     ${_libpath}
 )
-IF(RV_TARGET_WINDOWS)
-  SET(_libjpegimplibpath
-      ${_implibpath}
-  )
-ENDIF()
-SET(_winlibjpegpath
-    ${_bin_dir}/${_winlibjpegname}
-)
 
-# CMake is not generating debug postfix for JpegTurbo Note: This library is added by one of our DEP (TIFF or a JPEG DEP) and thus we're copying it. Ideally, we
-# should use the above and remove this one.
-RV_MAKE_STANDARD_LIB_NAME("jpeg" "8.2.2" "SHARED" "")
-SET(_libjpeg62name
-    ${_libname}
-)
-SET(_libjpeg62path
-    ${_libpath}
-)
-
-# CMake is not generating debug postfix for JpegTurbo
 RV_MAKE_STANDARD_LIB_NAME("turbojpeg" "0.2.0" "SHARED" "")
-SET(_winlibturbojpegname
-    turbojpeg.dll
-)
 SET(_libturbojpegname
     ${_libname}
 )
@@ -65,29 +51,30 @@ SET(_libturbojpegname
 IF(NOT RV_TARGET_WINDOWS)
   RV_COPY_LIB_BIN_FOLDERS()
 ELSE()
-  # Don't use RV_COPY_LIB_BIN_FOLDERS() because RV don't need the whole bin directory. Copying the two DLLs from jpegturbo.
+  # Don't use RV_COPY_LIB_BIN_FOLDERS() because RV don't need the whole bin directory. Copying the two DLLs from jpegturbo. Use OUTPUT-based command for proper
+  # dependency tracking
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${RV_STAGE_BIN_DIR}/${_winlibjpegname} ${RV_STAGE_BIN_DIR}/${_libturbojpegname}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_winlibjpegname} ${RV_STAGE_BIN_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_libturbojpegname} ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
 
   ADD_CUSTOM_TARGET(
     ${_target}-stage-target ALL
-    DEPENDS ${RV_STAGE_BIN_DIR}/${_libname}
+    DEPENDS ${RV_STAGE_BIN_DIR}/${_winlibjpegname} ${RV_STAGE_BIN_DIR}/${_winlibturbojpegname}
   )
 ENDIF()
 
 IF(NOT RV_TARGET_WINDOWS)
-  # RV_COPY_LIB_BIN_FOLDERS doesn't copy symlinks so this command is used for _libjpeg62path
+  # RV_COPY_LIB_BIN_FOLDERS doesn't copy symlinks so this command is used for _libjpegpath
   ADD_CUSTOM_COMMAND(
     TARGET ${_target}
     POST_BUILD
-    COMMENT "Copying jpegturbo's libjpeg ('${_libjpeg62path}') to '${RV_STAGE_LIB_DIR}'."
-    COMMAND ${CMAKE_COMMAND} -E copy ${_libjpeg62path} ${RV_STAGE_LIB_DIR}
+    COMMENT "Copying jpegturbo's libjpeg ('${_libjpegpath}') to '${RV_STAGE_LIB_DIR}'."
+    COMMAND ${CMAKE_COMMAND} -E copy ${_libjpegpath} ${RV_STAGE_LIB_DIR}
   )
 ENDIF()
 

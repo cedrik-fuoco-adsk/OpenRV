@@ -29,12 +29,12 @@ IF(RV_TARGET_LINUX)
       ${CMAKE_SHARED_LIBRARY_PREFIX}ssl${CMAKE_SHARED_LIBRARY_SUFFIX}${_dot_version}
   )
 ELSEIF(RV_TARGET_WINDOWS)
-  # As stated in the openssl documentation, the names are libcrypto-1_1-x64 and libssl-1_1-x64 when OpenSSL is build with MSVC.
+  # OpenSSL 3.x naming: libcrypto-3-x64.dll and libssl-3-x64.dll
   SET(_crypto_lib_name
-      libcrypto-${_underscore_version}-x64${CMAKE_SHARED_LIBRARY_SUFFIX}
+      libcrypto-3-x64${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
   SET(_ssl_lib_name
-      libssl-${_underscore_version}-x64${CMAKE_SHARED_LIBRARY_SUFFIX}
+      libssl-3-x64${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
 ELSE()
   SET(_crypto_lib_name
@@ -59,17 +59,33 @@ CONAN_SETUP_STAGING(${_target} ${_find_target})
 
 # custom command to copy the library to the staging area
 
-ADD_CUSTOM_COMMAND(
-  COMMENT "Installing ${_target}'s libs into ${_openssl_stage_lib_dir}"
-  OUTPUT ${_openssl_stage_lib_dir}/${_crypto_lib_name} ${_openssl_stage_lib_dir}/${_ssl_lib_name}
-  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${_openssl_stage_lib_dir}
-  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
-  DEPENDS OpenSSL::SSL OpenSSL::Crypto
-)
-ADD_CUSTOM_TARGET(
-  ${_target}-stage-target ALL
-  DEPENDS ${_openssl_stage_lib_dir}/${_crypto_lib_name} ${_openssl_stage_lib_dir}/${_ssl_lib_name}
-)
+IF(RV_TARGET_WINDOWS)
+  # On Windows, DLLs are in bin directory
+  ADD_CUSTOM_COMMAND(
+    COMMENT "Installing ${_target}'s libs and bin into ${_openssl_stage_lib_dir} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${RV_STAGE_BIN_DIR}/${_crypto_lib_name} ${RV_STAGE_BIN_DIR}/${_ssl_lib_name}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${_openssl_stage_lib_dir}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+    DEPENDS OpenSSL::SSL OpenSSL::Crypto
+  )
+  ADD_CUSTOM_TARGET(
+    ${_target}-stage-target ALL
+    DEPENDS ${RV_STAGE_BIN_DIR}/${_crypto_lib_name} ${RV_STAGE_BIN_DIR}/${_ssl_lib_name}
+  )
+ELSE()
+  ADD_CUSTOM_COMMAND(
+    COMMENT "Installing ${_target}'s libs into ${_openssl_stage_lib_dir}"
+    OUTPUT ${_openssl_stage_lib_dir}/${_crypto_lib_name} ${_openssl_stage_lib_dir}/${_ssl_lib_name}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${_openssl_stage_lib_dir}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
+    DEPENDS OpenSSL::SSL OpenSSL::Crypto
+  )
+  ADD_CUSTOM_TARGET(
+    ${_target}-stage-target ALL
+    DEPENDS ${_openssl_stage_lib_dir}/${_crypto_lib_name} ${_openssl_stage_lib_dir}/${_ssl_lib_name}
+  )
+ENDIF()
 
 ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
 

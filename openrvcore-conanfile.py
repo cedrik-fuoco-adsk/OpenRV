@@ -2,6 +2,7 @@ import os
 from conan import ConanFile
 from conan.tools.apple import is_apple_os
 from conan.tools.cmake import CMake, CMakeDeps, cmake_layout, CMakeToolchain
+from conan.tools.microsoft import VCVars
 from conan.tools.env import VirtualBuildEnv
 
 # The comment below is relevant for WINDOWS only because of the usage of MSYS2.
@@ -116,7 +117,8 @@ class OpenRVBase:
             )
 
         # Override imath version for other dependencies.
-        self.requires("imath/3.1.6", force=True, options={"shared": True})
+        # Using 3.1.9 which includes fix for PR #275 (IMATH_EXPORT on inline bits()/setBits())
+        self.requires("imath/3.1.9", force=True, options={"shared": True})
 
         # Python ported from make_python.py.
         # This package is customized for RV.
@@ -146,6 +148,9 @@ class OpenRVBase:
     def generate(self):
         buildenv = VirtualBuildEnv(self)
         buildenv.generate()
+
+        ms = VCVars(self)
+        ms.generate()
 
         deps = CMakeDeps(self)
         deps.generate()

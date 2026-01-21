@@ -29,13 +29,24 @@ TARGET_LINK_LIBRARIES(
 
 RV_STAGE(TYPE "EXECUTABLE_WITH_PLUGINS" TARGET ${_target})
 
-ADD_CUSTOM_COMMAND(
-  COMMENT "Generating ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}/formats.gto"
-  OUTPUT ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}/formats.gto
-  COMMAND $<TARGET_FILE:${_target}> ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}
-  WORKING_DIRECTORY ${RV_STAGE_BIN_DIR}
-  DEPENDS ${_target} image_formats
-)
+# On Windows, we need to set PATH to include the bin directory so the executable can find its DLL dependencies at runtime during the build process
+IF(RV_TARGET_WINDOWS)
+  ADD_CUSTOM_COMMAND(
+    COMMENT "Generating ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}/formats.gto"
+    OUTPUT ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}/formats.gto
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${RV_STAGE_BIN_DIR};$ENV{PATH}" $<TARGET_FILE:${_target}> ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}
+    WORKING_DIRECTORY ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target} image_formats
+  )
+ELSE()
+  ADD_CUSTOM_COMMAND(
+    COMMENT "Generating ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}/formats.gto"
+    OUTPUT ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}/formats.gto
+    COMMAND $<TARGET_FILE:${_target}> ${RV_STAGE_PLUGINS_IMAGEFORMATS_DIR}
+    WORKING_DIRECTORY ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target} image_formats
+  )
+ENDIF()
 
 ADD_CUSTOM_TARGET(
   formats.gto ALL

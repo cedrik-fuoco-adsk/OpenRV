@@ -205,9 +205,39 @@ ENDIF()
 SET(_requirements_file
     "${PROJECT_SOURCE_DIR}/src/build/requirements.txt"
 )
-SET(_requirements_install_command
-    "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
-)
+
+# On Windows, we need to set up the Visual Studio environment before running pip install because some packages (like OpenTimelineIO) need to compile C/C++
+# extensions. Conan's VCVars generator creates conanvcvars.bat which sets up the VS environment. We also set CMAKE_ARGS to pass the generator to CMake inside
+# pip's isolated build. Create a wrapper batch script to properly set environment and run pip.
+IF(RV_TARGET_WINDOWS)
+  SET(_conanvcvars_bat
+      "${CMAKE_BINARY_DIR}/generators/conanvcvars.bat"
+  )
+
+  # Create a wrapper batch file that sets up the environment correctly We write to CMAKE_BINARY_DIR to ensure the directory exists at configure time.
+  SET(_pip_wrapper_bat
+      "${CMAKE_BINARY_DIR}/pip_install_wrapper.bat"
+  )
+
+  # Use CMAKE_ARGS to specify the generator using single quotes for the name. This quoting style ("-G 'Generator Name'") is often required for Python build
+  # tools (like scikit-build) to correctly parse arguments with spaces.
+  FILE(
+    WRITE ${_pip_wrapper_bat}
+    "@echo off
+call \"${_conanvcvars_bat}\"
+set CMAKE_ARGS=\"-G 'Visual Studio 17 2022'\"
+\"${_python3_executable}\" -m pip install --upgrade -r \"${_requirements_file}\"
+"
+  )
+
+  SET(_requirements_install_command
+      ${_pip_wrapper_bat}
+  )
+ELSE()
+  SET(_requirements_install_command
+      "${_python3_executable}" -m pip install --upgrade -r "${_requirements_file}"
+  )
+ENDIF()
 
 # Create a custom target for Python requirements installation
 SET(${_target}-requirements-flag
@@ -215,7 +245,7 @@ SET(${_target}-requirements-flag
 )
 
 ADD_CUSTOM_COMMAND(
-  COMMENT "Installing requirements from ${_requirements_file}"
+  COMMENT "Installing requirements from ${_requirements_file}: ${_requirements_install_command}"
   OUTPUT ${${_target}-requirements-flag}
   COMMAND ${CMAKE_COMMAND} -E make_directory ${_install_dir}
   COMMAND ${_requirements_install_command}

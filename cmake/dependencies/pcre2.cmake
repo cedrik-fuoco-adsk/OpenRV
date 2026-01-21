@@ -49,35 +49,51 @@ TARGET_COMPILE_DEFINITIONS(
 MESSAGE(STATUS "Appending wrapper targets to RV_DEPS_LIST")
 LIST(APPEND RV_DEPS_LIST RV_PCRE2_8BIT RV_PCRE2_POSIX)
 
-# Library naming conventions for Windows
+# Library naming conventions for Windows (Conan/MSVC naming)
 SET(_pcre2_libname
-    libpcre2-8-0${CMAKE_SHARED_LIBRARY_SUFFIX}
+    pcre2-8${CMAKE_SHARED_LIBRARY_SUFFIX}
 )
 SET(_pcre2_libname_posix
-    libpcre2-posix-3${CMAKE_SHARED_LIBRARY_SUFFIX}
+    pcre2-posix${CMAKE_SHARED_LIBRARY_SUFFIX}
 )
 
 SET(_pcre2_implibname
-    libpcre2-8.dll.a
+    pcre2-8${CMAKE_IMPORT_LIBRARY_SUFFIX}
 )
 SET(_pcre2_implibname_posix
-    libpcre2-posix.dll.a
+    pcre2-posix${CMAKE_IMPORT_LIBRARY_SUFFIX}
 )
+
+# Get include directory from target since pcre2_INCLUDE_DIRS may not be set by Conan config
+IF(NOT ${_find_target}_INCLUDE_DIRS)
+  GET_TARGET_PROPERTY(_pcre2_include_dir PCRE2::8BIT INTERFACE_INCLUDE_DIRECTORIES)
+  SET(${_find_target}_INCLUDE_DIRS
+      ${_pcre2_include_dir}
+  )
+  MESSAGE(STATUS "Got PCRE2 include dir from target: ${_pcre2_include_dir}")
+ENDIF()
+
 MESSAGE(STATUS "Setting up staging")
 CONAN_SETUP_STAGING(${_target} ${_find_target})
 MESSAGE(STATUS "Staging done")
-# Custom command to copy the library to the staging area
+
+# Set the output files for dependency tracking
+SET(_pcre2_stage_output
+    ${RV_STAGE_BIN_DIR}/${_pcre2_libname} ${RV_STAGE_BIN_DIR}/${_pcre2_libname_posix}
+)
+
+# Custom command to copy the library to the staging area - use OUTPUT for proper dependency tracking
 ADD_CUSTOM_COMMAND(
-  TARGET ${_target}
-  POST_BUILD
   COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+  OUTPUT ${_pcre2_stage_output}
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+  DEPENDS ${_target}
 )
 
 ADD_CUSTOM_TARGET(
   ${_target}-stage-target ALL
-  DEPENDS ${RV_STAGE_BIN_DIR}/${_pcre2_libname} ${RV_STAGE_BIN_DIR}/${_pcre2_libname_posix}
+  DEPENDS ${_pcre2_stage_output}
 )
 
 ADD_DEPENDENCIES(dependencies ${_target}-stage-target)

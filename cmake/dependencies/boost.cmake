@@ -36,28 +36,21 @@ SET(_boost_libs
     timer
 )
 
-# Note: Boost has a custom lib naming scheme on windows
+# Note: Boost has a custom lib naming scheme on windows However, Conan builds Boost with simple names (boost_filesystem.dll, not
+# boost_filesystem-vc143-mt-x64-1_82.dll)
 IF(RV_TARGET_WINDOWS)
   SET(BOOST_SHARED_LIBRARY_PREFIX
       ""
   )
-  IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-    SET(BOOST_LIBRARY_SUFFIX
-        "-vc143-mt-gd-x64-${_major_minor_version}"
-    )
-  ELSE()
-    SET(BOOST_LIBRARY_SUFFIX
-        "-vc143-mt-x64-${_major_minor_version}"
-    )
-  ENDIF()
+  # Conan uses simple naming without version suffix
   SET(BOOST_SHARED_LIBRARY_SUFFIX
-      ${BOOST_LIBRARY_SUFFIX}${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
   SET(BOOST_IMPORT_LIBRARY_PREFIX
       ""
   )
   SET(BOOST_IMPORT_LIBRARY_SUFFIX
-      ${BOOST_LIBRARY_SUFFIX}${CMAKE_IMPORT_LIBRARY_SUFFIX}
+      ${CMAKE_IMPORT_LIBRARY_SUFFIX}
   )
 ELSE()
   SET(BOOST_SHARED_LIBRARY_PREFIX
@@ -90,16 +83,22 @@ FOREACH(
   ENDIF()
 
   LIST(APPEND RV_DEPS_LIST Boost::${_boost_lib})
-  LIST(APPEND _boost_stage_output ${RV_STAGE_LIB_DIR}/${_boost_${_boost_lib}_lib_name})
+  IF(RV_TARGET_WINDOWS)
+    # On Windows, DLLs go to bin directory
+    LIST(APPEND _boost_stage_output ${RV_STAGE_BIN_DIR}/${_boost_${_boost_lib}_lib_name})
+  ELSE()
+    LIST(APPEND _boost_stage_output ${RV_STAGE_LIB_DIR}/${_boost_${_boost_lib}_lib_name})
+  ENDIF()
 ENDFOREACH()
 
 IF(RV_TARGET_WINDOWS)
+  # Use OUTPUT-based command for proper dependency tracking
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${_boost_stage_output}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_BIN_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
 ELSE()
   ADD_CUSTOM_COMMAND(

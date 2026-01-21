@@ -421,10 +421,7 @@ class FFMpegConan(ConanFile):
             # https://trac.ffmpeg.org/ticket/5675
             cpp_info = self.dependencies["openssl"].cpp_info.aggregated_components()
             openssl_libraries = " ".join(
-                [
-                    f"-l{lib}"
-                    for lib in cpp_info.libs + cpp_info.system_libs
-                ]
+                [f"-l{lib}" for lib in cpp_info.libs + cpp_info.system_libs]
             )
             # OpenRV: OpenSSL 3.x can depend on zlib for compression support.
             # When statically linking OpenSSL, we must also link zlib explicitly.
@@ -433,8 +430,10 @@ class FFMpegConan(ConanFile):
                 zlib_info = self.dependencies["zlib"].cpp_info.aggregated_components()
                 zlib_libs = " ".join([f"-l{lib}" for lib in zlib_info.libs])
                 openssl_libraries += f" {zlib_libs}"
-            
-            self.output.info(f"OpenRV: openssl_libraries for patching: {openssl_libraries}")
+
+            self.output.info(
+                f"OpenRV: openssl_libraries for patching: {openssl_libraries}"
+            )
 
             # Check for OpenSSL 1.1+ (OPENSSL_init_ssl)
             replace_in_file(
@@ -445,7 +444,7 @@ class FFMpegConan(ConanFile):
                 strict=False,
             )
             # Check for OpenSSL < 1.1 (SSL_library_init)
-            # We also update this to use the correct libs and function if needed, 
+            # We also update this to use the correct libs and function if needed,
             # though usually the first check (OPENSSL_init_ssl) is what matters for modern OpenSSL.
             replace_in_file(
                 self,
@@ -808,6 +807,8 @@ class FFMpegConan(ConanFile):
                 args.append(f"--pkg-config={unix_path(self, pkg_config)}")
         if is_msvc(self):
             args.append("--toolchain=msvc")
+            # MSVC doesn't support any assembly (inline or external)
+            args.append("--disable-asm")
             if not check_min_vs(self, "190", raise_invalid=False):
                 # Visual Studio 2013 (and earlier) doesn't support "inline" keyword for C (only for C++)
                 tc.extra_defines.append("inline=__inline")

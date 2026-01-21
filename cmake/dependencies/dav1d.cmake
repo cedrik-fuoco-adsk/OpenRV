@@ -30,12 +30,13 @@ CONAN_SETUP_STAGING(${_target} ${_find_target})
 # custom command to copy the library to the staging area
 
 IF(RV_TARGET_WINDOWS)
+  # Use OUTPUT-based command for proper dependency tracking
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${RV_STAGE_LIB_DIR}/${_david_lib_name}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
   ADD_CUSTOM_TARGET(
     ${_target}-stage-target ALL

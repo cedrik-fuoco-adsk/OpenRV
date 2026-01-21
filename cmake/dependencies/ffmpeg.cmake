@@ -164,24 +164,23 @@ ADD_CUSTOM_TARGET(
 )
 
 IF(RV_TARGET_WINDOWS)
+  # Use OUTPUT-based command for proper dependency tracking
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${${_target}-stage-flag}
     # Note: The FFmpeg build stores both the import lib and the dll in the install bin directory
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/bin ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/bin ${RV_STAGE_BIN_DIR}
     COMMAND cmake -E touch ${${_target}-stage-flag}
-    BYPRODUCTS ${${_target}-stage-flag}
+    DEPENDS ${_target}
   )
 ELSE()
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs into ${RV_STAGE_LIB_DIR}"
+    OUTPUT ${${_target}-stage-flag}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
     COMMAND cmake -E touch ${${_target}-stage-flag}
-    BYPRODUCTS ${${_target}-stage-flag}
+    DEPENDS ${_target}
   )
 ENDIF()
 
