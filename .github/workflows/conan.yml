@@ -343,6 +343,7 @@ jobs:
 
       - name: Install OpenRV
         run: |
+          ls -al build
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   macos:
@@ -571,6 +572,7 @@ jobs:
           
       - name: Install OpenRV
         run: |
+          ls -al build
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   windows:
@@ -836,5 +838,6 @@ jobs:
 
       - name: Install OpenRV
         run: |
-          cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
+          ls -al build
+          cmake --install build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
         shell: msys2 {0}
