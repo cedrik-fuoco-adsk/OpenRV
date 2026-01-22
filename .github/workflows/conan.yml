@@ -835,12 +835,12 @@ jobs:
       - name: Tests
         continue-on-error: true
         run: |
-          ls -al _build/stage/app/bin
-          ctest --test-dir _build -C ${{ matrix.build-type }} --extra-verbose
+          ls -al build
+          ls -al build/stage/app/bin
+          ctest --test-dir build -C ${{ matrix.build-type }} --extra-verbose
         shell: msys2 {0}
 
       - name: Install OpenRV
         run: |
-          ls -al build
           cmake --install build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
         shell: msys2 {0}
