@@ -322,6 +322,7 @@ jobs:
           $CONAN_EXECUTABLE install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_rocky8
 
       - name: Cache Conan's cache
+        if: steps.cache.outputs.cache-hit != 'true'
         id: cache-conan
         uses: actions/cache/save@v4
         with:
@@ -551,6 +552,7 @@ jobs:
           /Users/runner/Library/Python/3.11/bin/conan install conanfile.py --build=missing -pr:a ./conan/profiles/arm64_apple_release
 
       - name: Cache Conan's cache
+        if: steps.cache.outputs.cache-hit != 'true'
         id: cache-conan
         uses: actions/cache/save@v4
         with:
@@ -816,6 +818,7 @@ jobs:
         shell: msys2 {0}
 
       - name: Cache Conan's cache
+        if: steps.cache.outputs.cache-hit != 'true'
         id: cache-conan
         uses: actions/cache/save@v4
         with:
