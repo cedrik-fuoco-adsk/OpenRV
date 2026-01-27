@@ -308,7 +308,7 @@ jobs:
           export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
           echo "QT_HOME=$QT_HOME" >> $GITHUB_ENV
           $CONAN_EXECUTABLE create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
-          $CONAN_EXECUTABLE create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8 -o python/*:vfx_platform=2024 -o python/*:shared=True -o python/*:optimizations=True -o python/*:with_tkinter=True -o python/*:with_ssl=True
+          $CONAN_EXECUTABLE create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8 -o 'python/*:vfx_platform=2024' -o 'python/*:shared=True' -o 'python/*:optimizations=True' -o 'python/*:with_tkinter=True' -o 'python/*:with_ssl=True'
           $CONAN_EXECUTABLE create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_rocky8
           $CONAN_EXECUTABLE export openrvcore-conanfile.py
 
@@ -537,8 +537,7 @@ jobs:
         run: |
           /Users/runner/Library/Python/3.11/bin/conan config install ${{ github.workspace }}/conan
           /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
-          /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/libatomic_ops/all/conanfile.py --version 7.8.2 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
-          /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release -o python/*:vfx_platform=2024 -o python/*:shared=True -o python/*:optimizations=True -o python/*:with_tkinter=True -o python/*:with_ssl=True
+          /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release -o 'python/*:vfx_platform=2024' -o 'python/*:shared=True' -o 'python/*:optimizations=True' -o 'python/*:with_tkinter=True' -o 'python/*:with_ssl=True'
           /Users/runner/Library/Python/3.11/bin/conan create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/arm64_apple_release
           /Users/runner/Library/Python/3.11/bin/conan export openrvcore-conanfile.py
 
@@ -801,7 +800,7 @@ jobs:
           echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
           
           conan create conan/recipes/ffmpeg/all/conanfile.py --version 6.1.1 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_windows
-          conan create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_windows -o python/*:vfx_platform=2024 -o python/*:shared=True -o python/*:optimizations=True -o python/*:with_tkinter=True -o python/*:with_ssl=True
+          conan create conan/recipes/python/all/conanfile.py --version 3.11.9 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_windows -o 'python/*:vfx_platform=2024' -o 'python/*:shared=True' -o 'python/*:optimizations=True' -o 'python/*:with_tkinter=True' -o 'python/*:with_ssl=True'
           conan create conan/recipes/pyside6/all/conanfile.py --version 6.5.3 --user openrv --build=missing -pr:a ./conan/profiles/x86_64_windows
         shell: msys2 {0}
 
