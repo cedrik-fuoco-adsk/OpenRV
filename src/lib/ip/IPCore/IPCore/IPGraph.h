@@ -779,6 +779,13 @@ namespace IPCore
         //--------------------------------------------------------------------------
 
     protected:
+        struct PendingCheckIn
+        {
+            IPImage* image;
+            bool updateDisplayFrame;
+            int frame;
+        };
+
         const NodeManager* m_nodeManager;
         IPNode* m_rootNode;
         IPNode* m_viewNode;
@@ -869,6 +876,8 @@ namespace IPCore
         std::atomic_bool m_evalSlowMedia;
         void* m_jobDispatcher; // opaque pointer SGC::JobDispatcher
         std::atomic_bool m_clearAudioCacheRequested;
+        mutable std::mutex m_pendingCheckinsMutex;
+        std::vector<PendingCheckIn> m_pendingCheckins;
 
         friend class FBCache;
         friend class IPNode;

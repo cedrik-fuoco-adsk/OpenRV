@@ -1542,7 +1542,32 @@ IPGraph::findNodesByAbstractPath(int frame,
 
     void IPGraph::checkInImage(IPImage* img, bool updateDisplayframe, int frame)
     {
-        TWK_CACHE_LOCK(m_fbcache, "");
+        if (!img)
+            return;
+
+        if (!m_fbcache.tryLock())
+        {
+            std::lock_guard<std::mutex> guard(m_pendingCheckinsMutex);
+            m_pendingCheckins.push_back(PendingCheckIn{img, updateDisplayframe, frame});
+            return;
+        }
+
+        std::vector<PendingCheckIn> pending;
+        {
+            std::lock_guard<std::mutex> guard(m_pendingCheckinsMutex);
+            pending.swap(m_pendingCheckins);
+        }
+
+        for (size_t i = 0; i < pending.size(); i++)
+        {
+            PendingCheckIn& item = pending[i];
+            m_fbcache.checkInAndDelete(item.image);
+            if (item.updateDisplayFrame)
+            {
+                m_fbcache.setDisplayFrame(item.frame);
+                awakenAllCachingThreads();
+            }
+        }
 
         m_fbcache.checkInAndDelete(img);
         if (updateDisplayframe)
@@ -1551,7 +1576,7 @@ IPGraph::findNodesByAbstractPath(int frame,
             awakenAllCachingThreads();
         }
 
-        TWK_CACHE_UNLOCK(m_fbcache, "");
+        m_fbcache.unlock();
     }
 
     //----------------------------------------------------------------------
@@ -1601,8 +1626,10 @@ IPGraph::findNodesByAbstractPath(int frame,
 
         PROFILE_SAMPLE(cacheTestStart);
 
+        // Use tryLock to avoid blocking the display thread on cache contention.
+        // If the cache is busy, we treat this frame as uncached and proceed.
         PROFILE_SAMPLE(cacheTestLockStart);
-        TWK_CACHE_LOCK(m_fbcache, "");
+        bool cacheLocked = m_fbcache.tryLock();
         PROFILE_SAMPLE(cacheTestLockEnd);
 
         //
@@ -1610,27 +1637,35 @@ IPGraph::findNodesByAbstractPath(int frame,
         //  cache thinks we're currently viewing, then set a flag that will
         //  awaken caching threads later.
         //
-        PROFILE_SAMPLE(setDisplayFrameStart);
-        if (forDisplay)
+        bool isCached = false;
+        if (cacheLocked)
         {
-            m_newFrame = frame != m_fbcache.displayFrame();
-
-            //
-            //  Ensure that caching threads have the right idea of the current
-            //  display frame.
-            //
-            if (m_newFrame)
+            PROFILE_SAMPLE(setDisplayFrameStart);
+            if (forDisplay)
             {
-                m_fbcache.setDisplayFrame(frame);
+                m_newFrame = frame != m_fbcache.displayFrame();
+
+                //
+                //  Ensure that caching threads have the right idea of the current
+                //  display frame.
+                //
+                if (m_newFrame)
+                {
+                    m_fbcache.setDisplayFrame(frame);
+                }
             }
+            PROFILE_SAMPLE(setDisplayFrameEnd);
+
+            PROFILE_SAMPLE(frameCachedTestStart);
+            isCached = m_fbcache.isFrameCached(frame);
+            PROFILE_SAMPLE(frameCachedTestEnd);
+
+            m_fbcache.unlock();
         }
-        PROFILE_SAMPLE(setDisplayFrameEnd);
-
-        PROFILE_SAMPLE(frameCachedTestStart);
-        bool isCached = m_fbcache.isFrameCached(frame);
-        PROFILE_SAMPLE(frameCachedTestEnd);
-
-        TWK_CACHE_UNLOCK(m_fbcache, "");
+        else if (forDisplay)
+        {
+            m_newFrame = true;
+        }
         // DB ("evaluateAtFrame f " << frame << " forDisplay " << forDisplay <<
         // " isCached " << isCached);
         PROFILE_SAMPLE(cacheTestEnd);
