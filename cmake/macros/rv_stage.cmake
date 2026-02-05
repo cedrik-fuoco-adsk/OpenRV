@@ -97,16 +97,26 @@ FUNCTION(rv_stage)
           ${RV_DEPS_LIST}
         )
           IF(TARGET ${dep})
-            GET_PROPERTY(
-              dep_file_path
-              TARGET ${dep}
-              PROPERTY LOCATION
-            )
-            GET_FILENAME_COMPONENT(dep_file_name ${dep_file_path} NAME)
-            ADD_CUSTOM_COMMAND(
-              COMMENT "Fixing ${dep_file_name}'s rpath in ${arg_TARGET}" TARGET ${arg_TARGET} POST_BUILD
-              COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "${dep_file_path}" "@rpath/${dep_file_name}" "$<TARGET_FILE:${arg_TARGET}>"
-            )
+            # Check if target is an imported target (e.g., from Conan)
+            GET_TARGET_PROPERTY(_dep_type ${dep} TYPE)
+            IF(_dep_type MATCHES ".*IMPORTED.*")
+              GET_TARGET_PROPERTY(dep_file_path ${dep} IMPORTED_LOCATION)
+            ELSE()
+              GET_PROPERTY(
+                dep_file_path
+                TARGET ${dep}
+                PROPERTY LOCATION
+              )
+            ENDIF()
+
+            # Only process if we have a valid path
+            IF(dep_file_path)
+              GET_FILENAME_COMPONENT(dep_file_name ${dep_file_path} NAME)
+              ADD_CUSTOM_COMMAND(
+                COMMENT "Fixing ${dep_file_name}'s rpath in ${arg_TARGET}" TARGET ${arg_TARGET} POST_BUILD
+                COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "${dep_file_path}" "@rpath/${dep_file_name}" "$<TARGET_FILE:${arg_TARGET}>"
+              )
+            ENDIF()
           ENDIF()
         ENDFOREACH()
       ENDIF()

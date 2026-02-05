@@ -97,10 +97,11 @@ ELSEIF(RV_FFMPEG STREQUAL 6)
   )
   ADD_COMPILE_DEFINITIONS(RV_FFMPEG_6)
   SET(RV_DEPS_FFMPEG_VERSION
-      "n6.1.2"
+      # TODOCED: Was 6.1.2 but not present on Conan
+      "n6.1.1"
   )
   SET(RV_DEPS_FFMPEG_DOWNLOAD_HASH
-      "953b858e5be3ab66232bdbb90e42f50d"
+      "6dfc27fcb6da6f653c6ec025c2cd9b00"
   )
   SET(RV_DEPS_FFMPEG_VERSION_LIB_avutil
       "58"

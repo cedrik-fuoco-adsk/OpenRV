@@ -119,23 +119,15 @@ LIST(APPEND _configure_options "-DOCIO_BUILD_TESTS=OFF")
 LIST(APPEND _configure_options "-DOCIO_BUILD_GPU_TESTS=OFF")
 LIST(APPEND _configure_options "-DOCIO_BUILD_PYTHON=ON") # This build PyOpenColorIO
 
-# SIMD CPU performance optimizations OCIO 2.2.1 only supports SSE OCIO 2.3.X can utilize SSE/AVX (Intel) and ARM NEON (Apple M chips) SIMD instructions.
-IF(RV_VFX_CY2023)
-  SET(_ocio_simd_options_str
-      "-DOCIO_USE_SSE=ON"
-  )
-ELSEIF(RV_VFX_PLATFORM STRGREATER_EQUAL "CY2024")
-  SET(_ocio_simd_options_str
-      "-DOCIO_USE_SIMD=ON"
-  )
-  LIST(APPEND _configure_options "${_ocio_simd_options_str}")
-ENDIF()
+# SIMD CPU performance optimizations OCIO 2.3.X can utilize SSE/AVX (Intel) and ARM NEON (Apple M chips) SIMD instructions.
+RV_VFX_SET_VARIABLE(_ocio_simd_options_str CY2023 "-DOCIO_USE_SSE=ON" CY2024 "-DOCIO_USE_SIMD=ON")
+LIST(APPEND _configure_options "${_ocio_simd_options_str}")
 
 # Ref.: https://cmake.org/cmake/help/latest/module/FindPython.html#hints
-LIST(APPEND _configure_options "-DPython_ROOT_DIR=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install")
+LIST(APPEND _configure_options "-DPython_ROOT_DIR=${Python_ROOT}")
 IF(NOT RV_TARGET_WINDOWS)
   SET(OCIO_PYTHON_PATH
-      ${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python${RV_DEPS_PYTHON_VERSION_SHORT}
+      ${Python_INCLUDE_DIRS}/../../bin/python${RV_DEPS_PYTHON_VERSION_SHORT}
   )
   LIST(APPEND _configure_options "-DPython_EXECUTABLE=${OCIO_PYTHON_PATH}")
 ENDIF()
@@ -149,6 +141,10 @@ LIST(APPEND _configure_options "-DZLIB_ROOT=${RV_DEPS_ZLIB_ROOT_DIR}")
 # OCIO apps are not needed.
 LIST(APPEND _configure_options "-DOCIO_BUILD_APPS=OFF")
 
+LIST(APPEND _configure_options "-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
+
+MESSAGE(STATUS "Configure options: ${_configure_options}")
+
 IF(NOT RV_TARGET_WINDOWS)
   EXTERNALPROJECT_ADD(
     ${_target}
@@ -160,7 +156,7 @@ IF(NOT RV_TARGET_WINDOWS)
     SOURCE_DIR ${_source_dir}
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
-    DEPENDS Boost::headers RV_DEPS_PYTHON3 Imath::Imath ZLIB::ZLIB
+    DEPENDS Boost::headers Python::Python Imath::Imath ZLIB::ZLIB
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
     BUILD_COMMAND ${_cmake_build_command}
     INSTALL_COMMAND ${_cmake_install_command}
@@ -199,6 +195,7 @@ ELSE() # Windows
     _configure_options
     # Not using Ninja: Ninja doesn't build due to Minizip wrong include style, VS uses search paths even for double-quotes includes.
     "-G ${CMAKE_GENERATOR}"
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
     "-DOCIO_VERBOSE=ON"
     "-DCMAKE_INSTALL_PREFIX=${_install_dir}"
     "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
@@ -206,13 +203,13 @@ ELSE() # Windows
     "-DZLIB_INCLUDE_DIR=${_zlib_include_dir}"
     "-Dexpat_ROOT=${RV_DEPS_EXPAT_ROOT_DIR}"
     "-DImath_DIR=${RV_DEPS_IMATH_ROOT_DIR}/lib/cmake/Imath"
-    "-DPython_ROOT=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install"
+    "-DPython_ROOT=${Python_ROOT}"
     # Mandatory param: OCIO CMake code finds Python.
-    "-DPython_LIBRARY=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python${PYTHON_VERSION_SHORT_NO_DOT}.lib" # with this param
+    "-DPython_LIBRARY=${Python_LIBRARY}" # with this param
     # DRV_Python_LIBRARIES: A Patch RV created for PyOpenColorIO inside OCIO: Hardcode to Release since FindPython.cmake will find the Debug lib, which we don't
     # want and doesn't build.
-    "-DRV_Python_LIBRARIES=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python${PYTHON_VERSION_SHORT_NO_DOT}.lib"
-    "-DPython_INCLUDE_DIR=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/include"
+    "-DRV_Python_LIBRARIES=${Python_LIBRARY}"
+    "-DPython_INCLUDE_DIR=${Python_INCLUDE_DIRS}"
     "-DOCIO_PYTHON_VERSION=${RV_DEPS_PYTHON_VERSION_SHORT}"
     "-DBUILD_SHARED_LIBS=ON"
     "-DOCIO_BUILD_PYTHON=ON"
@@ -231,9 +228,9 @@ ELSE() # Windows
 
   IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
     # Use debug Python executable.
-    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python_d.exe")
+    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${Python_EXECUTABLE_DEBUG}")
   ELSE()
-    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python.exe")
+    LIST(APPEND _configure_options "-DPython_EXECUTABLE=${Python_EXECUTABLE}")
   ENDIF()
 
   LIST(APPEND _ocio_build_options "--build" "${_build_dir}" "--config" "${CMAKE_BUILD_TYPE}"
@@ -251,7 +248,7 @@ ELSE() # Windows
     SOURCE_DIR ${_source_dir}
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
-    DEPENDS Boost::headers RV_DEPS_PYTHON3 Imath::Imath ZLIB::ZLIB EXPAT::EXPAT
+    DEPENDS Boost::headers Python::Python Imath::Imath ZLIB::ZLIB EXPAT::EXPAT
     PATCH_COMMAND python3 ${_pyopencolorio_patch_script_path} ${_pyopencolorio_cmakelists_path}
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
     BUILD_COMMAND ${CMAKE_COMMAND} ${_ocio_build_options}

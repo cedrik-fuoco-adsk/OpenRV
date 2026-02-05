@@ -29,21 +29,9 @@ IF(RV_TARGET_WINDOWS
   )
 ENDIF()
 
-IF(RV_TARGET_WINDOWS)
-  IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-    SET(_nanobind_python_executable
-        ${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python_d.exe
-    )
-  ELSE()
-    SET(_nanobind_python_executable
-        ${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python3.exe
-    )
-  ENDIF()
-ELSE()
-  SET(_nanobind_python_executable
-      ${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install/bin/python3
-  )
-ENDIF()
+SET(_nanobind_python_executable
+    ${Python_EXECUTABLE}
+)
 
 # Set up dependencies - start with Python, add extra packages for CY2023.
 SET(_nanobind_dependencies
@@ -80,7 +68,9 @@ IF(RV_VFX_PLATFORM STREQUAL CY2023)
 ENDIF()
 
 LIST(APPEND _configure_options "-DNB_TEST=OFF")
-LIST(APPEND _configure_options "-DPython_ROOT=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install")
+LIST(APPEND _configure_options "-DPython_ROOT=${Python_ROOT}")
+LIST(APPEND _configure_options "-DPython_ROOT_DIR=${Python_ROOT}")
+LIST(APPEND _configure_options "-DPython_FIND_STRATEGY=LOCATION")
 LIST(APPEND _configure_options "-DPython_EXECUTABLE=${_nanobind_python_executable}")
 
 EXTERNALPROJECT_ADD(

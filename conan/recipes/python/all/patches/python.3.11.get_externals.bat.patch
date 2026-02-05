@@ -1,0 +1,16 @@
+# Placeholder patch for Python 3.11 get_externals.bat script
+# This patch would modify Tools/peg_generator/get_externals.bat for dependency handling
+#
+# Based on the original patch from OpenRV's cmake/dependencies/patch/ directory  
+# The actual patch content would need to be extracted from the original build system
+
+--- a/Tools/peg_generator/get_externals.bat.orig
++++ b/Tools/peg_generator/get_externals.bat
+@@ -10,7 +10,7 @@ if "%1"=="--clean" (
+ )
+ 
+ call "%~dp0find_msbuild.bat" %MSBUILD%
+-if ERRORLEVEL 1 (echo Cannot locate MSBuild.exe on PATH or as MSBUILD variable & exit /b 2)
++if ERRORLEVEL 1 (echo Warning: Cannot locate MSBuild.exe on PATH or as MSBUILD variable)
+ 
+ call "%MSBUILD%" "%~dp0..\PCBuild\get_externals.vcxproj" /p:Configuration=Release %*

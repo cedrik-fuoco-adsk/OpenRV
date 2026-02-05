@@ -116,3 +116,28 @@ SET_PROPERTY(
   CACHE RV_FFMPEG
   PROPERTY STRINGS ${_RV_FFMPEG}
 )
+
+#
+# Package Manager option
+#
+# This option controls whether OpenRV uses pre-built packages from a package manager (Conan) or builds dependencies from source using ExternalProject_Add.
+#
+# When OFF (default): Dependencies are built from source (traditional mode) When ON: Dependencies are found via find_package() from Conan-provided packages
+#
+# Usage with Conan: 1. conan install conanfile.py --build=missing -of=build/Release 2. cmake -B build -S . -DRV_USE_PACKAGE_MANAGER=ON \
+# -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake
+#
+OPTION(RV_USE_PACKAGE_MANAGER "Use pre-built packages from package manager (Conan) instead of building from source" OFF)
+
+IF(RV_USE_PACKAGE_MANAGER)
+  MESSAGE(STATUS "RV_USE_PACKAGE_MANAGER=ON: Using Conan packages via find_package()")
+  # Verify that CMAKE_TOOLCHAIN_FILE is set (required for Conan integration)
+  IF(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    MESSAGE(WARNING "RV_USE_PACKAGE_MANAGER=ON but CMAKE_TOOLCHAIN_FILE not set. "
+                    "You may need to run: conan install conanfile.py --build=missing -of=<build_dir> "
+                    "and pass -DCMAKE_TOOLCHAIN_FILE=<build_dir>/generators/conan_toolchain.cmake"
+    )
+  ENDIF()
+ELSE()
+  MESSAGE(STATUS "RV_USE_PACKAGE_MANAGER=OFF: Building dependencies from source (traditional mode)")
+ENDIF()

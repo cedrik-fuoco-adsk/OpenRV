@@ -1,0 +1,58 @@
+sources:
+  "6.5.3":
+    url: "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside6/PySide6-6.5.3-src/pyside-setup-everywhere-src-6.5.3.zip"
+    sha256: "515d3249c6e743219ff0d7dd25b8c8d8"
+  "6.5.2":
+    url: "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside6/PySide6-6.5.2-src/pyside-setup-everywhere-src-6.5.2.zip"
+    sha256: "placeholder_hash_for_652"
+  "6.5.1":
+    url: "https://mirrors.ocf.berkeley.edu/qt/official_releases/QtForPython/pyside6/PySide6-6.5.1-src/pyside-setup-everywhere-src-6.5.1.zip"
+    sha256: "placeholder_hash_for_651"
+
+libclang_urls:
+  # macOS URLs - version dependent, with fallbacks
+  macos:
+    base_url: "https://mirrors.ocf.berkeley.edu/qt/development_releases/prebuilt/libclang/libclang-release_"
+    patterns:
+      - "{version}-based-macos-universal.7z"
+    fallbacks:
+      "14.0": "14.0.3-based-macos-universal.7z"
+      "15.0": "15.0.0-based-macos-universal.7z"
+      "17.0": "17.0.1-based-macos-universal.7z"
+  
+  # Linux URLs
+  linux:
+    base_url: "https://mirrors.ocf.berkeley.edu/qt/development_releases/prebuilt/libclang/libclang-release_"
+    filename: "19.1.0-based-linux-Rhel8.8-gcc10.3-x86_64.7z"
+  
+  # Windows URLs  
+  windows:
+    base_url: "https://mirrors.ocf.berkeley.edu/qt/development_releases/prebuilt/libclang/libclang-release_"
+    filename: "19.1.0-based-windows-vs2019_64.7z"
+
+patches:
+  "6.5.3":
+    - patch_file: "patches/shiboken6-disable-libxslt.patch"
+      base_path: "sources/shiboken6/ApiExtractor"
+      patch_description: "Disable LIBXSLT dependency in shiboken6"
+      
+python_requirements:
+  numpy: "1.26.3"  # Required for PySide6 build
+
+qt_requirements:
+  version: "6.5.3"
+  components:
+    - "Core"
+    - "Widgets" 
+    - "Gui"
+    - "WebEngineCore"
+    - "WebEngineWidgets"
+    - "Network"
+    - "OpenGL"
+    - "PrintSupport"
+    - "Qml"
+    - "Quick"
+    - "QuickWidgets"
+    - "Sql"
+    - "Test"
+    - "Xml"

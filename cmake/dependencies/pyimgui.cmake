@@ -80,9 +80,9 @@ EXTERNALPROJECT_ADD(
     ${_patch_command_for_imgui_bindings}
   UPDATE_COMMAND ""
   CONFIGURE_COMMAND
-    ${CMAKE_COMMAND} ${_configure_options} -DCMAKE_PREFIX_PATH=$ENV{QT_HOME}/lib/cmake -DPython_ROOT=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install
-    -Dimgui_INCLUDE_DIRS=${_imgui_include_dirs} -Dimgui_LIBRARY=${_imgui_library_file} -Dnanobind_ROOT=${RV_DEPS_BASE_DIR}/RV_DEPS_NANOBIND/install/nanobind
-    -DRV_TARGET_WINDOWS=${RV_TARGET_WINDOWS}
+    ${CMAKE_COMMAND} ${_configure_options} -DCMAKE_PREFIX_PATH=$ENV{QT_HOME}/lib/cmake -DPython_ROOT=${Python_ROOT} -DPython_ROOT_DIR=${Python_ROOT}
+    -DPython_FIND_STRATEGY=LOCATION -DPython_EXECUTABLE=${Python_EXECUTABLE} -Dimgui_INCLUDE_DIRS=${_imgui_include_dirs} -Dimgui_LIBRARY=${_imgui_library_file}
+    -Dnanobind_ROOT=${RV_DEPS_BASE_DIR}/RV_DEPS_NANOBIND/install/nanobind -DRV_TARGET_WINDOWS=${RV_TARGET_WINDOWS}
   BUILD_COMMAND ${_cmake_build_command}
   INSTALL_COMMAND ${_cmake_install_command}
   BUILD_BYPRODUCTS ${_build_output_path}

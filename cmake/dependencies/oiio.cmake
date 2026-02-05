@@ -55,7 +55,14 @@ LIST(APPEND _configure_options "-DUSE_OCIO=0")
 LIST(APPEND _configure_options "-DUSE_FREETYPE=0")
 LIST(APPEND _configure_options "-DUSE_GIF=OFF")
 
+# CMake 3.30+ removed FindBoost.cmake (CMP0167). Force OLD policy to restore module mode. Then Boost_NO_BOOST_CMAKE=ON makes it use Boost_ROOT directly without
+# needing BoostConfig.cmake. However, OIIO 2.5+ uses PREFER_CONFIG in checked_find_package, so we must provide Boost_DIR pointing to Conan's generated
+# BoostConfig.cmake.
+LIST(APPEND _configure_options "-DCMAKE_POLICY_DEFAULT_CMP0167=OLD")
+LIST(APPEND _configure_options "-DBoost_NO_BOOST_CMAKE=ON")
 LIST(APPEND _configure_options "-DBoost_ROOT=${RV_DEPS_BOOST_ROOT_DIR}")
+LIST(APPEND _configure_options "-DBoost_DIR=${CMAKE_BINARY_DIR}/generators")
+LIST(APPEND _configure_options "-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/generators")
 LIST(APPEND _configure_options "-DOpenEXR_ROOT=${RV_DEPS_OPENEXR_ROOT_DIR}")
 
 IF(NOT RV_TARGET_WINDOWS)
@@ -76,16 +83,16 @@ LIST(APPEND _configure_options "-DPNG_LIBRARY=${_png_library}")
 LIST(APPEND _configure_options "-DPNG_PNG_INCLUDE_DIR=${_png_include_dir}")
 
 IF(RV_TARGET_WINDOWS)
-  GET_TARGET_PROPERTY(_jpeg_library jpeg-turbo::jpeg IMPORTED_IMPLIB)
+  GET_TARGET_PROPERTY(_jpeg_library libjpeg-turbo::jpeg IMPORTED_IMPLIB)
 ELSE()
-  GET_TARGET_PROPERTY(_jpeg_library jpeg-turbo::jpeg IMPORTED_LOCATION)
+  GET_TARGET_PROPERTY(_jpeg_library libjpeg-turbo::jpeg IMPORTED_LOCATION)
 ENDIF()
-GET_TARGET_PROPERTY(_jpeg_include_dir jpeg-turbo::jpeg INTERFACE_INCLUDE_DIRECTORIES)
+GET_TARGET_PROPERTY(_jpeg_include_dir libjpeg-turbo::jpeg INTERFACE_INCLUDE_DIRECTORIES)
 LIST(APPEND _configure_options "-DJPEG_LIBRARY=${_jpeg_library}")
 LIST(APPEND _configure_options "-DJPEG_INCLUDE_DIR=${_jpeg_include_dir}")
 
-GET_TARGET_PROPERTY(_jpegturbo_library jpeg-turbo::turbojpeg IMPORTED_LOCATION)
-GET_TARGET_PROPERTY(_jpegturbo_include_dir jpeg-turbo::turbojpeg INTERFACE_INCLUDE_DIRECTORIES)
+GET_TARGET_PROPERTY(_jpegturbo_library libjpeg-turbo::turbojpeg IMPORTED_LOCATION)
+GET_TARGET_PROPERTY(_jpegturbo_include_dir libjpeg-turbo::turbojpeg INTERFACE_INCLUDE_DIRECTORIES)
 LIST(APPEND _configure_options "-DJPEGTURBO_LIBRARY=${_jpegturbo_library}")
 LIST(APPEND _configure_options "-DJPEGTURBO_INCLUDE_DIR=${_jpegturbo_include_dir}")
 
@@ -143,11 +150,11 @@ IF(NOT RV_TARGET_WINDOWS)
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
     DEPENDS ${_depends_freetype}
-            jpeg-turbo::jpeg
+            libjpeg-turbo::jpeg
             Tiff::Tiff
             OpenEXR::OpenEXR
             OpenJpeg::OpenJpeg
-            jpeg-turbo::turbojpeg
+            libjpeg-turbo::turbojpeg
             PNG::PNG
             Boost::headers
             Boost::thread
@@ -197,11 +204,11 @@ ELSE()
     BINARY_DIR ${_build_dir}
     INSTALL_DIR ${_install_dir}
     DEPENDS ${_depends_freetype}
-            jpeg-turbo::jpeg
+            libjpeg-turbo::jpeg
             Tiff::Tiff
             OpenEXR::OpenEXR
             OpenJpeg::OpenJpeg
-            jpeg-turbo::turbojpeg
+            libjpeg-turbo::turbojpeg
             PNG::PNG
             Boost::headers
             Boost::thread

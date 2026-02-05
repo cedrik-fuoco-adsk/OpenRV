@@ -4,152 +4,112 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-INCLUDE(ProcessorCount) # require CMake 3.15+
-PROCESSORCOUNT(_cpu_count)
+# PCRE2 is only used on Windows (boost regex is used on other platforms)
+IF(NOT RV_TARGET_WINDOWS)
+  RETURN()
+ENDIF()
 
-RV_CREATE_STANDARD_DEPS_VARIABLES("RV_DEPS_PCRE2" "pcre2-${RV_DEPS_PCRE2_VERSION}" "make" "")
-RV_SHOW_STANDARD_DEPS_VARIABLES()
-
-SET(_download_url
-    "https://github.com/PCRE2Project/pcre2/archive/refs/tags/${_version}.zip"
+SET(_target
+    "RV_DEPS_PCRE2"
 )
 
-SET(_download_hash
-    ${RV_DEPS_PCRE2_DOWNLOAD_HASH}
-)
+IF(RV_USE_PACKAGE_MANAGER)
+  #
+  # ====== PACKAGE MANAGER MODE (Conan via find_package) ======
+  #
+  MESSAGE(STATUS "Finding ${_target} from Conan via find_package()")
 
-SET(_install_dir
-    ${RV_DEPS_BASE_DIR}/${_target}/install
-)
+  SET(_find_target
+      pcre2
+  )
 
-# PCRE is not used for Linux and MacOS (Boost regex is used) in the current code.
-IF(RV_TARGET_WINDOWS)
+  FIND_PACKAGE(${_find_target} CONFIG REQUIRED)
+
+  # Make PCRE2 targets GLOBAL
+  RV_MAKE_TARGETS_GLOBAL(PCRE2::8BIT PCRE2::POSIX)
+
+  # Print package info for debugging
+  RV_PRINT_PACKAGE_INFO("${_find_target}")
+
+  # Create wrapper interface targets since we can't modify imported Conan targets
+  ADD_LIBRARY(RV_PCRE2_8BIT INTERFACE)
+  ADD_LIBRARY(RV_PCRE2_POSIX INTERFACE)
+
+  # Link to the Conan targets and add the required compile definitions
+  TARGET_LINK_LIBRARIES(
+    RV_PCRE2_8BIT
+    INTERFACE PCRE2::8BIT
+  )
+  TARGET_COMPILE_DEFINITIONS(
+    RV_PCRE2_8BIT
+    INTERFACE PCRE2_CODE_UNIT_WIDTH=8
+  )
+
+  TARGET_LINK_LIBRARIES(
+    RV_PCRE2_POSIX
+    INTERFACE PCRE2::POSIX
+  )
+  TARGET_COMPILE_DEFINITIONS(
+    RV_PCRE2_POSIX
+    INTERFACE PCRE2_CODE_UNIT_WIDTH=8
+  )
+
+  LIST(APPEND RV_DEPS_LIST RV_PCRE2_8BIT RV_PCRE2_POSIX)
+
+  # Library naming conventions for Windows (Conan/MSVC naming)
   SET(_pcre2_libname
-      libpcre2-8-0${CMAKE_SHARED_LIBRARY_SUFFIX}
+      pcre2-8${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
   SET(_pcre2_libname_posix
-      libpcre2-posix-3${CMAKE_SHARED_LIBRARY_SUFFIX}
+      pcre2-posix${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
 
-  SET(_pcre2_implibname
-      libpcre2-8.dll.a
-  )
-  SET(_pcre2_implibname_posix
-      libpcre2-posix.dll.a
+  # Get include directory from target since pcre2_INCLUDE_DIRS may not be set by Conan config
+  IF(NOT ${_find_target}_INCLUDE_DIRS)
+    GET_TARGET_PROPERTY(_pcre2_include_dir PCRE2::8BIT INTERFACE_INCLUDE_DIRECTORIES)
+    SET(${_find_target}_INCLUDE_DIRS
+        ${_pcre2_include_dir}
+    )
+  ENDIF()
+
+  # Set up staging directories from Conan package location
+  RV_SETUP_PACKAGE_STAGING(${_target} ${_find_target})
+
+  # Set the output files for dependency tracking
+  SET(_pcre2_stage_output
+      ${RV_STAGE_BIN_DIR}/${_pcre2_libname} ${RV_STAGE_BIN_DIR}/${_pcre2_libname_posix}
   )
 
-  SET(_pcre2_libpath
-      ${_bin_dir}/${_pcre2_libname}
-  )
-  SET(_pcre2_libpath_posix
-      ${_bin_dir}/${_pcre2_libname_posix}
+  # Copy libraries to staging area
+  ADD_CUSTOM_COMMAND(
+    COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${_pcre2_stage_output}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
 
-  SET(_pcre2_implibpath
-      ${_lib_dir}/${_pcre2_implibname}
+  ADD_CUSTOM_TARGET(
+    ${_target}-stage-target ALL
+    DEPENDS ${_pcre2_stage_output}
   )
-  SET(_pcre2_implibpath_posix
-      ${_lib_dir}/${_pcre2_implibname_posix}
+
+  ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
+
+  # Set version from found package
+  STRING(TOUPPER ${_find_target} _find_target_uppercase)
+  SET(RV_DEPS_${_find_target_uppercase}_VERSION
+      ${${_find_target}_VERSION}
+      CACHE INTERNAL "" FORCE
   )
+
+ELSE()
+  #
+  # ====== TRADITIONAL MODE (Build from source) ======
+  #
+  MESSAGE(STATUS "Building ${_target} from source using ExternalProject_Add")
+
+  # Include the original pcre2 build logic
+  INCLUDE(pcre23)
+
 ENDIF()
-
-SET(_pcre2_include_dir
-    ${_install_dir}/include
-)
-
-SET(_pcre2_configure_command
-    sh ./configure
-)
-
-SET(_pcre2_autogen_command
-    sh ./autogen.sh
-)
-
-LIST(APPEND _pcre2_configure_args "--prefix=${_install_dir}")
-# Build as shared library
-LIST(APPEND _pcre2_configure_args "--disable-static")
-LIST(APPEND _pcre2_configure_args "--disable-pcre2grep-libbz2")
-LIST(APPEND _pcre2_configure_args "--disable-pcre2grep-libz")
-
-IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-  LIST(APPEND _pcre2_configure_args "--enable-debug")
-ENDIF()
-
-EXTERNALPROJECT_ADD(
-  ${_target}
-  URL ${_download_url}
-  URL_MD5 ${_download_hash}
-  DOWNLOAD_NAME ${_target}_${_version}.zip
-  DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  SOURCE_DIR ${_source_dir}
-  INSTALL_DIR ${_install_dir}
-  DEPENDS ZLIB::ZLIB
-  CONFIGURE_COMMAND ${_pcre2_autogen_command} && ${_pcre2_configure_command} ${_pcre2_configure_args}
-  BUILD_COMMAND make -j${_cpu_count}
-  BUILD_IN_SOURCE TRUE
-  BUILD_ALWAYS FALSE
-  BUILD_BYPRODUCTS ${_pcre2_libname} ${_pcre2_libname_posix} ${_pcre2_implibname} ${_pcre2_implibname_posix}
-  USES_TERMINAL_BUILD TRUE
-)
-
-# PCRE is not used for Linux and MacOS (Boost regex is used) in the current code.
-ADD_CUSTOM_COMMAND(
-  TARGET ${_target}
-  POST_BUILD
-  COMMENT "Installing ${_target}'s shared library into ${RV_STAGE_BIN_DIR}"
-  # Copy library files manually since there are tools that are not needed in the bin folder.
-  COMMAND ${CMAKE_COMMAND} -E copy ${_pcre2_libpath} ${_pcre2_libpath_posix} -t ${RV_STAGE_BIN_DIR}
-)
-
-ADD_CUSTOM_TARGET(
-  ${_target}-stage-target ALL
-  DEPENDS ${RV_STAGE_BIN_DIR}/${_pcre2_libname} ${RV_STAGE_BIN_DIR}/${_pcre2_libname_posix}
-)
-
-ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
-
-ADD_LIBRARY(pcre2-8 SHARED IMPORTED GLOBAL)
-ADD_LIBRARY(pcre2-posix SHARED IMPORTED GLOBAL)
-
-ADD_DEPENDENCIES(pcre2-8 ${_target})
-ADD_DEPENDENCIES(pcre2-posix ${_target})
-
-# Setup includes
-SET(_pcre2_include_dir
-    ${_install_dir}/include
-)
-FILE(MAKE_DIRECTORY ${_pcre2_include_dir})
-
-# Setup pcre2 8-bits target
-SET_TARGET_PROPERTIES(
-  pcre2-8
-  PROPERTIES IMPORTED_LOCATION ${_pcre2_libpath}
-             IMPORTED_IMPLIB ${_pcre2_implibpath}
-)
-TARGET_INCLUDE_DIRECTORIES(
-  pcre2-8
-  INTERFACE ${_pcre2_include_dir}
-)
-TARGET_COMPILE_DEFINITIONS(
-  pcre2-8
-  INTERFACE PCRE2_CODE_UNIT_WIDTH=8
-)
-
-# Setup pcre2-posix target
-SET_TARGET_PROPERTIES(
-  pcre2-posix
-  PROPERTIES IMPORTED_LOCATION ${_pcre2_libpath_posix}
-             IMPORTED_IMPLIB ${_pcre2_implibpath_posix}
-)
-TARGET_INCLUDE_DIRECTORIES(
-  pcre2-posix
-  INTERFACE ${_pcre2_include_dir}
-)
-
-LIST(APPEND RV_DEPS_LIST pcre2-8 pcre2-posix)
-
-SET(RV_DEPS_PCRE2_VERSION
-    ${_version}
-    CACHE INTERNAL "" FORCE
-)
