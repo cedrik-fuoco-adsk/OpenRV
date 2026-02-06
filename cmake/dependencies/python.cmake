@@ -232,9 +232,16 @@ IF(RV_USE_PACKAGE_MANAGER)
       ${CMAKE_COMMAND} -E env ${_otio_debug_env} ${_sdkroot_env}
   )
 
-  # Only set OPENSSL_DIR if we built OpenSSL ourselves
+  # Set OpenSSL environment variables for pip install (needed for cryptography/Rust openssl-sys)
   IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
     LIST(APPEND _requirements_install_command "OPENSSL_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR}")
+    # Windows needs additional variables for Rust's openssl-sys crate
+    IF(RV_TARGET_WINDOWS)
+      LIST(APPEND _requirements_install_command "OPENSSL_LIB_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR}/lib")
+      LIST(APPEND _requirements_install_command "OPENSSL_INCLUDE_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR}/include")
+      # Force dynamic linking with shared OpenSSL
+      LIST(APPEND _requirements_install_command "OPENSSL_STATIC=0")
+    ENDIF()
   ENDIF()
 
   # Get Python library for CMAKE_ARGS

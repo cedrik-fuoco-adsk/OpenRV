@@ -76,6 +76,12 @@ IF(RV_USE_PACKAGE_MANAGER)
   # Set up staging directories from Conan package location
   RV_SETUP_PACKAGE_STAGING(${_target} ${_find_target})
 
+  # Export OpenSSL install directory for other cmake files (e.g., python.cmake needs this for cryptography/Rust openssl-sys)
+  SET(RV_DEPS_OPENSSL_INSTALL_DIR
+      ${_install_dir}
+      CACHE INTERNAL "OpenSSL installation directory from Conan" FORCE
+  )
+
   # Copy libraries to staging area
   IF(RV_TARGET_WINDOWS)
     ADD_CUSTOM_COMMAND(
