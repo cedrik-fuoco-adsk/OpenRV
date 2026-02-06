@@ -61,8 +61,11 @@ LIST(APPEND _configure_options "-DUSE_GIF=OFF")
 LIST(APPEND _configure_options "-DCMAKE_POLICY_DEFAULT_CMP0167=OLD")
 LIST(APPEND _configure_options "-DBoost_NO_BOOST_CMAKE=ON")
 LIST(APPEND _configure_options "-DBoost_ROOT=${RV_DEPS_BOOST_ROOT_DIR}")
-LIST(APPEND _configure_options "-DBoost_DIR=${CMAKE_BINARY_DIR}/generators")
-LIST(APPEND _configure_options "-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/generators")
+IF(RV_USE_PACKAGE_MANAGER)
+  # Prepend package manager generators folder to CMAKE_PREFIX_PATH for finding Boost and other generated configs
+  LIST(APPEND _configure_options "-DBoost_DIR=${RV_CONAN_CMAKE_PREFIX_PATH}")
+  LIST(APPEND _configure_options "-DCMAKE_PREFIX_PATH=${RV_CONAN_CMAKE_PREFIX_PATH};${CMAKE_PREFIX_PATH}")
+ENDIF()
 LIST(APPEND _configure_options "-DOpenEXR_ROOT=${RV_DEPS_OPENEXR_ROOT_DIR}")
 
 IF(NOT RV_TARGET_WINDOWS)

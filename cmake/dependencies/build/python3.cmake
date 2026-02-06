@@ -575,3 +575,24 @@ SET(RV_DEPS_PYTHON3_EXECUTABLE
     ${_python3_executable}
     CACHE INTERNAL "" FORCE
 )
+
+# Export Python variables for dependencies (OCIO, OIIO, pyimgui, nanobind, etc.) These match the variables set in the RV_USE_PACKAGE_MANAGER=ON (Conan) path
+SET(Python_ROOT
+    "${_install_dir}"
+    CACHE INTERNAL "Python root directory" FORCE
+)
+
+SET(Python_INCLUDE_DIRS
+    "${_include_dir}"
+    CACHE INTERNAL "Python include directories" FORCE
+)
+
+SET(Python_EXECUTABLE
+    "${_python3_executable}"
+    CACHE INTERNAL "Python executable" FORCE
+)
+
+SET(Python_LIBRARIES
+    "${_python3_lib}"
+    CACHE INTERNAL "Python library" FORCE
+)
