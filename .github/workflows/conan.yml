@@ -118,6 +118,43 @@ jobs:
           dnf install -y perl-CPAN
           cpan FindBin
 
+      - name: Install GCC 11 toolchain for Rocky Linux 8
+        if: ${{ matrix.rocky-version == '8' }}
+        run: |
+          retry_count=0
+          max_retries=5
+          
+          until [ $retry_count -ge $max_retries ]; do
+            echo "Attempt $((retry_count + 1)) of $max_retries"
+            
+            if dnf install -y gcc-toolset-11-toolchain; then
+              echo "GCC 11 toolchain installed successfully"
+              break
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "Attempt $retry_count failed. Retrying in 5 seconds..."
+                sleep 5
+              fi
+            fi
+          done
+          
+          if [ $retry_count -ge $max_retries ]; then
+            echo "Failed to install GCC 11 toolchain after $max_retries attempts"
+            exit 1
+          fi
+
+      - name: Enable GCC 11 toolchain for Rocky Linux 8
+        if: ${{ matrix.rocky-version == '8' }}
+        run: |
+          source /opt/rh/gcc-toolset-11/enable
+          echo "/opt/rh/gcc-toolset-11/root/usr/bin" >> $GITHUB_PATH
+          echo "CC=/opt/rh/gcc-toolset-11/root/usr/bin/gcc" >> $GITHUB_ENV
+          echo "CXX=/opt/rh/gcc-toolset-11/root/usr/bin/g++" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          gcc --version
+          g++ --version
+
       - name: Check out repository code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
         with:
