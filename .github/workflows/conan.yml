@@ -348,7 +348,7 @@ jobs:
         id: cache
         with:
           path: ${{ env.CONAN_HOME }}
-          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+          key: ${{ runner.os }}-rocky${{ matrix.rocky-version }}-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-conan-${{ hashFiles('**/conanfile.py') }}
       
       - name: Build dependencies with custom recipes
         if: ${{ matrix.vfx-platform == 'CY2024' }}
@@ -375,7 +375,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ env.CONAN_HOME }}
-          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+          key: ${{ runner.os }}-rocky${{ matrix.rocky-version }}-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-conan-${{ hashFiles('**/conanfile.py') }}
           
       - name: Build OpenRV main executable
         run: |
@@ -829,7 +829,7 @@ jobs:
           # TODO: Id like to use CONAN_HOME but it doesn't work well with the cache actions.
           #       I need to escape the forward slash for windows path.
           path: "C:\\users\\runneradmin\\.conan2"
-          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+          key: ${{ runner.os }}-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-conan-${{ hashFiles('**/conanfile.py') }}
 
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2023' }}
@@ -882,7 +882,7 @@ jobs:
           # TODO: Id like to use CONAN_HOME but it doesn't work well with the cache actions.
           #       I need to escape the forward slash for windows path.
           path: "C:\\users\\runneradmin\\.conan2"
-          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+          key: ${{ runner.os }}-${{ matrix.vfx-platform }}-${{ matrix.arch-type }}-conan-${{ hashFiles('**/conanfile.py') }}
           
       - name: Build OpenRV main executable
         run: |
