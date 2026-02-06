@@ -31,30 +31,31 @@ IF(RV_USE_PACKAGE_MANAGER)
   # Print package info for debugging
   RV_PRINT_PACKAGE_INFO("${_find_target}")
 
-  # Create wrapper interface targets since we can't modify imported Conan targets
-  ADD_LIBRARY(RV_PCRE2_8BIT INTERFACE)
-  ADD_LIBRARY(RV_PCRE2_POSIX INTERFACE)
+  # Create wrapper interface targets with the names expected by source CMakeLists files The source code links to pcre2-8 and pcre2-posix, so we need to create
+  # targets with those names
+  ADD_LIBRARY(pcre2-8 INTERFACE)
+  ADD_LIBRARY(pcre2-posix INTERFACE)
 
-  # Link to the Conan targets and add the required compile definitions
+  # Link to the Conan targets and add the required compile definitions PCRE2_CODE_UNIT_WIDTH=8 MUST be defined before including pcre2.h
   TARGET_LINK_LIBRARIES(
-    RV_PCRE2_8BIT
+    pcre2-8
     INTERFACE PCRE2::8BIT
   )
   TARGET_COMPILE_DEFINITIONS(
-    RV_PCRE2_8BIT
+    pcre2-8
     INTERFACE PCRE2_CODE_UNIT_WIDTH=8
   )
 
   TARGET_LINK_LIBRARIES(
-    RV_PCRE2_POSIX
+    pcre2-posix
     INTERFACE PCRE2::POSIX
   )
   TARGET_COMPILE_DEFINITIONS(
-    RV_PCRE2_POSIX
+    pcre2-posix
     INTERFACE PCRE2_CODE_UNIT_WIDTH=8
   )
 
-  LIST(APPEND RV_DEPS_LIST RV_PCRE2_8BIT RV_PCRE2_POSIX)
+  LIST(APPEND RV_DEPS_LIST pcre2-8 pcre2-posix)
 
   # Library naming conventions for Windows (Conan/MSVC naming)
   SET(_pcre2_libname
