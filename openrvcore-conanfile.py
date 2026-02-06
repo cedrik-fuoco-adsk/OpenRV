@@ -190,6 +190,11 @@ class OpenRVBase:
 
         tc.cache_variables["RV_USE_PACKAGE_MANAGER"] = "ON"
 
+        # Set CMAKE_PREFIX_PATH to point to the generators folder
+        # This allows ExternalProject_Add builds to find generated *Config.cmake files
+        generators_folder = os.path.join(self.build_folder, "generators")
+        tc.cache_variables["RV_CONAN_CMAKE_PREFIX_PATH"] = generators_folder
+
         # Generate the CMake's toolchain and preset files.
         tc.generate()
 
