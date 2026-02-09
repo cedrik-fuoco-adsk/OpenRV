@@ -244,6 +244,13 @@ IF(RV_USE_PACKAGE_MANAGER)
     ENDIF()
   ENDIF()
 
+  # On Windows, pass compiler paths so MSVC is found in pip's isolated build environment. The MSVC environment from vcvarsall may not propagate through the
+  # MSYS2 → CMake → pip → CMake chain. This mirrors the approach used in the PySide6 Conan recipe (conan/recipes/pyside6/all/conanfile.py).
+  IF(RV_TARGET_WINDOWS)
+    LIST(APPEND _requirements_install_command "CC=${CMAKE_C_COMPILER}")
+    LIST(APPEND _requirements_install_command "CXX=${CMAKE_CXX_COMPILER}")
+  ENDIF()
+
   # Get Python library for CMAKE_ARGS
   IF(RV_TARGET_WINDOWS)
     GET_TARGET_PROPERTY(_python3_cmake_library Python::Python IMPORTED_IMPLIB)
