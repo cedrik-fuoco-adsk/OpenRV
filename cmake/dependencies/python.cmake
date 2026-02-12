@@ -258,10 +258,30 @@ IF(RV_USE_PACKAGE_MANAGER)
     GET_TARGET_PROPERTY(_python3_cmake_library Python::Python IMPORTED_LOCATION)
   ENDIF()
 
+  SET(_cmake_args_value
+      "-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
+  )
+
+  # On Windows, forward MSVC compiler paths to pip's isolated build environment. Without this, packages built from source via pip (e.g. OpenTimelineIO) cannot
+  # find cl.exe because the vcvarsall environment doesn't propagate through the Conan -> CMake -> pip -> CMake chain.
+  #
+  # We use a CMake initial-cache script (-C <file>) instead of inline -DCMAKE_C_COMPILER=<path> because MSVC paths typically contain spaces (e.g. "C:/Program
+  # Files/Microsoft Visual Studio/...") which break the space-delimited CMAKE_ARGS parsing.
+  IF(RV_TARGET_WINDOWS)
+    SET(_pip_compiler_cache
+        "${CMAKE_BINARY_DIR}/_pip_compiler_init.cmake"
+    )
+    FILE(
+      WRITE "${_pip_compiler_cache}"
+      "set(CMAKE_C_COMPILER \"${CMAKE_C_COMPILER}\" CACHE FILEPATH \"\")\n" "set(CMAKE_CXX_COMPILER \"${CMAKE_CXX_COMPILER}\" CACHE FILEPATH \"\")\n"
+    )
+    STRING(APPEND _cmake_args_value " -C ${_pip_compiler_cache}")
+  ENDIF()
+
   LIST(
     APPEND
     _requirements_install_command
-    "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
+    "CMAKE_ARGS=${_cmake_args_value}"
     "${_python3_executable}"
     -s
     -E
