@@ -249,6 +249,15 @@ IF(RV_USE_PACKAGE_MANAGER)
   IF(RV_TARGET_WINDOWS)
     LIST(APPEND _requirements_install_command "CC=${CMAKE_C_COMPILER}")
     LIST(APPEND _requirements_install_command "CXX=${CMAKE_CXX_COMPILER}")
+
+    # Override TMP/TEMP to a short path. MSYS2's temp dir is deeply nested inside Conan's cache (e.g. .conan2/p/b/msys2.../p/bin/msys64/tmp/) and pip builds
+    # create further subdirectories, easily exceeding Windows' 260-char MAX_PATH and causing cl.exe to fail with "Cannot open compiler generated file".
+    SET(_pip_tmp_dir
+        "${CMAKE_BINARY_DIR}/pip_tmp"
+    )
+    FILE(MAKE_DIRECTORY "${_pip_tmp_dir}")
+    LIST(APPEND _requirements_install_command "TMP=${_pip_tmp_dir}")
+    LIST(APPEND _requirements_install_command "TEMP=${_pip_tmp_dir}")
   ENDIF()
 
   # Get Python library for CMAKE_ARGS
