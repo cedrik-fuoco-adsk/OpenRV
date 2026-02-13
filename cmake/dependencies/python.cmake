@@ -260,12 +260,11 @@ IF(RV_USE_PACKAGE_MANAGER)
     LIST(APPEND _requirements_install_command "TEMP=${_pip_tmp_dir}")
   ENDIF()
 
-  # Get Python library for CMAKE_ARGS
-  IF(RV_TARGET_WINDOWS)
-    GET_TARGET_PROPERTY(_python3_cmake_library Python::Python IMPORTED_IMPLIB)
-  ELSE()
-    GET_TARGET_PROPERTY(_python3_cmake_library Python::Python IMPORTED_LOCATION)
-  ENDIF()
+  # Python_LIBRARY is already set above (lines ~153-162) with the actual file path. Conan creates Python::Python as an INTERFACE IMPORTED target, so
+  # IMPORTED_IMPLIB and IMPORTED_LOCATION are not available via GET_TARGET_PROPERTY.
+  SET(_python3_cmake_library
+      "${Python_LIBRARY}"
+  )
 
   SET(_cmake_args_value
       "-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
