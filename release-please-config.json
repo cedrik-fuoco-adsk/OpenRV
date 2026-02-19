@@ -3,8 +3,8 @@
         { "type": "feat",  "section": "Features" },
         { "type": "fix",   "section": "Bug Fixes" },
         { "type": "build", "section": "Build System" },
-        { "type": "ci", "section": "CI" },
-        { "type": "docs", "section": "CI" }
+        { "type": "ci", "section": "GitHub Actions" },
+        { "type": "docs", "section": "Documentation" }
     ],
     "packages": {
       ".": {
