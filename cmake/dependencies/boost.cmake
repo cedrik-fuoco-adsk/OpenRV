@@ -154,6 +154,6 @@ ELSE()
   MESSAGE(STATUS "Building ${_target} from source using ExternalProject_Add")
 
   # Include the original boost build logic
-  INCLUDE(boost3)
+  INCLUDE(${CMAKE_CURRENT_LIST_DIR}/build/boost.cmake)
 
 ENDIF()

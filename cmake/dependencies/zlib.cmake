@@ -128,6 +128,6 @@ ELSE()
   MESSAGE(STATUS "Building ${_target} from source using ExternalProject_Add")
 
   # Include the original zlib build logic
-  INCLUDE(zlib3)
+  INCLUDE(${CMAKE_CURRENT_LIST_DIR}/build/zlib.cmake)
 
 ENDIF()

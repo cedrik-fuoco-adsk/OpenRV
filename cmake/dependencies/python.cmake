@@ -397,6 +397,6 @@ ELSE()
   #
   MESSAGE(STATUS "Building Python from source (traditional mode)")
 
-  INCLUDE(python3)
+  INCLUDE(${CMAKE_CURRENT_LIST_DIR}/build/python.cmake)
 
 ENDIF()

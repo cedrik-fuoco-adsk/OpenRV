@@ -53,9 +53,6 @@ ELSEIF(RV_VFX_PLATFORM STRGREATER_EQUAL "CY2024")
   INCLUDE(qt6)
 ENDIF()
 
-# Add build subfolder to module path for *3.cmake files (build-from-source)
-LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/build)
-
 INCLUDE(openssl) # Python3 requirement
 INCLUDE(python)
 INCLUDE(imgui)

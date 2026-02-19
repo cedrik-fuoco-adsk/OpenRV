@@ -101,6 +101,6 @@ ELSE()
   MESSAGE(STATUS "Building ${_target} from source using ExternalProject_Add")
 
   # Include the original jpegturbo build logic
-  INCLUDE(jpegturbo3)
+  INCLUDE(${CMAKE_CURRENT_LIST_DIR}/build/jpegturbo.cmake)
 
 ENDIF()

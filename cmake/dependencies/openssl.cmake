@@ -126,6 +126,6 @@ ELSE()
   MESSAGE(STATUS "Building ${_target} from source using ExternalProject_Add")
 
   # Include the original openssl build logic
-  INCLUDE(openssl3)
+  INCLUDE(${CMAKE_CURRENT_LIST_DIR}/build/openssl.cmake)
 
 ENDIF()

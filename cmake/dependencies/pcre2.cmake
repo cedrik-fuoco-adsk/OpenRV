@@ -111,6 +111,6 @@ ELSE()
   MESSAGE(STATUS "Building ${_target} from source using ExternalProject_Add")
 
   # Include the original pcre2 build logic
-  INCLUDE(pcre23)
+  INCLUDE(${CMAKE_CURRENT_LIST_DIR}/build/pcre2.cmake)
 
 ENDIF()
