@@ -29,9 +29,11 @@ class PythonConan(ConanFile):
     topics = ("python", "interpreter", "vfx", "openrv")
 
     settings = "os", "compiler", "build_type", "arch"
+    exports = "sitecustomize.py"
+    exports_sources = "patches/*"
 
     options = {
-        "vfx_platform": ["2023", "2024"],
+        "vfx_platform": ["CY2023", "CY2024"],
         "shared": [True, False],
         "optimizations": [True, False],
         "with_tkinter": [True, False],
@@ -39,7 +41,7 @@ class PythonConan(ConanFile):
     }
 
     default_options = {
-        "vfx_platform": "2024",
+        "vfx_platform": "CY2024",
         "shared": True,
         "optimizations": True,
         "with_tkinter": True,
@@ -49,9 +51,9 @@ class PythonConan(ConanFile):
     def configure(self):
         """Configure version and dependencies based on VFX platform"""
         # Only auto-configure version if it matches the expected pattern
-        if self.options.vfx_platform == "2023" and (not hasattr(self, "version") or self.version == "3.11.9"):
+        if self.options.vfx_platform == "CY2023" and (not hasattr(self, "version") or self.version == "3.11.9"):
             self.version = "3.10.13"
-        elif self.options.vfx_platform == "2024" and (not hasattr(self, "version") or self.version == "3.10.13"):
+        elif self.options.vfx_platform == "CY2024" and (not hasattr(self, "version") or self.version == "3.10.13"):
             self.version = "3.11.9"
 
         # Python is always shared in OpenRV
@@ -71,7 +73,7 @@ class PythonConan(ConanFile):
 
         if self.options.with_ssl:
             # Use OpenSSL 1.1.1 for Python 3.10 + VFX 2023, OpenSSL 3.x for 3.11/2024
-            if str(self.version).startswith("3.10") and str(self.options.vfx_platform) == "2023":
+            if str(self.version).startswith("3.10") and str(self.options.vfx_platform) == "CY2023":
                 self.requires("openssl/1.1.1u", options={"shared": True, "no_zlib": True})
             else:
                 self.requires("openssl/3.5.0", options={"shared": True, "no_zlib": True})
@@ -120,17 +122,17 @@ class PythonConan(ConanFile):
         )
 
     def _get_lib_dir(self):
-        """Get the appropriate lib directory based on platform and VFX platform"""
+        """Get the appropriate lib directory based on platform and VFX platform.
+        Matches make_python.py: lib for macOS/VFX2023, lib64 for Linux VFX2024+."""
         if self.settings.os == "Windows":
             return "libs"
         elif self.settings.os == "Macos":
             return "lib"
         else:  # Linux
-            if self.options.vfx_platform == "2023":
+            if self.options.vfx_platform == "CY2023":
                 return "lib"
-            elif self.options.vfx_platform == "2024":
-                return "lib"
-            return "lib"
+            else:
+                return "lib64"
 
     def _get_python_version_short(self):
         """Get short Python version (e.g., '3.11')"""
@@ -226,83 +228,10 @@ class PythonConan(ConanFile):
             return [], {}
 
     def _create_sitecustomize_content(self):
-        """Create the sitecustomize.py content for SSL certificate handling"""
-        from datetime import datetime
-
-        return f'''#
-# Copyright (c) {datetime.now().year} Autodesk, Inc. All rights reserved.
-#
-# SPDX-License-Identifier: Apache-2.0
-#
-
-"""
-Site-level module that ensures OpenSSL will have up to date certificate authorities
-on Linux and macOS. It gets imported when the Python interpreter starts up, both
-when launching Python as a standalone interpreter or as an embedded one.
-The OpenSSL shipped with Desktop requires a list of certificate authorities to be
-distributed with the build instead of relying on the OS keychain. In order to keep
-an up to date list, we're going to pull it from the certifi module, which incorporates
-all the certificate authorities that are distributed with Firefox.
-"""
-import site
-import sys
-
-try:
-    import os
-    import certifi
-
-    # Do not set SSL_CERT_FILE to our own if it is already set. Someone could
-    # have their own certificate authority that they specify with this env var.
-    # Unfortunately this is not a PATH like environment variable, so we can't
-    # concatenate multiple paths with ":".
-    #
-    # To learn more about SSL_CERT_FILE and how it is being used by OpenSSL when
-    # verifying certificates, visit
-    # https://www.openssl.org/docs/man1.1.0/ssl/SSL_CTX_set_default_verify_paths.html
-    if "SSL_CERT_FILE" not in os.environ and "DO_NOT_SET_SSL_CERT_FILE" not in os.environ:
-        os.environ["SSL_CERT_FILE"] = certifi.where()
-
-except Exception as e:
-    print("Failed to set certifi.where() as SSL_CERT_FILE.", file=sys.stderr)
-    print(e, file=sys.stderr)
-    print("Set DO_NOT_SET_SSL_CERT_FILE to skip this step in RV's Python initialization.", file=sys.stderr)
-
-try:
-    import os
-
-    if "DO_NOT_REORDER_PYTHON_PATH" not in os.environ:
-        import site
-        import sys
-
-        prefixes = list(set(site.PREFIXES))
-
-        # Python libs and site-packages is the first that should be in the PATH
-        new_path_list = list(set(site.getsitepackages()))
-        new_path_list.insert(0, os.path.dirname(new_path_list[0]))
-
-        # Then any paths in RV's app package
-        for path in sys.path:
-            for prefix in prefixes:
-                if path.startswith(prefix) is False:
-                    continue
-
-                if os.path.exists(path):
-                    new_path_list.append(path)
-
-        # Then the remaining paths
-        for path in sys.path:
-            if os.path.exists(path):
-                new_path_list.append(path)
-
-        # Save the new sys.path
-        sys.path = new_path_list
-        site.removeduppaths()
-
-except Exception as e:
-    print("Failed to reorder RV's Python search path", file=sys.stderr)
-    print(e, file=sys.stderr)
-    print("Set DO_NOT_REORDER_PYTHON_PATH to skip this step in RV's Python initialization.", file=sys.stderr)
-'''
+        """Load sitecustomize.py content from the exported file (mirrors make_python.py approach)."""
+        template_path = os.path.join(self.recipe_folder, "sitecustomize.py")
+        with open(template_path, "r") as f:
+            return f.read()
 
     def _setup_openssl_environment(self, build_env, configure_args):
         """Setup OpenSSL environment following Conan Center Index approach"""
@@ -422,54 +351,41 @@ except Exception as e:
             self.output.info("No setup.py patching needed or patterns not found")
 
     def _patch_makefile_for_rpath(self, makefile_path):
-        """Patch the Makefile to use proper RPATH settings"""
+        """Patch the Makefile to use proper RPATH settings.
+        Matches make_python.py: line-by-line processing to only modify lines
+        starting with LINKFORSHARED=, and apply install_name replacement on macOS."""
         if not os.path.exists(makefile_path):
             return
 
-        # Backup original makefile
         old_makefile_path = makefile_path + ".old"
-        shutil.copy2(makefile_path, old_makefile_path)
+        os.rename(makefile_path, old_makefile_path)
 
         with open(old_makefile_path, "r") as old_file:
-            content = old_file.read()
+            with open(makefile_path, "w") as new_file:
+                for line in old_file:
+                    # On macOS, change install_name to use @rpath
+                    if self.settings.os == "Macos":
+                        line = line.replace(
+                            "-Wl,-install_name,$(prefix)/lib/libpython$(",
+                            "-Wl,-install_name,@rpath/libpython$(",
+                        )
 
-        # Apply RPATH patches
-        if self.settings.os == "Macos":
-            # Change install_name to use @rpath
-            content = content.replace(
-                "-Wl,-install_name,$(prefix)/lib/libpython$(",
-                "-Wl,-install_name,@rpath/libpython$(",
-            )
+                    # Only append RPATH flags to lines that start with LINKFORSHARED=
+                    if line.startswith("LINKFORSHARED="):
+                        if self.settings.os == "Linux":
+                            new_file.write(line.rstrip() + " -Wl,-rpath,'$$ORIGIN/../lib',-rpath,'$$ORIGIN/../Qt'\n")
+                        elif self.settings.os == "Macos":
+                            new_file.write(
+                                line.rstrip() + " -Wl,-rpath,@executable_path/../lib,-rpath,@executable_path/../Qt\n"
+                            )
+                        else:
+                            new_file.write(line)
+                    else:
+                        new_file.write(line)
 
-            # Add RPATH for executable
-            content = content.replace(
-                "LINKFORSHARED=",
-                "LINKFORSHARED= -Wl,-rpath,@executable_path/../lib,-rpath,@executable_path/../Qt ",
-            )
-        elif self.settings.os == "Linux":
-            # Add RPATH for Linux
-            content = content.replace(
-                "LINKFORSHARED=",
-                "LINKFORSHARED= -Wl,-rpath,'$$ORIGIN/../lib',-rpath,'$$ORIGIN/../Qt' ",
-            )
-
-        with open(makefile_path, "w") as new_file:
-            new_file.write(content)
-
-    def _get_requirements_content(self):
-        """Get the Python requirements to install"""
-        return [
-            "pip",
-            "setuptools",
-            "git+https://github.com/AcademySoftwareFoundation/OpenTimelineIO@main#egg=OpenTimelineIO",
-            "PyOpenGL",
-            "certifi",
-            "six",
-            "wheel",
-            "packaging",
-            "requests",
-            "cryptography",
-        ]
+    # Package installation (OTIO, PyOpenGL, cryptography, etc.) is handled by
+    # cmake/dependencies/python.cmake via requirements.txt, not by this recipe.
+    # This matches make_python.py's patch_python_distribution() which only runs ensurepip.
 
     def _verify_ssl_support(self, python_executable):
         """Verify that SSL modules were built correctly"""
@@ -516,175 +432,15 @@ except Exception as e:
             except subprocess.CalledProcessError:
                 self.output.warning("Could not perform detailed SSL module check")
 
-    def _comprehensive_validation(self, python_executable):
-        """Comprehensive validation following make_python.py test_python_distribution logic"""
-        self.output.info("Running comprehensive Python validation...")
-
-        # Main validation test (following make_python.py)
-        validation_script = "\n".join(
-            [
-                # Check for tkinter
-                "try:",
-                "    import tkinter",
-                "except:",
-                "    import Tkinter as tkinter",
-                # Make sure certifi is available
-                "import certifi",
-                # Make sure the SSL_CERT_FILE variable is set
-                "import os",
-                "assert certifi.where() == os.environ['SSL_CERT_FILE']",
-                # Make sure ssl is correctly built and linked
-                "import ssl",
-                # Misc modules
-                "import sqlite3",
-                "import ctypes",
-                "import ssl",
-                "import _ssl",
-                "import zlib",
-            ]
-        )
-
-        try:
-            self.output.info("Validating core Python functionality...")
-            subprocess.run(
-                [python_executable, "-c", validation_script],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            self.output.info("Core validation passed")
-        except subprocess.CalledProcessError as e:
-            self.output.warning(f"Core validation failed: {e}")
-            self.output.warning(f"stdout: {e.stdout}")
-            self.output.warning(f"stderr: {e.stderr}")
-
-        # Test SSL_CERT_FILE override behavior (following make_python.py)
-        dummy_ssl_file = os.path.join("Path", "To", "Dummy", "File")
-        try:
-            self.output.info("Testing SSL_CERT_FILE override behavior...")
-            env_with_ssl = os.environ.copy()
-            env_with_ssl["SSL_CERT_FILE"] = dummy_ssl_file
-            subprocess.run(
-                [
-                    python_executable,
-                    "-c",
-                    f"import os; assert os.environ['SSL_CERT_FILE'] == '{dummy_ssl_file}'",
-                ],
-                env=env_with_ssl,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            self.output.info("SSL_CERT_FILE override test passed")
-        except subprocess.CalledProcessError as e:
-            self.output.warning(f"SSL_CERT_FILE override test failed: {e}")
-
-        # Test DO_NOT_SET_SSL_CERT_FILE behavior (following make_python.py)
-        try:
-            self.output.info("Testing DO_NOT_SET_SSL_CERT_FILE behavior...")
-            env_no_ssl = os.environ.copy()
-            env_no_ssl["DO_NOT_SET_SSL_CERT_FILE"] = "1"
-            env_no_ssl.pop("SSL_CERT_FILE", None)  # Remove if present
-            subprocess.run(
-                [
-                    python_executable,
-                    "-c",
-                    "import os; assert 'SSL_CERT_FILE' not in os.environ",
-                ],
-                env=env_no_ssl,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            self.output.info("DO_NOT_SET_SSL_CERT_FILE test passed")
-        except subprocess.CalledProcessError as e:
-            self.output.warning(f"DO_NOT_SET_SSL_CERT_FILE test failed: {e}")
-
     def _install_python_packages(self, python_executable):
-        """Install required Python packages - following make_python.py logic"""
-        # First, ensure basic pip works
-        try:
-            subprocess.run([python_executable, "-m", "ensurepip", "--upgrade"], check=True)
-        except subprocess.CalledProcessError:
-            self.output.warning("ensurepip failed, pip may not be available")
-
-        # Test SSL functionality for pip
-        ssl_test_result = subprocess.run(
-            [python_executable, "-c", "import ssl; print('SSL available')"],
-            capture_output=True,
-            text=True,
+        """Ensure pip is available — matches make_python.py's patch_python_distribution().
+        Actual package installation (OTIO, PyOpenGL, etc.) is handled by
+        cmake/dependencies/python.cmake via requirements.txt."""
+        self.output.info("Running ensurepip...")
+        subprocess.run(
+            [python_executable, "-s", "-E", "-I", "-m", "ensurepip"],
+            check=True,
         )
-
-        use_trusted_hosts = ssl_test_result.returncode != 0
-
-        if use_trusted_hosts:
-            self.output.warning("SSL module not available, using trusted hosts for pip installations")
-            # Use trusted hosts as fallback (like make_python.py does)
-            pip_extra_args = [
-                "--trusted-host",
-                "pypi.org",
-                "--trusted-host",
-                "pypi.python.org",
-                "--trusted-host",
-                "files.pythonhosted.org",
-            ]
-        else:
-            pip_extra_args = []
-
-        # Install core packages first (following make_python.py patch_python_distribution order)
-        core_packages = ["pip", "certifi", "six", "wheel", "packaging", "requests"]
-        for package in core_packages:
-            try:
-                self.output.info(f"Installing core package {package}...")
-                cmd = (
-                    [
-                        python_executable,
-                        "-m",
-                        "pip",
-                        "install",
-                        "--upgrade",
-                        "--force-reinstall",
-                    ]
-                    + pip_extra_args
-                    + [package]
-                )
-
-                subprocess.run(cmd, check=True)
-
-            except subprocess.CalledProcessError as e:
-                self.output.warning(f"Failed to install core package {package}: {e}")
-                # For core packages, this is more serious
-                if package == "certifi":
-                    self.output.error("Failed to install certifi - SSL certificate handling will not work properly")
-
-        # Install additional packages (following make_python.py test_python_distribution order)
-        additional_packages = [
-            "PyOpenGL",
-            "cryptography",
-        ]
-
-        for package in additional_packages:
-            try:
-                self.output.info(f"Installing {package}...")
-                cmd = [python_executable, "-m", "pip", "install"] + pip_extra_args + [package]
-                subprocess.run(cmd, check=True)
-
-            except subprocess.CalledProcessError as e:
-                self.output.warning(f"Failed to install {package}: {e}")
-
-        # Install OpenTimelineIO last (most complex, follows make_python.py order)
-        try:
-            self.output.info("Installing OpenTimelineIO...")
-            otio_cmd = (
-                [python_executable, "-m", "pip", "install"]
-                + pip_extra_args
-                + ["git+https://github.com/AcademySoftwareFoundation/OpenTimelineIO@main#egg=OpenTimelineIO"]
-            )
-            subprocess.run(otio_cmd, check=True)
-
-        except subprocess.CalledProcessError as e:
-            self.output.warning(f"Failed to install OpenTimelineIO: {e}")
-            self.output.info("OpenTimelineIO installation failed - this may be expected on some platforms")
 
     def _install_sitecustomize(self, python_home):
         """Install sitecustomize.py for SSL certificate handling"""
@@ -831,7 +587,7 @@ except Exception as e:
         subprocess.run(build_args, cwd=self.source_folder, env=subprocess_env, check=True)
 
         # Install using VFX platform-specific method
-        if self.options.vfx_platform == "2023":
+        if self.options.vfx_platform == "CY2023":
             self._install_windows_vfx2023()
         else:  # VFX 2024
             self._install_windows_layout()
@@ -1027,16 +783,14 @@ except Exception as e:
         # Copy OpenSSL libraries if available
         self._copy_openssl_libs_windows()
 
-        # Install Python packages
+        # Ensure pip is available and install sitecustomize.py.
+        # Actual package installation (OTIO, PyOpenGL, etc.) is handled by
+        # cmake/dependencies/python.cmake via requirements.txt.
         python_executable = dst_python if os.path.exists(dst_python) else src_python
         self._install_python_packages(python_executable)
 
         # Install sitecustomize.py
         self._install_sitecustomize(self.package_folder)
-
-        # Handle OpenTimelineIO for Debug builds
-        if self.settings.build_type == "Debug":
-            self._build_opentimelineio_windows_debug(python_executable)
 
     def _copy_openssl_libs_windows(self):
         """Copy OpenSSL libraries for Windows"""
@@ -1065,73 +819,8 @@ except Exception as e:
                 shutil.copy2(lib_path, dst_path)
                 self.output.info(f"Copied OpenSSL lib: {os.path.basename(lib_path)}")
 
-    def _build_opentimelineio_windows_debug(self, python_executable):
-        """Build OpenTimelineIO from source for Windows Debug builds"""
-        if self.settings.build_type != "Debug":
-            return
-
-        # This matches the logic from make_python.py for Windows Debug builds
-        # OpenTimelineIO needs to be built from source because the official wheel
-        # links with the release version of Python while RV uses the debug version
-
-        try:
-            # Set environment for debug build
-            build_env = os.environ.copy()
-            build_env["OTIO_CXX_DEBUG_BUILD"] = "1"
-
-            # Get Python version for import lib
-            python_version_nodot = self._get_python_version_nodot()
-            python_include_dir = os.path.join(self.package_folder, "include")
-            python_lib = os.path.join(self.package_folder, "libs", f"python{python_version_nodot}_d.lib")
-
-            if os.path.exists(python_lib):
-                build_env["CMAKE_ARGS"] = f"-DPython_LIBRARY={python_lib} -DCMAKE_INCLUDE_PATH={python_include_dir}"
-
-            # Install OpenTimelineIO from source
-            otio_install_args = [
-                python_executable,
-                "-m",
-                "pip",
-                "install",
-                "git+https://github.com/AcademySoftwareFoundation/OpenTimelineIO@main#egg=OpenTimelineIO",
-            ]
-
-            subprocess.run(otio_install_args, env=build_env, check=True)
-            self.output.info("Built OpenTimelineIO from source for Debug build")
-
-            # Fix module names for debug builds
-            self._fix_otio_debug_module_names()
-
-        except subprocess.CalledProcessError as e:
-            self.output.warning(f"Failed to build OpenTimelineIO from source: {e}")
-
-    def _fix_otio_debug_module_names(self):
-        """Fix OpenTimelineIO module names for Windows debug builds"""
-        # The OpenTimelineIO build generates pyd files with names that are not loadable by default
-        # Example: _opentimed_d.cp39-win_amd64.pyd instead of _opentime_d.pyd
-        # and _otiod_d.cp39-win_amd64.pyd instead of _otio_d.pyd
-
-        site_packages_dirs = glob.glob(os.path.join(self.package_folder, "**", "site-packages"), recursive=True)
-
-        for site_packages in site_packages_dirs:
-            otio_module_dir = os.path.join(site_packages, "opentimelineio")
-            if not os.path.exists(otio_module_dir):
-                continue
-
-            for file_name in os.listdir(otio_module_dir):
-                if file_name.endswith(".pyd"):
-                    name_parts = file_name.split(".")
-                    if len(name_parts) > 2:
-                        # Fix the debug suffix
-                        base_name = name_parts[0].replace("d_d", "_d")
-                        new_name = f"{base_name}.pyd"
-
-                        src_file = os.path.join(otio_module_dir, file_name)
-                        dst_file = os.path.join(otio_module_dir, new_name)
-
-                        if src_file != dst_file:
-                            shutil.copy2(src_file, dst_file)
-                            self.output.info(f"Fixed OTIO module name: {file_name} -> {new_name}")
+    # OpenTimelineIO and other package installations (including Windows Debug OTIO)
+    # are handled by cmake/dependencies/python.cmake via requirements.txt.
 
     def _build_unix(self):
         """Build Python on Unix-like systems (macOS, Linux)"""
@@ -1151,8 +840,7 @@ except Exception as e:
             configure_args.append("--enable-shared")
 
         if self.options.optimizations and self.settings.build_type == "Release":
-            # Skip optimizations when debugging SSL issues
-            self.output.info("Skipping optimizations to debug SSL symbol resolution")
+            configure_args.append("--enable-optimizations")
 
         # Get platform-specific environment
         extra_args, env_vars = self._get_macos_configure_flags()
@@ -1204,40 +892,38 @@ except Exception as e:
         self._post_install_setup()
 
     def _post_install_setup(self):
-        """Perform post-installation setup - following make_python.py logic"""
+        """Perform post-installation setup — matches make_python.py's patch_python_distribution().
+        Package installation and comprehensive testing happen later in the CMake build phase
+        via cmake/dependencies/python.cmake and src/build/test_python.py."""
         # Get Python executable first
         if self.settings.os == "Windows":
             python_exe = os.path.join(self.package_folder, "bin", "python.exe")
         else:
             python_exe = os.path.join(self.package_folder, "bin", "python3")
 
-        # Step 1: Create python3 symlink if it doesn't exist (basic setup)
+        # Step 1: Create python symlink (matches make_python.py)
         if self.settings.os != "Windows":
-            python3_path = os.path.join(self.package_folder, "bin", "python3")
-            python_path = os.path.join(self.package_folder, "bin", "python")
+            python3_path = os.path.realpath(os.path.join(self.package_folder, "bin", "python3"))
+            python_path = os.path.join(os.path.dirname(python3_path), "python")
 
-            if os.path.exists(python3_path) and not os.path.exists(python_path):
-                os.symlink("python3", python_path)
+            if not os.path.exists(python_path):
+                os.symlink(os.path.basename(python3_path), python_path)
 
-        # Step 2: Copy OpenSSL libraries and set up proper RPATH/library paths
-        self._copy_openssl_libs(self.package_folder)
-
-        # Step 3: Fix _failed.so files first - Python build marks SSL modules as failed if OpenSSL wasn't found during tests
+        # Step 2: Fix _failed.so files — Python build marks SSL modules as failed
+        # if OpenSSL wasn't loadable during build tests (expected with RPATH builds)
         self._fix_failed_ssl_modules()
 
-        # Step 4: Install Python packages FIRST (like make_python.py patch_python_distribution())
-        # This ensures certifi and other packages are available before sitecustomize.py runs
+        # Step 3: Copy OpenSSL libraries and set up proper RPATH/library paths
+        self._copy_openssl_libs(self.package_folder)
+
+        # Step 4: Ensure pip is available (ensurepip)
         self._install_python_packages(python_exe)
 
-        # Step 5: Install sitecustomize.py AFTER packages are installed
-        # This way when Python starts up, certifi is already available
+        # Step 5: Install sitecustomize.py
         self._install_sitecustomize(self.package_folder)
 
-        # Step 6: Verify SSL is working (final verification)
+        # Step 6: Verify SSL modules were built correctly
         self._verify_ssl_support(python_exe)
-
-        # Step 7: Run comprehensive validation (following make_python.py test_python_distribution)
-        self._comprehensive_validation(python_exe)
 
     def package(self):
         """Package the built Python"""

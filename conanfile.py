@@ -9,6 +9,13 @@ class OpenRVRecipe(ConanFile):
 
     settings = "os", "compiler", "build_type", "arch"
 
+    options = {
+        "vfx_platform": ["CY2023", "CY2024"],
+    }
+    default_options = {
+        "vfx_platform": "CY2024",
+    }
+
     def layout(self):
         super().layout()
 

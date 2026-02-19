@@ -117,8 +117,7 @@ IF(RV_USE_PACKAGE_MANAGER)
     )
   ENDIF()
 
-  # TODO: This should be done by Python recipe in Conan, but it isn't yet. Set up variables for compatibility with the rest of the build system Make
-  # Python_INCLUDE_DIRS available in other CMake files.
+  # Set up variables for compatibility with the rest of the build system. Python_ROOT_DIR is already set by the Conan toolchain (openrvcore-conanfile.py).
   # ------------------------------------------------------------------------------------------------
   SET(Python_INCLUDE_DIRS
       "${Python_INCLUDE_DIRS}"
@@ -128,18 +127,12 @@ IF(RV_USE_PACKAGE_MANAGER)
       ${Python_INCLUDE_DIRS}
   )
 
-  IF(RV_TARGET_WINDOWS)
-    CMAKE_PATH(SET _Python_ROOT_ NORMALIZE ${Python_INCLUDE_DIRS}/..)
-  ELSE()
-    CMAKE_PATH(SET _Python_ROOT_ NORMALIZE ${Python_INCLUDE_DIRS}/../..)
-  ENDIF()
+  SET(_Python_ROOT_
+      "${Python_ROOT_DIR}"
+  )
 
   CMAKE_PATH(SET Python_LIB_DIR NORMALIZE ${_Python_ROOT_}/lib)
   CMAKE_PATH(SET Python_BIN_DIR NORMALIZE ${_Python_ROOT_}/bin)
-
-  MESSAGE(STATUS "Cedrik debug: ${Python_LIB_DIR}")
-  MESSAGE(STATUS "Cedrik debug: ${Python_BIN_DIR}")
-  MESSAGE(STATUS "Cedrik debug: ${_Python_ROOT_}")
   # Legacy variable for compatibility
   IF(RV_TARGET_WINDOWS)
     SET(_python3_executable

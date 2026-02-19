@@ -23,13 +23,13 @@ class PySide6Conan(ConanFile):
         "shared": [True, False],
         "with_ssl": [True, False],
         "python_version": ["3.11", "3.10"],
-        "vfx_platform": ["2024", "2023"],
+        "vfx_platform": ["CY2024", "CY2023"],
     }
     default_options = {
         "shared": True,
         "with_ssl": True,
         "python_version": "3.11",
-        "vfx_platform": "2024",
+        "vfx_platform": "CY2024",
     }
     exports_sources = "patches/*"
     generators = "CMakeDeps"
@@ -41,7 +41,7 @@ class PySide6Conan(ConanFile):
         self.requires("zlib/1.3.1", options={"shared": True})
 
         # Python dependency - use custom OpenRV Python build
-        python_version = "3.10.13" if str(self.options.vfx_platform) == "2023" else "3.11.9"
+        python_version = "3.10.13" if str(self.options.vfx_platform) == "CY2023" else "3.11.9"
         self.requires(
             f"python/{python_version}@openrv",
             options={
@@ -54,7 +54,7 @@ class PySide6Conan(ConanFile):
         )
 
         if self.options.with_ssl:
-            if str(self.options.python_version) == "3.10" and str(self.options.vfx_platform) == "2023":
+            if str(self.options.python_version) == "3.10" and str(self.options.vfx_platform) == "CY2023":
                 self.requires("openssl/1.1.1u", options={"shared": True})
             else:
                 self.requires("openssl/3.5.0", options={"shared": True})
@@ -77,7 +77,7 @@ class PySide6Conan(ConanFile):
         tc = CMakeToolchain(self)
         tc.cache_variables["CMAKE_BUILD_TYPE"] = str(self.settings.build_type)
         tc.cache_variables["RV_DEPS_QT6_LOCATION"] = self._get_qt_location()
-        tc.cache_variables["RV_VFX_PLATFORM"] = f"CY{self.options.vfx_platform}"
+        tc.cache_variables["RV_VFX_PLATFORM"] = str(self.options.vfx_platform)
         tc.generate()
 
     def _get_qt_location(self):
@@ -440,19 +440,29 @@ class PySide6Conan(ConanFile):
             replace_in_file(self, cmakelist_path, " set(HAS_LIBXSLT 1)", " #set(HAS_LIBXSLT 1)")
             self.output.info("Patched shiboken6 CMakeLists.txt to disable LIBXSLT")
 
-    def _install_numpy(self):
-        """Install numpy==1.26.3 required for PySide6 build - following make_pyside6.py logic"""
+    def _install_build_dependencies(self):
+        """Install Python packages required for PySide6 build.
+        In the traditional build, these are installed via requirements.txt in python3.cmake
+        before PySide6 builds. In the Conan flow, we install them explicitly here."""
         python_home = self.dependencies["python"].package_folder
         # Use isolation flags for pip operations (following make_pyside6.py)
         python_interpreter_args = self._get_python_interpreter_args_with_isolation(python_home)
 
-        install_args = python_interpreter_args + [
-            "-m",
-            "pip",
-            "install",
+        packages = [
+            "packaging==24.0",
+            "setuptools>=69.5",
             "numpy==1.26.3",
         ]
-        self.output.info(f"Installing numpy with {install_args}")
+        install_args = (
+            python_interpreter_args
+            + [
+                "-m",
+                "pip",
+                "install",
+            ]
+            + packages
+        )
+        self.output.info(f"Installing PySide6 build dependencies: {install_args}")
         self.run(" ".join(install_args))
 
     def _setup_openssl_path(self):
@@ -474,7 +484,7 @@ class PySide6Conan(ConanFile):
         self._setup_clang()
         self._setup_openssl_path()
         self._patch_shiboken6()
-        self._install_numpy()
+        self._install_build_dependencies()
 
         # Get Python info from dependency
         python_home = self.dependencies["python"].package_folder

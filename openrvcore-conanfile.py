@@ -4,6 +4,7 @@ from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeDeps, cmake_layout, CMakeToolchain
 from conan.tools.microsoft import VCVars
 from conan.tools.env import VirtualBuildEnv
+from conan.errors import ConanException
 
 # The comment below is relevant for WINDOWS only because of the usage of MSYS2.
 
@@ -106,13 +107,21 @@ class OpenRVBase:
         # Using 3.1.9 which includes fix for PR #275 (IMATH_EXPORT on inline bits()/setBits())
         self.requires("imath/3.1.12", force=True, options={"shared": True})
 
+        # Python/PySide6 versions per VFX platform.
+        vfx_platform = str(self.options.vfx_platform)
+        if vfx_platform == "CY2023":
+            python_ref = "python/3.10.13@openrv"
+            python_version_short = "3.10"
+        else:
+            python_ref = "python/3.11.9@openrv"
+            python_version_short = "3.11"
+
         # Python ported from make_python.py.
         # This package is customized for RV.
         self.requires(
-            "python/3.11.9@openrv",
+            python_ref,
             options={
-                # These options are the default for the vfx_platform 2024.
-                "vfx_platform": "2024",
+                "vfx_platform": vfx_platform,
                 "shared": True,
                 "optimizations": True,
                 "with_tkinter": True,
@@ -124,8 +133,8 @@ class OpenRVBase:
         self.requires(
             "pyside6/6.5.3@openrv",
             options={
-                "python_version": "3.11",
-                "vfx_platform": "2024",
+                "python_version": python_version_short,
+                "vfx_platform": vfx_platform,
                 "shared": True,
                 "with_ssl": True,
             },
@@ -135,8 +144,9 @@ class OpenRVBase:
         buildenv = VirtualBuildEnv(self)
         buildenv.generate()
 
-        ms = VCVars(self)
-        ms.generate()
+        if self.settings.os == "Windows":
+            ms = VCVars(self)
+            ms.generate()
 
         deps = CMakeDeps(self)
         deps.generate()
@@ -147,25 +157,47 @@ class OpenRVBase:
         else:
             tc = CMakeToolchain(self)
 
-        # Setup variables for CMake's cached variables.
-        # TODO: Find a way to get the Qt location without hardcoding it.
+        # Qt location: use QT_HOME env var, fall back to conventional paths.
         qt_version = os.getenv("QT_VERSION", "6.5.3")
-        if not self.settings.os == "Windows":
-            home = os.getenv("HOME")
-            if home:
-                qt_dir = os.path.join(home, "Qt6.5.3", qt_version)
+        qt_home = os.getenv("QT_HOME")
 
-        if self.settings.os == "Linux":
-            qt_home = os.getenv("QT_HOME", os.path.join(qt_dir, "gcc_64"))
-        elif self.settings.os == "Macos":
-            qt_home = os.getenv("QT_HOME", os.path.join(qt_dir, "clang_64"))
-        elif self.settings.os == "Windows":
-            qt_home = os.getenv("QT_HOME", f"c:/Qt/{qt_version}/msvc2019_64")
+        if not qt_home:
+            # Build platform-specific default path
+            if self.settings.os == "Windows":
+                qt_home = f"c:/Qt/{qt_version}/msvc2019_64"
+            else:
+                home = os.getenv("HOME", "")
+                qt_dir = os.path.join(home, "Qt6.5.3", qt_version)
+                if self.settings.os == "Linux":
+                    qt_home = os.path.join(qt_dir, "gcc_64")
+                elif self.settings.os == "Macos":
+                    # Recent Qt versions use "macos", older ones use "clang_64"
+                    macos_path = os.path.join(qt_dir, "macos")
+                    clang_path = os.path.join(qt_dir, "clang_64")
+                    qt_home = macos_path if os.path.isdir(macos_path) else clang_path
+
+            self.output.warning(
+                f"QT_HOME not set, using default: {qt_home}. "
+                "Set the QT_HOME environment variable to point to your Qt installation."
+            )
+
+        if not os.path.isdir(qt_home):
+            raise ConanException(
+                f"Qt directory not found: {qt_home}. "
+                "Set the QT_HOME environment variable to a valid Qt installation path."
+            )
+
+        if self.settings.os == "Windows":
             win_perl_location = os.getenv("WIN_PERL", "c:/Strawberry/perl/bin")
+            if not os.path.isdir(win_perl_location):
+                self.output.warning(
+                    f"Perl directory not found: {win_perl_location}. "
+                    "Set the WIN_PERL environment variable to your Perl installation."
+                )
             self.setuptools_use_distutils = "stdlib"
 
-        # TODO: Add option to select CY2023 or CY2024
-        tc.cache_variables["RV_VFX_PLATFORM"] = "CY2024"
+        # VFX Platform — controlled by the vfx_platform option in the main conanfile.py.
+        tc.cache_variables["RV_VFX_PLATFORM"] = str(self.options.vfx_platform)
 
         # Set up CMake's cached variables.
         tc.cache_variables["RV_DEPS_QT_LOCATION"] = qt_home
