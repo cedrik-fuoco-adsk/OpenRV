@@ -134,6 +134,15 @@ class PythonConan(ConanFile):
             else:
                 return "lib64"
 
+    def _get_dep_lib_dir(self, dep_name):
+        """Get the library directory for a dependency by checking what actually exists."""
+        dep = self.dependencies[dep_name]
+        pkg = dep.package_folder
+        for candidate in ("lib64", "lib"):
+            if os.path.isdir(os.path.join(pkg, candidate)):
+                return candidate
+        return "lib"
+
     def _get_python_version_short(self):
         """Get short Python version (e.g., '3.11')"""
         major, minor = self.version.split(".")[:2]
@@ -237,7 +246,7 @@ class PythonConan(ConanFile):
         """Setup OpenSSL environment following Conan Center Index approach"""
         openssl_dep = self.dependencies["openssl"]
         openssl_root = openssl_dep.package_folder
-        openssl_lib_dir = os.path.join(openssl_root, self._get_lib_dir())
+        openssl_lib_dir = os.path.join(openssl_root, self._get_dep_lib_dir("openssl"))
         openssl_pkgconfig_dir = os.path.join(openssl_lib_dir, "pkgconfig")
 
         self.output.info(f"Setting up OpenSSL environment with root: {openssl_root}")
@@ -463,7 +472,7 @@ class PythonConan(ConanFile):
             return
 
         openssl_dep = self.dependencies["openssl"]
-        openssl_lib_dir = os.path.join(openssl_dep.package_folder, "lib")
+        openssl_lib_dir = os.path.join(openssl_dep.package_folder, self._get_dep_lib_dir("openssl"))
 
         if self.settings.os == "Macos":
             # Copy dylibs and update install names
@@ -799,7 +808,7 @@ class PythonConan(ConanFile):
 
         openssl_dep = self.dependencies["openssl"]
         openssl_bin_dir = os.path.join(openssl_dep.package_folder, "bin")
-        openssl_lib_dir = os.path.join(openssl_dep.package_folder, "lib")
+        openssl_lib_dir = os.path.join(openssl_dep.package_folder, self._get_dep_lib_dir("openssl"))
 
         python_bin_dir = os.path.join(self.package_folder, "bin")
         python_libs_dir = os.path.join(self.package_folder, "libs")
@@ -875,8 +884,10 @@ class PythonConan(ConanFile):
 
         # Ensure OpenSSL and zlib libraries are findable during runtime
         if self.settings.os == "Macos":
-            openssl_lib_dir = os.path.join(self.dependencies["openssl"].package_folder, self._get_lib_dir())
-            zlib_lib_dir = os.path.join(self.dependencies["zlib"].package_folder, self._get_lib_dir())
+            openssl_lib_dir = os.path.join(
+                self.dependencies["openssl"].package_folder, self._get_dep_lib_dir("openssl")
+            )
+            zlib_lib_dir = os.path.join(self.dependencies["zlib"].package_folder, self._get_dep_lib_dir("zlib"))
             build_env["DYLD_LIBRARY_PATH"] = (
                 f"{openssl_lib_dir}:{zlib_lib_dir}:{build_env.get('DYLD_LIBRARY_PATH', '')}"
             )
