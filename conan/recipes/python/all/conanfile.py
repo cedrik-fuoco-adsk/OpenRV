@@ -122,17 +122,13 @@ class PythonConan(ConanFile):
         )
 
     def _get_lib_dir(self):
-        """Get the appropriate lib directory based on platform and VFX platform.
-        Matches make_python.py: lib for macOS/VFX2023, lib64 for Linux VFX2024+."""
+        """Get the library directory for the Python installation itself.
+        Python built from source uses 'lib' as the default PLATLIBDIR
+        (unless --with-platlibdir is passed to configure, which we don't do).
+        Note: For dependency lib dirs (OpenSSL, zlib), use _get_dep_lib_dir() instead."""
         if self.settings.os == "Windows":
             return "libs"
-        elif self.settings.os == "Macos":
-            return "lib"
-        else:  # Linux
-            if self.options.vfx_platform == "CY2023":
-                return "lib"
-            else:
-                return "lib64"
+        return "lib"
 
     def _get_dep_lib_dir(self, dep_name):
         """Get the library directory for a dependency by checking what actually exists."""
