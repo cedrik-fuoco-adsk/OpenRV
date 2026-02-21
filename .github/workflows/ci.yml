@@ -775,6 +775,7 @@ jobs:
           update: true
           # False because it keep creating new cache entry.
           cache: false
+          path-type: inherit
           install: >-
             mingw-w64-x86_64-autotools
             mingw-w64-x86_64-cmake
