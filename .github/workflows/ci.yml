@@ -907,44 +907,39 @@ jobs:
 
       - name: Configure sccache for msys2
         run: |
-          # Find where sccache-action installed sccache, convert Windows path to msys2 format
-          SCCACHE_WIN_PATH=$(where.exe sccache 2>/dev/null | head -1 | tr -d '\r')
-          SCCACHE_MSYS_PATH=$(echo "$SCCACHE_WIN_PATH" | sed 's/\\/\//g' | sed 's/^\([A-Za-z]\):/\/\L\1/')
-          echo "Windows path: $SCCACHE_WIN_PATH"
-          echo "Msys2 path:   $SCCACHE_MSYS_PATH"
+          # sccache-action already sets SCCACHE_PATH as a Windows-style path.
+          # Convert it to msys2 format: C:\foo\bar -> /c/foo/bar
+          SCCACHE_MSYS_PATH=$(echo "$SCCACHE_PATH" | sed 's/\\/\//g' | sed 's/^\([A-Za-z]\):/\/\l\1/')
+          echo "Windows path : $SCCACHE_PATH"
+          echo "Msys2 path   : $SCCACHE_MSYS_PATH"
 
-          if [ -z "$SCCACHE_MSYS_PATH" ]; then
-            echo "ERROR: sccache not found via where.exe"
+          if [ ! -f "$SCCACHE_MSYS_PATH" ]; then
+            echo "ERROR: sccache binary not found at $SCCACHE_MSYS_PATH"
             exit 1
           fi
 
-          # Persist for subsequent msys2 steps
-          echo "export SCCACHE_PATH=\"$SCCACHE_MSYS_PATH\"" >> ~/.bash_profile
-          echo "export SCCACHE_WIN_PATH=\"$SCCACHE_WIN_PATH\"" >> ~/.bash_profile
+          # Persist both forms for subsequent msys2 steps
+          echo "export SCCACHE_WIN_PATH=\"$SCCACHE_PATH\"" >> ~/.bash_profile
+          echo "export SCCACHE_MSYS_PATH=\"$SCCACHE_MSYS_PATH\"" >> ~/.bash_profile
           echo "export PATH=\"$(dirname "$SCCACHE_MSYS_PATH"):\$PATH\"" >> ~/.bash_profile
 
           source ~/.bash_profile
-          sccache --version || { echo "ERROR: sccache still not found"; exit 1; }
+          sccache --version || { echo "ERROR: sccache still not found after PATH update"; exit 1; }
         shell: msys2 {0}
 
       - name: Inject Directory.Build.props for sccache + VS generator
         run: |
           source ~/.bash_profile
 
-          # The VS generator does not honour CMAKE_C_COMPILER_LAUNCHER.
-          # Instead we inject a Directory.Build.props that overrides CLToolExe
-          # so every .vcxproj in the build uses sccache as the compiler wrapper.
-          #
-          # SCCACHE_WIN_PATH must be the native Windows path (backslashes or
-          # forward slashes both work inside XML).
+          # Normalise to forward slashes for XML — MSBuild accepts both
+          SCCACHE_XML_PATH=$(echo "$SCCACHE_WIN_PATH" | sed 's/\\/\//g')
+          echo "Writing Directory.Build.props with sccache path: $SCCACHE_XML_PATH"
 
           cat > "$GITHUB_WORKSPACE/Directory.Build.props" << EOF
           <Project>
             <ItemDefinitionGroup>
               <ClCompile>
-                <!-- Wrap cl.exe with sccache for every project in this tree -->
-                <CLToolExe>$SCCACHE_WIN_PATH</CLToolExe>
-                <!-- Ensure cl.exe is still the actual compiler sccache calls -->
+                <CLToolExe>$SCCACHE_XML_PATH</CLToolExe>
                 <CLToolPath></CLToolPath>
               </ClCompile>
             </ItemDefinitionGroup>
@@ -973,9 +968,6 @@ jobs:
 
           export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
 
-          # Note: CMAKE_C_COMPILER_LAUNCHER / CMAKE_CXX_COMPILER_LAUNCHER are
-          # intentionally omitted here — they have no effect with the VS generator.
-          # Caching is handled entirely by Directory.Build.props above.
           cmake -B _build \
             -G "Visual Studio 17 2022" \
             -A x64 \
@@ -988,15 +980,11 @@ jobs:
       - name: Verify sccache is being invoked
         run: |
           source ~/.bash_profile
-          echo "--- sccache stats after configure ---"
           sccache --show-stats
-          echo ""
-          echo "If 'Compile requests' is still 0 after the build step, check that"
-          echo "Directory.Build.props is in the repo root or the _build directory."
         shell: msys2 {0}
           
       - name: Build OpenRV dependencies
-        if: steps.cmake-dependencies.outputs.cache-hit != 'true'
+        #if: steps.cmake-dependencies.outputs.cache-hit != 'true'
         run: |
           cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
         shell: msys2 {0}
