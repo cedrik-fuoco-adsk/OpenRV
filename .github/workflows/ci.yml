@@ -901,15 +901,58 @@ jobs:
         shell: msys2 {0}
 
       - name: Setup sccache
-        # Used for this run only (SCCACHE_GHA_ENABLED=false); not stored in Actions cache.
         uses: mozilla-actions/sccache-action@v0.0.6
         with:
           version: "v0.8.1"
 
       - name: Configure sccache for msys2
         run: |
-          echo "export PATH=\"/c/hostedtoolcache/windows/sccache/0.8.1/x64:/c/Users/runneradmin/.cargo/bin:\$PATH\"" >> ~/.bash_profile
-          sccache --version || echo "WARNING: sccache not found in PATH"
+          # Find where sccache-action installed sccache, convert Windows path to msys2 format
+          SCCACHE_WIN_PATH=$(where.exe sccache 2>/dev/null | head -1 | tr -d '\r')
+          SCCACHE_MSYS_PATH=$(echo "$SCCACHE_WIN_PATH" | sed 's/\\/\//g' | sed 's/^\([A-Za-z]\):/\/\L\1/')
+          echo "Windows path: $SCCACHE_WIN_PATH"
+          echo "Msys2 path:   $SCCACHE_MSYS_PATH"
+
+          if [ -z "$SCCACHE_MSYS_PATH" ]; then
+            echo "ERROR: sccache not found via where.exe"
+            exit 1
+          fi
+
+          # Persist for subsequent msys2 steps
+          echo "export SCCACHE_PATH=\"$SCCACHE_MSYS_PATH\"" >> ~/.bash_profile
+          echo "export SCCACHE_WIN_PATH=\"$SCCACHE_WIN_PATH\"" >> ~/.bash_profile
+          echo "export PATH=\"$(dirname "$SCCACHE_MSYS_PATH"):\$PATH\"" >> ~/.bash_profile
+
+          source ~/.bash_profile
+          sccache --version || { echo "ERROR: sccache still not found"; exit 1; }
+        shell: msys2 {0}
+
+      - name: Inject Directory.Build.props for sccache + VS generator
+        run: |
+          source ~/.bash_profile
+
+          # The VS generator does not honour CMAKE_C_COMPILER_LAUNCHER.
+          # Instead we inject a Directory.Build.props that overrides CLToolExe
+          # so every .vcxproj in the build uses sccache as the compiler wrapper.
+          #
+          # SCCACHE_WIN_PATH must be the native Windows path (backslashes or
+          # forward slashes both work inside XML).
+
+          cat > "$GITHUB_WORKSPACE/Directory.Build.props" << EOF
+          <Project>
+            <ItemDefinitionGroup>
+              <ClCompile>
+                <!-- Wrap cl.exe with sccache for every project in this tree -->
+                <CLToolExe>$SCCACHE_WIN_PATH</CLToolExe>
+                <!-- Ensure cl.exe is still the actual compiler sccache calls -->
+                <CLToolPath></CLToolPath>
+              </ClCompile>
+            </ItemDefinitionGroup>
+          </Project>
+          EOF
+
+          echo "--- Directory.Build.props written ---"
+          cat "$GITHUB_WORKSPACE/Directory.Build.props"
         shell: msys2 {0}
 
       - name: Configure OpenRV
@@ -923,9 +966,33 @@ jobs:
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
+          source ~/.bash_profile
+
           cmake --version
+          sccache --version
+
           export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }} -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+
+          # Note: CMAKE_C_COMPILER_LAUNCHER / CMAKE_CXX_COMPILER_LAUNCHER are
+          # intentionally omitted here — they have no effect with the VS generator.
+          # Caching is handled entirely by Directory.Build.props above.
+          cmake -B _build \
+            -G "Visual Studio 17 2022" \
+            -A x64 \
+            -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+            -DRV_DEPS_QT_LOCATION=$QT_HOME \
+            -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
+        shell: msys2 {0}
+
+      - name: Verify sccache is being invoked
+        run: |
+          source ~/.bash_profile
+          echo "--- sccache stats after configure ---"
+          sccache --show-stats
+          echo ""
+          echo "If 'Compile requests' is still 0 after the build step, check that"
+          echo "Directory.Build.props is in the repo root or the _build directory."
         shell: msys2 {0}
           
       - name: Build OpenRV dependencies
