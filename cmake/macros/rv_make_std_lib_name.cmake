@@ -64,6 +64,9 @@ MACRO(RV_MAKE_STANDARD_LIB_NAME base_name version lib_type debug_postfix)
   SET(_byproducts
       ${_libpath}
   )
+  IF(RV_TARGET_WINDOWS)
+    LIST(APPEND _byproducts ${_implibpath})
+  ENDIF()
 
   MESSAGE(DEBUG "RV_MAKE_STANDARD_LIB_NAME:")
   MESSAGE(DEBUG "  _libname      ='${_libname}'")
