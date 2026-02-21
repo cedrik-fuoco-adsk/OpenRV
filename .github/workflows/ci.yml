@@ -926,7 +926,14 @@ jobs:
         run: |
           cmake --version
           export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
+          cmake -B _build -G "Ninja" \
+          -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+          -DRV_DEPS_QT_LOCATION=$QT_HOME \
+          -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }} \
+          -DCMAKE_C_COMPILER=cl \
+          -DCMAKE_CXX_COMPILER=cl \
+          -DCMAKE_MT=mt
         shell: msys2 {0}
           
       - name: Build OpenRV dependencies
