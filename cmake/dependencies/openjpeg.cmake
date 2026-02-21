@@ -79,7 +79,7 @@ SET_PROPERTY(
 IF(RV_TARGET_WINDOWS)
   SET_PROPERTY(
     TARGET OpenJpeg::OpenJpeg
-    PROPERTY IMPORTED_IMPLIB ${_bin_dir}/${_implibname}
+    PROPERTY IMPORTED_IMPLIB ${_implibpath}
   )
 ENDIF()
 
