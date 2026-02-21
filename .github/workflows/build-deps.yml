@@ -3,7 +3,7 @@ name: Build Windows dependencies
 on:
   push:
   
-  pull_request: # This handles PR creation and subsequent commits.
+  pull_request:
 
   schedule:
     # Midnight build every day
