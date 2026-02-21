@@ -825,7 +825,10 @@ jobs:
           
       - name: Set PATH environment variable
         run: |
-          echo "export PATH=\"/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
+          # Put MSVC tools (cl.exe, link.exe) before MSYS2 /usr/bin to avoid GNU link.exe conflict
+          MSVC_BIN="$(cygpath "$VCToolsInstallDir")/bin/Hostx64/x64"
+          WIN_SDK_BIN="$(cygpath "$WindowsSdkVerBinPath")x64"
+          echo "export PATH=\"${MSVC_BIN}:${WIN_SDK_BIN}:/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:\$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Set ACLOCAL_PATH environment variable
