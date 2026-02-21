@@ -127,11 +127,11 @@ LIST(APPEND RV_DEPS_LIST dav1d::dav1d)
 
 IF(RV_TARGET_WINDOWS)
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${RV_STAGE_LIB_DIR}/${_david_lib_name}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/lib ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/bin ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
   ADD_CUSTOM_TARGET(
     ${_target}-stage-target ALL
