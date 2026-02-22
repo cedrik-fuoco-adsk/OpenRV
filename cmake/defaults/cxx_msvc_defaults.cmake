@@ -61,9 +61,13 @@ ADD_COMPILE_OPTIONS(
 # /Zi creates a single .pdb per target that all parallel cl.exe processes write to,
 # causing C1041 errors even with /FS when Ninja + sccache run many cl.exe in parallel.
 # /Z7 embeds debug info in each .obj — no shared PDB, fully parallel-safe.
+# We must replace /Zi in CMake's default flag variables (not just append /Z7),
+# otherwise CMake still generates /Fd flags and sccache fails looking for the PDB.
 # /FS (serialized PDB writes) is only needed with /Zi to mitigate contention.
 IF(CMAKE_GENERATOR MATCHES "Ninja")
-  ADD_COMPILE_OPTIONS(-Z7)
+  FOREACH(_flag_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+    STRING(REPLACE "/Zi" "/Z7" ${_flag_var} "${${_flag_var}}")
+  ENDFOREACH()
 ELSE()
   ADD_COMPILE_OPTIONS(-Zi -FS)
 ENDIF()

@@ -741,7 +741,7 @@ jobs:
       # sccache used for this run only; do not store in Actions cache (saves repo cache limit).
       # Let's revisit this if we can reduce the size of the cache (potentially dropping x86_64 for Mac)
       # or by moving some dependencies from the cache to Conan or another dependency manager.
-      SCCACHE_GHA_ENABLED: false
+      SCCACHE_GHA_ENABLED: true
     steps:
       - name: Check out repository code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
