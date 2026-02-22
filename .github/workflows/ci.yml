@@ -907,7 +907,7 @@ jobs:
         # For sccache to actually cache the Windows/MSVC build, CMake must use it as the compiler
         # launcher, e.g. -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
         # in the Configure OpenRV step (and sccache must be on PATH when the build runs).
-        uses: mozilla-actions/sccache-action@v0.0.6
+        uses: mozilla-actions/sccache-action@v0.0.9
         with:
           version: "v0.8.1"
 
