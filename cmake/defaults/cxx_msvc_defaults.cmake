@@ -49,15 +49,24 @@ ADD_COMPILE_OPTIONS(
   -EHsc
   -favor:blend
   -fp:precise
-  -FS
   -GR
   -Gy
   -nologo
   -Qfast_transcendentals
   -Zc:forScope
   -Zc:sizedDealloc-
-  -Zi
 )
+
+# With Ninja, use /Z7 (embedded debug info per .obj) instead of /Zi (shared PDB).
+# /Zi creates a single .pdb per target that all parallel cl.exe processes write to,
+# causing C1041 errors even with /FS when Ninja + sccache run many cl.exe in parallel.
+# /Z7 embeds debug info in each .obj — no shared PDB, fully parallel-safe.
+# /FS (serialized PDB writes) is only needed with /Zi to mitigate contention.
+IF(CMAKE_GENERATOR MATCHES "Ninja")
+  ADD_COMPILE_OPTIONS(-Z7)
+ELSE()
+  ADD_COMPILE_OPTIONS(-Zi -FS)
+ENDIF()
 
 # Increasing default stack size to 8MB which would be on par with Linux and most macOS versions. Visual Studio usually sets a 1MB default stack size which is
 # quite lower than what's available on macOS or Linux
