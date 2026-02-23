@@ -49,15 +49,28 @@ ADD_COMPILE_OPTIONS(
   -EHsc
   -favor:blend
   -fp:precise
-  -FS
   -GR
   -Gy
   -nologo
   -Qfast_transcendentals
   -Zc:forScope
   -Zc:sizedDealloc-
-  -Zi
 )
+
+# With Ninja, use /Z7 (embedded debug info per .obj) instead of /Zi (shared PDB).
+# /Zi creates a single .pdb per target that all parallel cl.exe processes write to,
+# causing C1041 errors even with /FS when Ninja + sccache run many cl.exe in parallel.
+# /Z7 embeds debug info in each .obj — no shared PDB, fully parallel-safe.
+# We must replace /Zi in CMake's default flag variables (not just append /Z7),
+# otherwise CMake still generates /Fd flags and sccache fails looking for the PDB.
+# /FS (serialized PDB writes) is only needed with /Zi to mitigate contention.
+IF(CMAKE_GENERATOR MATCHES "Ninja")
+  FOREACH(_flag_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+    STRING(REPLACE "/Zi" "/Z7" ${_flag_var} "${${_flag_var}}")
+  ENDFOREACH()
+ELSE()
+  ADD_COMPILE_OPTIONS(-Zi -FS)
+ENDIF()
 
 # Increasing default stack size to 8MB which would be on par with Linux and most macOS versions. Visual Studio usually sets a 1MB default stack size which is
 # quite lower than what's available on macOS or Linux
@@ -67,6 +80,11 @@ ADD_COMPILE_OPTIONS(
 # and Linux.
 ADD_LINK_OPTIONS("/STACK:8388608")
 
-# Enable parallel builds Note that in theory we should be able to specify just /MP here but when we do cmake sets /MP1 instead. So in order to parellize the
-# build, we must set the number of processors.
-ADD_DEFINITIONS(/MP${_cpu_count})
+# Enable parallel builds with /MP when using multi-config generators (Visual Studio).
+# With Ninja, parallelism is handled by Ninja itself, and /MP causes PDB write contention
+# (fatal error C1041: cannot open program database).
+IF(NOT CMAKE_GENERATOR MATCHES "Ninja")
+  # Note that in theory we should be able to specify just /MP here but when we do cmake sets /MP1 instead. So in order to parellize the build, we must set the
+  # number of processors.
+  ADD_DEFINITIONS(/MP${_cpu_count})
+ENDIF()
