@@ -909,7 +909,7 @@ jobs:
         # in the Configure OpenRV step (and sccache must be on PATH when the build runs).
         uses: mozilla-actions/sccache-action@v0.0.9
         with:
-          version: "v0.8.1"
+          version: "v0.14.0"
 
       - name: Configure sccache for msys2
         run: |
