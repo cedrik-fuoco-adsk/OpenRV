@@ -7,7 +7,6 @@
 FUNCTION(yacc_it)
 
   FIND_PROGRAM(_yacc bison NO_CACHE REQUIRED)
-  FIND_PROGRAM(_sed sed NO_CACHE REQUIRED)
 
   SET(flags)
   SET(args)
