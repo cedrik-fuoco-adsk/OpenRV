@@ -110,21 +110,18 @@ FILE(MAKE_DIRECTORY "${_include_dir}")
 
 IF(RV_TARGET_WINDOWS)
   # FFmpeg expect "zlib" in Release and Debug.
+  SET(_zlib_rename_commands)
   IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-    ADD_CUSTOM_COMMAND(
-      TARGET ${_target}
-      POST_BUILD
-      COMMENT "Renaming the ZLIB import debug lib to the name FFmpeg is expecting (release name)"
-      COMMAND ${CMAKE_COMMAND} -E copy ${_implibpath} ${_lib_dir}/zlib.lib
-    )
+    SET(_zlib_rename_commands COMMAND ${CMAKE_COMMAND} -E copy ${_implibpath} ${_lib_dir}/zlib.lib)
   ENDIF()
 
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${RV_STAGE_BIN_DIR}/${_libname}
+    ${_zlib_rename_commands}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
   ADD_CUSTOM_TARGET(
     ${_target}-stage-target ALL

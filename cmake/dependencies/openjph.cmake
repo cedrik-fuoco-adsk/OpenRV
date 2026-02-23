@@ -30,11 +30,17 @@ SET(_download_hash
 
 IF(RV_TARGET_WINDOWS)
   RV_MAKE_STANDARD_LIB_NAME("openjph.${_version_major}.${_version_minor}" "${RV_DEPS_OPENJPH_VERSION}" "SHARED" "")
-  SET(_libname
+  # The macro's NAME_WE strips from the first dot (openjph.X.Y.dll -> openjph),
+  # producing _implibname=openjph.lib. But the actual import lib is openjph.X.Y.lib.
+  # Fix _implibpath and _byproducts to match the real file name.
+  SET(_implibname
       "openjph.${_version_major}.${_version_minor}.lib"
   )
   SET(_implibpath
-      ${_lib_dir}/${_libname}
+      ${_lib_dir}/${_implibname}
+  )
+  SET(_byproducts
+      ${_libpath} ${_implibpath}
   )
 ELSE()
   RV_MAKE_STANDARD_LIB_NAME("openjph" "${RV_DEPS_OPENJPH_VERSION}" "SHARED" "")

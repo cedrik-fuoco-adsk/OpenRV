@@ -87,6 +87,15 @@ ELSE()
   )
 ENDIF()
 
+IF(RV_TARGET_WINDOWS)
+  # Meson doesn't understand CMAKE_C_COMPILER_LAUNCHER (sccache). If sccache is in the
+  # environment, Meson picks up "sccache cl" as the compiler and fails. Override CC/CXX
+  # to use cl.exe directly for the Meson configure step.
+  SET(_meson_env_wrapper ${CMAKE_COMMAND} -E env "CC=cl" "CXX=cl")
+ELSE()
+  SET(_meson_env_wrapper "")
+ENDIF()
+
 EXTERNALPROJECT_ADD(
   ${_target}
   DOWNLOAD_NAME ${_target}_${_version}.zip
@@ -96,8 +105,8 @@ EXTERNALPROJECT_ADD(
   INSTALL_DIR ${_install_dir}
   URL ${_download_url}
   URL_MD5 ${_download_hash}
-  CONFIGURE_COMMAND ${_configure_command} ./_build --libdir=${_lib_dir_name} --default-library=${_default_library} --prefix=${_install_dir} -Denable_tests=false
-                    -Denable_tools=false
+  CONFIGURE_COMMAND ${_meson_env_wrapper} ${_configure_command} ./_build --libdir=${_lib_dir_name} --default-library=${_default_library} --prefix=${_install_dir}
+                    -Denable_tests=false -Denable_tools=false
   BUILD_COMMAND ${_make_command} -C _build
   INSTALL_COMMAND ${_make_command} -C _build install
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
@@ -127,11 +136,11 @@ LIST(APPEND RV_DEPS_LIST dav1d::dav1d)
 
 IF(RV_TARGET_WINDOWS)
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${RV_STAGE_LIB_DIR}/${_david_lib_name}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/lib ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_install_dir}/bin ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
   ADD_CUSTOM_TARGET(
     ${_target}-stage-target ALL

@@ -46,6 +46,9 @@ IF(RV_TARGET_WINDOWS)
       ""
   ) # Empty out the List as it has the wrong DLL name: it doesn't have the version suffix
 
+  # Re-add the import library as a byproduct (needed for Ninja to track the dependency)
+  LIST(APPEND _byproducts ${_implibpath})
+
   # OpenColorIO shared library has the same name on Release and Debug.
   SET(_ocio_win_sharedlibname
       "OpenColorIO_${RV_DEPS_OCIO_VERSION_SHORT}.dll"

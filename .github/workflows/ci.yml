@@ -683,7 +683,7 @@ jobs:
           key: macos-${{ matrix.arch-type }}-${{ matrix.vfx-platform }}-dependencies
 
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    #if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
@@ -741,7 +741,7 @@ jobs:
       # sccache used for this run only; do not store in Actions cache (saves repo cache limit).
       # Let's revisit this if we can reduce the size of the cache (potentially dropping x86_64 for Mac)
       # or by moving some dependencies from the cache to Conan or another dependency manager.
-      SCCACHE_GHA_ENABLED: false
+      SCCACHE_GHA_ENABLED: true
     steps:
       - name: Check out repository code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
@@ -775,6 +775,7 @@ jobs:
           update: true
           # False because it keep creating new cache entry.
           cache: false
+          path-type: inherit
           install: >-
             mingw-w64-x86_64-autotools
             mingw-w64-x86_64-cmake
@@ -824,7 +825,10 @@ jobs:
           
       - name: Set PATH environment variable
         run: |
-          echo "export PATH=\"/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
+          # Put MSVC tools (cl.exe, link.exe) before MSYS2 /usr/bin to avoid GNU link.exe conflict
+          MSVC_BIN="$(cygpath "$VCToolsInstallDir")/bin/Hostx64/x64"
+          WIN_SDK_BIN="$(cygpath "$WindowsSdkVerBinPath")x64"
+          echo "export PATH=\"${MSVC_BIN}:${WIN_SDK_BIN}:/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:\$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Set ACLOCAL_PATH environment variable
@@ -903,9 +907,9 @@ jobs:
         # For sccache to actually cache the Windows/MSVC build, CMake must use it as the compiler
         # launcher, e.g. -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
         # in the Configure OpenRV step (and sccache must be on PATH when the build runs).
-        uses: mozilla-actions/sccache-action@v0.0.6
+        uses: mozilla-actions/sccache-action@v0.0.9
         with:
-          version: "v0.8.1"
+          version: "v0.14.0"
 
       - name: Configure sccache for msys2
         run: |
@@ -926,7 +930,16 @@ jobs:
         run: |
           cmake --version
           export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
+          cmake -B _build -G "Ninja" \
+          -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+          -DRV_DEPS_QT_LOCATION=$QT_HOME \
+          -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }} \
+          -DCMAKE_C_COMPILER=cl \
+          -DCMAKE_CXX_COMPILER=cl \
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+          -DCMAKE_MT=mt
         shell: msys2 {0}
           
       - name: Build OpenRV dependencies

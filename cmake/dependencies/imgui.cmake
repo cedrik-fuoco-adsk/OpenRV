@@ -44,6 +44,13 @@ IF(RV_TARGET_WINDOWS)
   SET(_libpath
       ${_bin_dir}/${_libname}
   )
+  # Rebuild _implibpath and _byproducts after overriding _lib_dir and _libname above.
+  SET(_implibpath
+      ${_lib_dir}/${CMAKE_IMPORT_LIBRARY_PREFIX}imgui${CMAKE_IMPORT_LIBRARY_SUFFIX}
+  )
+  SET(_byproducts
+      ${_libpath} ${_implibpath}
+  )
 ELSE()
   SET(_libpath
       ${_lib_dir}/${_libname}
@@ -137,7 +144,7 @@ EXTERNALPROJECT_ADD(
   CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options} -DFIND_QT_VERSION=${_find_qt_version} -DCMAKE_PREFIX_PATH=${_qt_location}/lib/cmake
   BUILD_COMMAND ${_cmake_build_command}
   INSTALL_COMMAND ${_cmake_install_command}
-  BUILD_BYPRODUCTS ${_libpath}
+  BUILD_BYPRODUCTS ${_byproducts}
   BUILD_ALWAYS FALSE
   USES_TERMINAL_BUILD TRUE
   DEPENDS implot_download imgui_backend_qt_download imgui_node_editor_download

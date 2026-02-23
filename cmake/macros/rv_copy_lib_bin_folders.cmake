@@ -25,11 +25,11 @@ MACRO(RV_COPY_LIB_BIN_FOLDERS)
   IF(RV_TARGET_WINDOWS)
 
     ADD_CUSTOM_COMMAND(
-      TARGET ${_target}
-      POST_BUILD
       COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+      OUTPUT ${RV_STAGE_BIN_DIR}/${_libname}
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+      DEPENDS ${_target}
     )
     ADD_CUSTOM_TARGET(
       ${_target}-stage-target ALL
