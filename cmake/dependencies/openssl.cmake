@@ -266,10 +266,13 @@ ELSE()
   )
 
   IF(RV_TARGET_WINDOWS)
+    # Rename the openssl import libs to the names FFmpeg expects (ssl.lib, crypto.lib).
+    # This must be POST_BUILD (not in the staging command) because FFmpeg depends on
+    # RV_DEPS_OPENSSL directly and needs these files in the install dir at configure time.
     ADD_CUSTOM_COMMAND(
       TARGET ${_target}
       POST_BUILD
-      COMMENT "Renaming the openssl import libs to the name FFmpeg is expecting"
+      COMMENT "Renaming OpenSSL import libs for FFmpeg compatibility"
       COMMAND ${CMAKE_COMMAND} -E copy ${RV_DEPS_OPENSSL_INSTALL_DIR}/lib/libssl.lib ${_lib_dir}/ssl.lib
       COMMAND ${CMAKE_COMMAND} -E copy ${RV_DEPS_OPENSSL_INSTALL_DIR}/lib/libcrypto.lib ${_lib_dir}/crypto.lib
     )
@@ -283,7 +286,7 @@ ELSE()
     )
     ADD_CUSTOM_TARGET(
       ${_target}-stage-target ALL
-      DEPENDS ${RV_STAGE_LIB_DIR}/${_crypto_lib_name} ${RV_STAGE_LIB_DIR}/${_ssl_lib_name}
+      DEPENDS ${RV_STAGE_BIN_DIR}/${_crypto_lib_name} ${RV_STAGE_BIN_DIR}/${_ssl_lib_name}
     )
   ELSE()
 
