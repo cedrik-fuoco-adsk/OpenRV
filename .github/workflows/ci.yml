@@ -935,8 +935,9 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
           -DRV_DEPS_QT_LOCATION=$QT_HOME \
           -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }} \
-          -DCMAKE_C_COMPILER=cl \
-          -DCMAKE_CXX_COMPILER=cl \
+          -DCMAKE_C_COMPILER=sccache \
+          -DCMAKE_CXX_COMPILER=sccache \
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache \
           -DCMAKE_MT=mt
         shell: msys2 {0}
           
