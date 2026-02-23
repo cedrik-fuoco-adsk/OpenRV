@@ -4,7 +4,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-FIND_PROGRAM(_sed sed NO_CACHE REQUIRED)
+IF(RV_TARGET_WINDOWS)
+  FIND_PACKAGE(Python3 REQUIRED COMPONENTS Interpreter)
+  SET(_apply_sed_script "${PROJECT_SOURCE_DIR}/cmake/scripts/apply_sed.py")
+ELSE()
+  FIND_PROGRAM(_sed sed NO_CACHE REQUIRED)
+ENDIF()
 
 #
 # 01234567890123456789012345678901234567890123456789012345678901234567890123456789 ! sed_it2 : wraps a call to the 'sed' utility.
@@ -86,13 +91,23 @@ FUNCTION(sed_it)
 
   #
   # Actual SED operation
-  EXECUTE_PROCESS(
-    WORKING_DIRECTORY ${arg_OUTPUT_DIR}
-    COMMAND ${_sed} -f ${arg_INPUT_SED_FILE} ${arg_INPUT_FILE} COMMAND_ECHO STDOUT
-    OUTPUT_FILE ${_temp}
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _result_code COMMAND_ERROR_IS_FATAL ANY
-  )
+  IF(RV_TARGET_WINDOWS)
+    EXECUTE_PROCESS(
+      WORKING_DIRECTORY ${arg_OUTPUT_DIR}
+      COMMAND ${Python3_EXECUTABLE} ${_apply_sed_script} --sed-file ${arg_INPUT_SED_FILE} --input ${arg_INPUT_FILE} --output ${_temp}
+      COMMAND_ECHO STDOUT
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE _result_code COMMAND_ERROR_IS_FATAL ANY
+    )
+  ELSE()
+    EXECUTE_PROCESS(
+      WORKING_DIRECTORY ${arg_OUTPUT_DIR}
+      COMMAND ${_sed} -f ${arg_INPUT_SED_FILE} ${arg_INPUT_FILE} COMMAND_ECHO STDOUT
+      OUTPUT_FILE ${_temp}
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE _result_code COMMAND_ERROR_IS_FATAL ANY
+    )
+  ENDIF()
 
   # Finally, rename the temporary file to the user-specified output filename
   FILE(REMOVE ${arg_OUTPUT_DIR}/${arg_OUTPUT_FILE})
