@@ -46,12 +46,19 @@ SET(${_target}_ROOT_DIR
     ${_install_dir}
 )
 
-SET(_make_command
-    make
-)
-SET(_configure_command
-    sh ./configure
-)
+IF(RV_TARGET_WINDOWS)
+  FIND_PACKAGE(Python3 REQUIRED COMPONENTS Interpreter)
+  SET(_build_ffmpeg_script
+      "${PROJECT_SOURCE_DIR}/cmake/scripts/build_ffmpeg_windows.py"
+  )
+ELSE()
+  SET(_make_command
+      make
+  )
+  SET(_configure_command
+      sh ./configure
+  )
+ENDIF()
 
 SET(_include_dir
     ${_install_dir}/include
@@ -293,27 +300,44 @@ SET(_ffmpeg_preprocess_pkg_config_path
 )
 LIST(APPEND _ffmpeg_preprocess_pkg_config_path "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig")
 IF(RV_TARGET_WINDOWS)
-  FOREACH(
-    _ffmpeg_pkg_config_path_element IN
-    LISTS _ffmpeg_preprocess_pkg_config_path
-  )
-    # Changing path start from "c:/..." to "/c/..." and replacing all backslashes with slashes since PkgConfig wants a linux path
-    STRING(REPLACE "\\" "/" _ffmpeg_pkg_config_path_element "${_ffmpeg_pkg_config_path_element}")
-    STRING(REPLACE ":" "" _ffmpeg_pkg_config_path_element "${_ffmpeg_pkg_config_path_element}")
-    STRING(FIND ${_ffmpeg_pkg_config_path_element} / _ffmpeg_first_slash_index)
-    IF(_ffmpeg_first_slash_index GREATER 0)
-      STRING(PREPEND _ffmpeg_pkg_config_path_element "/")
-    ENDIF()
-    LIST(APPEND _ffmpeg_pkg_config_path ${_ffmpeg_pkg_config_path_element})
-  ENDFOREACH()
+  # Pass raw Windows paths to the Python wrapper (it handles Unix conversion).
+  # Use "|" as delimiter because CMake treats ";" as a list separator, which would
+  # split the value into multiple arguments when passed through SET() commands.
+  LIST(JOIN _ffmpeg_preprocess_pkg_config_path "|" _ffmpeg_pkg_config_path)
 ELSE()
   SET(_ffmpeg_pkg_config_path
       ${_ffmpeg_preprocess_pkg_config_path}
   )
+  LIST(JOIN _ffmpeg_pkg_config_path ":" _ffmpeg_pkg_config_path)
 ENDIF()
-LIST(JOIN _ffmpeg_pkg_config_path ":" _ffmpeg_pkg_config_path)
 
 SEPARATE_ARGUMENTS(RV_FFMPEG_PATCH_COMMAND_STEP)
+
+# Set up configure/build/install commands (Python wrapper on Windows, direct on Unix)
+IF(RV_TARGET_WINDOWS)
+  SET(_ffmpeg_configure_command
+      ${Python3_EXECUTABLE} ${_build_ffmpeg_script} --action configure --install-dir ${_install_dir} --pkg-config-path "${_ffmpeg_pkg_config_path}" --
+      ${RV_FFMPEG_COMMON_CONFIG_OPTIONS} ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS}
+      ${RV_FFMPEG_EXTERNAL_LIBS}
+  )
+  SET(_ffmpeg_build_command
+      ${Python3_EXECUTABLE} ${_build_ffmpeg_script} --action build --jobs ${_cpu_count}
+  )
+  SET(_ffmpeg_install_command
+      ${Python3_EXECUTABLE} ${_build_ffmpeg_script} --action install
+  )
+ELSE()
+  SET(_ffmpeg_configure_command
+      ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}" ${_configure_command} --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
+      ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS} ${RV_FFMPEG_EXTERNAL_LIBS}
+  )
+  SET(_ffmpeg_build_command
+      ${_make_command} -j${_cpu_count}
+  )
+  SET(_ffmpeg_install_command
+      ${_make_command} install
+  )
+ENDIF()
 
 EXTERNALPROJECT_ADD(
   ${_target}
@@ -326,11 +350,9 @@ EXTERNALPROJECT_ADD(
   URL_MD5 ${_download_hash}
   SOURCE_DIR ${RV_DEPS_BASE_DIR}/${_target}/src
   PATCH_COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
-  CONFIGURE_COMMAND
-    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}" ${_configure_command} --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
-    ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS} ${RV_FFMPEG_EXTERNAL_LIBS}
-  BUILD_COMMAND ${_make_command} -j${_cpu_count}
-  INSTALL_COMMAND ${_make_command} install
+  CONFIGURE_COMMAND ${_ffmpeg_configure_command}
+  BUILD_COMMAND ${_ffmpeg_build_command}
+  INSTALL_COMMAND ${_ffmpeg_install_command}
   BUILD_IN_SOURCE TRUE
   BUILD_ALWAYS ${_force_rebuild}
   BUILD_BYPRODUCTS ${_build_byproducts}
