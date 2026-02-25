@@ -8,80 +8,71 @@
 """
 Windows FFmpeg build wrapper for OpenRV.
 
-Replaces the MSYS2 dependency for FFmpeg builds by finding bash from
-Git for Windows (or MSYS2 as fallback) and handling Windows-to-Unix
-path conversion for PKG_CONFIG_PATH.
+Requires MSYS2 for a fully consistent GNU toolchain — bash, make, awk, sed,
+and grep all from the same runtime.  This is mandatory; no other toolchain
+combination (e.g. Git for Windows + MinGW make) is supported.
+
+The MSYS2 root is resolved in this order:
+  1. MSYS2_ROOT environment variable (override for non-standard installs)
+  2. C:\\msys64   (default choco / manual install location)
+  3. C:\\msys32
 
 Usage:
     python3 build_ffmpeg_windows.py --action configure --install-dir DIR \\
-        --pkg-config-path "path1;path2" -- [configure options...]
+        --pkg-config-path "path1|path2" -- [configure options...]
     python3 build_ffmpeg_windows.py --action build --jobs N
     python3 build_ffmpeg_windows.py --action install
 """
 
 import argparse
 import os
-import shutil
 import subprocess
 import sys
 
 
-def find_bash():
-    """Find bash.exe: Git for Windows first, then PATH fallback (MSYS2)."""
-    git_bash_candidates = [
-        os.path.join(
-            os.environ.get("ProgramFiles", r"C:\Program Files"),
-            "Git",
-            "bin",
-            "bash.exe",
-        ),
-        os.path.join(
-            os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
-            "Git",
-            "bin",
-            "bash.exe",
-        ),
-        os.path.join(
-            os.environ.get("LOCALAPPDATA", ""),
-            "Programs",
-            "Git",
-            "bin",
-            "bash.exe",
-        ),
-    ]
-    for path in git_bash_candidates:
-        if path and os.path.isfile(path):
-            return path
+# ---------------------------------------------------------------------------
+# MSYS2 discovery
+# ---------------------------------------------------------------------------
 
-    # PATH fallback — picks up MSYS2 bash when present
-    bash = shutil.which("bash")
-    if bash:
-        return bash
+MSYS2_CANDIDATE_ROOTS = [
+    os.environ.get("MSYS2_ROOT", ""),
+    r"C:\msys64",
+    r"C:\msys32",
+]
 
-    print(
-        "ERROR: Cannot find bash.exe. "
-        "Install Git for Windows or add bash to PATH.",
-        file=sys.stderr,
-    )
+_MSYS2_ERROR = (
+    "ERROR: MSYS2 not found. "
+    r"Install MSYS2 to C:\msys64 or set the MSYS2_ROOT environment variable."
+)
+
+
+def find_msys2_tools():
+    """Return (msys2_root, bash_path, make_path), or exit with an error.
+
+    All three are sourced from the same MSYS2 installation so that awk, sed,
+    grep, etc. invoked by FFmpeg's Makefiles resolve to the same GNU runtime.
+    Mixing runtimes (e.g. MinGW make + Git-for-Windows awk) causes awk
+    backslash syntax errors during the FFmpeg build.
+    """
+    for root in MSYS2_CANDIDATE_ROOTS:
+        if not root or not os.path.isdir(root):
+            continue
+        usr_bin = os.path.join(root, "usr", "bin")
+        bash = os.path.join(usr_bin, "bash.exe")
+        make = os.path.join(usr_bin, "make.exe")
+        if os.path.isfile(bash) and os.path.isfile(make):
+            return root, bash, make
+
+    print(_MSYS2_ERROR, file=sys.stderr)
     sys.exit(1)
 
 
-def find_make():
-    """Find GNU make on PATH."""
-    make = shutil.which("make")
-    if make:
-        return make
-
-    print(
-        "ERROR: Cannot find 'make'. "
-        "Install GNU Make (e.g., choco install make).",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
+# ---------------------------------------------------------------------------
+# Path conversion helpers
+# ---------------------------------------------------------------------------
 
 def win_to_unix_path(win_path):
-    """Convert a Windows path to a Unix path for use inside bash.
+    """Convert a Windows path to a Unix path for use inside MSYS2 bash.
 
     Examples:
         C:\\foo\\bar  -> /c/foo/bar
@@ -89,7 +80,6 @@ def win_to_unix_path(win_path):
         /already/unix -> /already/unix
     """
     path = win_path.replace("\\", "/")
-    # Handle drive letter: C:/foo -> /c/foo
     if len(path) >= 2 and path[1] == ":":
         drive = path[0].lower()
         path = "/" + drive + path[2:]
@@ -105,13 +95,36 @@ def convert_pkg_config_path(raw_paths):
     if not raw_paths:
         return ""
     elements = [p.strip() for p in raw_paths.split("|") if p.strip()]
-    unix_elements = [win_to_unix_path(p) for p in elements]
-    return ":".join(unix_elements)
+    return ":".join(win_to_unix_path(p) for p in elements)
 
+
+# ---------------------------------------------------------------------------
+# Environment helper
+# ---------------------------------------------------------------------------
+
+def _make_msys2_env():
+    """Return an env dict with MSYS2 usr/bin and mingw64/bin prepended to PATH.
+
+    Prepending MSYS2 paths ensures that make, awk, sed, grep, etc. always
+    resolve to MSYS2 GNU versions, regardless of what else is on PATH.
+    """
+    root, _bash, _make = find_msys2_tools()
+    env = os.environ.copy()
+    prepend = os.pathsep.join([
+        os.path.join(root, "usr", "bin"),
+        os.path.join(root, "mingw64", "bin"),
+    ])
+    env["PATH"] = prepend + os.pathsep + env.get("PATH", "")
+    return env
+
+
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
 
 def action_configure(args, extra_args):
-    """Run FFmpeg's ./configure via bash with proper path conversion."""
-    bash = find_bash()
+    """Run FFmpeg's ./configure via MSYS2 bash with proper path conversion."""
+    _root, bash, _make = find_msys2_tools()
     install_prefix = win_to_unix_path(args.install_dir)
     pkg_config = convert_pkg_config_path(args.pkg_config_path or "")
 
@@ -119,38 +132,50 @@ def action_configure(args, extra_args):
     if extra_args:
         configure_cmd += " " + " ".join(extra_args)
 
-    env = os.environ.copy()
+    env = _make_msys2_env()
     if pkg_config:
         env["PKG_CONFIG_PATH"] = pkg_config
 
-    cmd = [bash, "-c", configure_cmd]
     print(f"[build_ffmpeg_windows.py] configure: {configure_cmd}", flush=True)
     if pkg_config:
         print(f"[build_ffmpeg_windows.py] PKG_CONFIG_PATH={pkg_config}", flush=True)
+
+    result = subprocess.run([bash, "-c", configure_cmd], env=env)
+    sys.exit(result.returncode)
+
+
+def action_build(args, _extra_args):
+    """Run MSYS2 make with an explicit SHELL override pointing to MSYS2 bash.
+
+    Using MSYS2 make + MSYS2 bash (both from the same runtime) ensures that
+    all Makefile recipe tools — awk, sed, grep — also resolve to MSYS2
+    binaries through the prepended PATH.
+    """
+    _root, bash, make = find_msys2_tools()
+    env = _make_msys2_env()
+
+    cmd = [make, f"-j{args.jobs}", f"SHELL={bash}"]
+    print(f"[build_ffmpeg_windows.py] build: {' '.join(cmd)}", flush=True)
 
     result = subprocess.run(cmd, env=env)
     sys.exit(result.returncode)
 
 
-def action_build(args, _extra_args):
-    """Run make -j<jobs>."""
-    make = find_make()
-    cmd = [make, f"-j{args.jobs}"]
-    print(f"[build_ffmpeg_windows.py] build: {' '.join(cmd)}", flush=True)
-
-    result = subprocess.run(cmd)
-    sys.exit(result.returncode)
-
-
 def action_install(_args, _extra_args):
-    """Run make install."""
-    make = find_make()
-    cmd = [make, "install"]
+    """Run MSYS2 make install with SHELL override (see action_build docstring)."""
+    _root, bash, make = find_msys2_tools()
+    env = _make_msys2_env()
+
+    cmd = [make, "install", f"SHELL={bash}"]
     print(f"[build_ffmpeg_windows.py] install: {' '.join(cmd)}", flush=True)
 
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=env)
     sys.exit(result.returncode)
 
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
@@ -168,7 +193,7 @@ def main():
     )
     parser.add_argument(
         "--pkg-config-path",
-        help="Semicolon-separated PKG_CONFIG_PATH entries (configure action)",
+        help="Pipe-separated PKG_CONFIG_PATH entries (configure action)",
     )
     parser.add_argument(
         "--jobs",
@@ -193,3 +218,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

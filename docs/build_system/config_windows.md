@@ -73,10 +73,11 @@ All other dependencies are shared across variations.
 5. [Install Qt](install_windows_qt)
 6. [Install Strawberry Perl](install_strawberry_perl)
 7. [Install Rust](install_rust)
-8. [Install MSYS2](install_msys2)
-   1. [Install required MSYS2 pacman packages (from an MSYS2-MinGW64 shell)](install_msys2_packages)
-9. [Setup environment variables](setup_env)
-10. [Build Open RV](build_windows_openrv)
+8. [Install Git for Windows](install_git)
+9. [Install Chocolatey](install_chocolatey)
+10. [Install Build Tools](install_build_tools)
+11. [Setup environment variables](setup_env)
+12. [Build Open RV](build_windows_openrv)
 
 ````{warning}
 You should be cloning the repository later in the steps, but if you must clone it beforehand, clone it into the root 
@@ -262,7 +263,7 @@ The default path is `C:\Program Files\CMake`.
 When obtaining Qt from a third-party source, ensure it includes **OpenSSL** support and check for the following essential modules that may not be included by default: **QtWebEngine**, **QtWebSockets**, **QtMultimedia**, and **QtDeclarative**.
 \
 \
-For example, Qt from MSYS2 is missing QtWebEngine.
+For example, some third-party Qt distributions are missing QtWebEngine.
 ```
 
 Download the Qt version corresponding to your chosen VFX reference platform from the [official Qt website](https://www.qt.io/download-open-source) using the online installer. It is **recommended** to install Qt in a location with a **short path length**. (e.g. `C:\Qt`)
@@ -402,80 +403,72 @@ cargo --version
 The Rust installation will be located at `%USERPROFILE%\.cargo\bin` (typically `C:\Users\<username>\.cargo\bin`). Do not forget to add the location to the PATH environment variable in [Setup environment variables](#setup_env).
 ```
 
-(install_msys2)=
+(install_git)=
 
-## 8. Install MSYS2
+## 8. Install Git for Windows
 
-```{warning}
-
-The Windows' WSL2 feature conflict with MSYS2. For simplicity, it is highly recommended to **disable** Windows' WSL or WSL2 feature entirely.\
-\
-Additional information can be found on the [MSYS2 github](https://github.com/msys2/setup-msys2/issues/52).
-
-```
-
-Download and install the latest [MSYS2](https://www.msys2.org/). Open RV is **NOT** a mingw64 build. It is a Microscoft Visual Studio 2022 build. Open RV is built with Microsoft Visual Studio 2022 via the CMake "Visual Studio 17 2022" generator.
-
-MSYS2 is only used for convenience as it comes with a package manager with utility packages required for the Open RV build such as cmake, git, flex, bison, nasm, unzip, zip, etc.
-
-(install_msys2_packages)=
-
-### 8.1 Install required MSYS2 pacman packages
+Download and install [Git for Windows](https://git-scm.com/download/win) using the default installation options.
 
 ```{note}
-The MSYS2 MingGW64 (mingw64.exe) terminal MUST be used.\
-Other executables such as MSYS2 (msys2.exe) or MSYS2 MingGW32 (mingw32.exe) will not work.\
-
-![MSYS2-MinGW64](../images/rv-msys2-mingw64-shortcut.png)
-
-
+Git for Windows also provides Unix utilities (`patch`, `touch`) that are required by the Open RV build system.
+The directory `C:\Program Files\Git\usr\bin` must be added to your PATH (covered in [Setup environment variables](#setup_env)).
 ```
 
-From a MSYS2-MinGW64 shell, install the following packages which are required to build Open RV:
+(install_chocolatey)=
 
-```shell
-pacman -Sy --needed \
-        mingw-w64-x86_64-autotools \
-        mingw-w64-x86_64-glew \
-        mingw-w64-x86_64-libarchive \
-        mingw-w64-x86_64-make \
-        mingw-w64-x86_64-meson \
-        mingw-w64-x86_64-toolchain \
-        autoconf  \
-        automake \
-        bison \
-        flex \
-        git \
-        libtool \
-        nasm \
-        p7zip \
-        patch \
-        unzip \
-        zip
+## 9. Install Chocolatey
+
+[Chocolatey](https://chocolatey.org/) is a Windows package manager used to install several build tools required by Open RV.
+
+Install Chocolatey by running the following command in an **elevated** (Administrator) PowerShell:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 ```
 
-While installing the MSYS packages, review the list for any missing package. Some packages might not be installed after the first command.
+After installation, close and reopen your terminal for the `choco` command to become available.
 
-### 8.2 Install sccache for faster builds (recommended)
+(install_build_tools)=
+
+## 10. Install Build Tools
+
+Open RV requires several build tools. Install them from an **elevated** (Administrator) PowerShell or CMD prompt:
+
+```powershell
+choco install winflexbison3 nasm make ninja pkgconfiglite 7zip -y
+```
+
+Then install Meson (a Python-based build system required for the dav1d dependency):
+
+```powershell
+pip install meson
+```
+
+Here is what each tool provides:
+
+| Tool | Purpose |
+|------|---------|
+| **WinFlexBison3** | Lexer/parser generators (`win_flex` and `win_bison`) |
+| **NASM** | x86/x64 assembler required for FFmpeg |
+| **GNU Make** | Build tool required for the FFmpeg dependency |
+| **pkgconfiglite** | pkg-config implementation used by FFmpeg to find dav1d |
+| **Ninja** | Fast build tool used by several C/C++ dependencies |
+| **7-Zip** | Archive extraction (used for Qt WebEngine) |
+| **Meson** | Build system required for the dav1d (AV1 decoder) dependency |
+
+### 10.1 Install sccache for faster builds (recommended)
 
 sccache dramatically speeds up rebuild times by caching compiled objects (50-80% faster rebuilds). On Windows, sccache is preferred over ccache for better MSVC compatibility.
 
-From the same MSYS2-MinGW64 shell, install sccache using the Mozilla-Actions installer or download directly:
-
-#### Option 1: Using Chocolatey (if available on your system)
-
 ```powershell
-choco install sccache
+choco install sccache -y
 ```
-
-#### Option 2: Manual download (recommended for MSYS2)
-
-1. Download the latest sccache release from [https://github.com/mozilla/sccache/releases](https://github.com/mozilla/sccache/releases)
-2. Extract `sccache.exe` to a directory in your PATH (e.g., `C:\msys64\mingw64\bin`)
 
 Verify sccache is available:
 
-```shell
+```powershell
 sccache --version
 ```
 
@@ -486,17 +479,17 @@ OpenRV will automatically detect and use sccache when available.
 **Subsequent builds**: You'll see significant speedups (50-80% faster) on incremental or clean rebuilds.
 
 To check sccache statistics after building:
-```shell
+```powershell
 sccache --show-stats
 ```
 
 To disable sccache if needed:
-```shell
-export RV_DISABLE_COMPILER_CACHE=1
+```powershell
+$env:RV_DISABLE_COMPILER_CACHE = "1"
 ```
 ````
 
-Note: To confirm which version/location of any tool used inside the MSYS shell, `where` can be used e.g. `where python`. If there's more than one path return, the top one will be used.
+Note: To confirm which version/location of any tool is being used, run `where.exe <tool>` (e.g. `where.exe python`). If there is more than one path returned, the top one will be used.
 
 (setup_env)=
 
@@ -507,80 +500,91 @@ This is the step where the path of Strawberry Perl, Python, CMake and Qt will be
 
 ```
 
-Some environment variables need to be set within MSYS2 for the Open RV build system. The **PATH** environment variable must be
-modified, new environment variables called **ACLOCAL_PATH** and **QT_HOME** must be created.
+Some environment variables need to be set for the Open RV build system. The **PATH** environment variable must be
+modified and a new environment variable called **QT_HOME** must be created.
 
-These modifications will be added to the `.bash_profile` file located in the User's home directory within the MSYS2 environment. By modifiying `.bash_profile`, these environment variable will be modified everytime a new MSYS2 MINGW64 terminal is opened.
+You can set these using Windows System Properties (search for "Environment Variables" in the Start menu) or
+via PowerShell commands as shown below.
 
 #### PATH environment variable
 
 ```{note}
-Update the CMake, Strawberry Perl, Python, and Rust locations to reflect your installation paths, using **forward slashes (/)** for a Unix-style path
-to prevent issues later on.
-(e.g., C:\Python310 becomes /c/Python310).
-
-**For Rust:** Replace `<username>` with your actual Windows username. You can find your username by running `echo %USERNAME%` in a Windows command prompt.
-The Rust installation is located at `%USERPROFILE%\.cargo\bin` (typically `C:\Users\<username>\.cargo\bin`),
-which becomes `/c/Users/<username>/.cargo/bin` in MSYS2 format.
+Update the CMake, Strawberry Perl, Python, and Rust locations to reflect your actual installation paths.
+Replace `<username>` with your actual Windows username. You can find your username by running `echo %USERNAME%` in a command prompt.
 ```
 
-The following paths **must** be added to the PATH environment variable within MSYS2:
+The following paths **must** be on your PATH environment variable:
 
-* CMake binary directory
-* Python binary directory
-* Rust cargo binary directory
-* MSYS2's `mingw64/bin`
-* Strawberry perl directory
+* CMake binary directory (e.g., `C:\Program Files\CMake\bin`)
+* Python binary directory (e.g., `C:\Python311` for CY2024 or `C:\Python310` for CY2023)
+* Rust cargo binary directory (`%USERPROFILE%\.cargo\bin`)
+* Git tools directory (`C:\Program Files\Git\usr\bin` — provides `patch`, `touch` needed by build)
+* NASM directory (`C:\Program Files\NASM`)
+* Strawberry Perl directories (`C:\Strawberry\perl\bin` and `C:\Strawberry\c\bin`)
 
-**The order is important**. Do not put Strawberry perl location before MSYS2's `mingw64/bin` directory.
+You can set these persistently using PowerShell (run as Administrator):
 
 ````{tabs}
-```{code-tab} bash VFX-CY2024
-echo 'export PATH="/c/Program Files/CMake/bin:/c/Python311:/c/Users/<username>/.cargo/bin:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/perl/bin"' >> ~/.bash_profile
+```{code-tab} powershell VFX-CY2024
+$userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+$newPaths = @(
+    "C:\Program Files\CMake\bin",
+    "C:\Python311",
+    "$env:USERPROFILE\.cargo\bin",
+    "C:\Program Files\Git\usr\bin",
+    "C:\Program Files\NASM",
+    "C:\Strawberry\perl\bin",
+    "C:\Strawberry\c\bin"
+)
+foreach ($p in $newPaths) {
+    if ($userPath -notlike "*$p*") { $userPath = "$p;$userPath" }
+}
+[Environment]::SetEnvironmentVariable("PATH", $userPath, "User")
 ```
-```{code-tab} bash VFX-CY2023
-echo 'export PATH="/c/Program Files/CMake/bin:/c/Python310:/c/Users/<username>/.cargo/bin:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/perl/bin"' >> ~/.bash_profile
+```{code-tab} powershell VFX-CY2023
+$userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+$newPaths = @(
+    "C:\Program Files\CMake\bin",
+    "C:\Python310",
+    "$env:USERPROFILE\.cargo\bin",
+    "C:\Program Files\Git\usr\bin",
+    "C:\Program Files\NASM",
+    "C:\Strawberry\perl\bin",
+    "C:\Strawberry\c\bin"
+)
+foreach ($p in $newPaths) {
+    if ($userPath -notlike "*$p*") { $userPath = "$p;$userPath" }
+}
+[Environment]::SetEnvironmentVariable("PATH", $userPath, "User")
 ```
 ````
 
 ```{warning}
-Remember to replace `<username>` with your actual Windows username in the commands above.
-```
-
-#### ACLOCAL_PATH
-
-```shell
-echo "export ACLOCAL_PATH=/c/msys64/usr/share/aclocal" >> ~/.bash_profile
+Remember to replace `C:\Python311` or `C:\Python310` with your actual Python installation path if different.
 ```
 
 #### QT_HOME
 
 ```{note}
-Update the Qt location to reflect your installation path, using forward slashes (/) for a Unix-style path
-(e.g., C:\Qt\5.15.2\msvc2019_64 becomes /c/Qt/5.15.2/msvc2019_64).
+Update the Qt location to reflect your actual installation path.
 ```
 
 ````{tabs}
-```{code-tab} bash VFX-CY2024
-echo "export QT_HOME=/c/Qt/6.5.3/msvc2019_64" >> ~/.bash_profile
+```{code-tab} powershell VFX-CY2024
+[Environment]::SetEnvironmentVariable("QT_HOME", "C:\Qt\6.5.3\msvc2019_64", "User")
 ```
-```{code-tab} bash VFX-CY2023
-echo "export QT_HOME=/c/Qt/5.15.2/msvc2019_64" >> ~/.bash_profile
+```{code-tab} powershell VFX-CY2023
+[Environment]::SetEnvironmentVariable("QT_HOME", "C:\Qt\5.15.2\msvc2019_64", "User")
 ```
 ````
 
-#### Apply changes to MSYS2 MINGW64
+#### Apply changes
 
-All the environment variables changes above must be applied. You can do that by **closing and re-opening**
-the MSYS2 MINGW64 terminal or by **running** the following command:
-
-```shell
-source ~/.bash_profile
-```
+After setting the environment variables, **close and reopen** your terminal (PowerShell or CMD) for the changes to take effect.
 
 (build_windows_openrv)=
 
-## 10. Build Open RV
+## 12. Build Open RV
 
 Once the platform-specific installation process is complete, building Open RV follows the same process for all platforms. Please refer to the [Common Build Instructions](config_common_build.md) for the complete build process.
 
