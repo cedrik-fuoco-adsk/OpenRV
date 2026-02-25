@@ -110,18 +110,20 @@ IF(NOT RV_TARGET_WINDOWS)
 ELSE()
   # Don't use RV_COPY_LIB_BIN_FOLDERS() because RV don't need the whole bin directory. Copying the two DLLs from jpegturbo.
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${RV_STAGE_BIN_DIR}/${_libname}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_winlibjpegname} ${RV_STAGE_BIN_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${_bin_dir}/${_libturbojpegname} ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
 
   ADD_CUSTOM_TARGET(
     ${_target}-stage-target ALL
     DEPENDS ${RV_STAGE_BIN_DIR}/${_libname}
   )
+
+  ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
 ENDIF()
 
 IF(NOT RV_TARGET_WINDOWS)

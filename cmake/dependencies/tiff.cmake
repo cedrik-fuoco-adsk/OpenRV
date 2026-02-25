@@ -40,7 +40,21 @@ ELSE()
   # The current CMake build code via NMake doesn't create a Debug lib named "libtiffd.lib"
   RV_MAKE_STANDARD_LIB_NAME("libtiff" "${_version}" "SHARED" "")
 ENDIF()
-# ByProducts note: Windows will only have the DLL in _byproducts, this is fine since both .lib and .dll will be updated together.
+
+# On Windows, tiff's CMake build produces import libs named tiff.lib/tiffd.lib (not libtiff.lib).
+# Add the actual import lib to _byproducts so Ninja can track it.
+IF(RV_TARGET_WINDOWS)
+  IF(CMAKE_BUILD_TYPE STREQUAL "Release")
+    SET(_tiff_lib_name
+        "tiff.lib"
+    )
+  ELSEIF(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    SET(_tiff_lib_name
+        "tiffd.lib"
+    )
+  ENDIF()
+  LIST(APPEND _byproducts ${_lib_dir}/${_tiff_lib_name})
+ENDIF()
 
 IF(RV_TARGET_WINDOWS)
   GET_TARGET_PROPERTY(zlib_library ZLIB::ZLIB IMPORTED_IMPLIB)
@@ -85,7 +99,7 @@ EXTERNALPROJECT_ADD(
   INSTALL_COMMAND ${_cmake_install_command}
   BUILD_IN_SOURCE FALSE
   BUILD_ALWAYS FALSE
-  BUILD_BYPRODUCTS ${_libpath}
+  BUILD_BYPRODUCTS ${_byproducts}
   USES_TERMINAL_BUILD TRUE
 )
 
@@ -109,16 +123,6 @@ SET_PROPERTY(
   PROPERTY IMPORTED_LOCATION ${_libpath}
 )
 IF(RV_TARGET_WINDOWS)
-  IF(${CMAKE_BUILD_TYPE} STREQUAL "Release")
-    SET(_tiff_lib_name
-        "tiff.lib"
-    )
-  ELSEIF(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-    SET(_tiff_lib_name
-        "tiffd.lib"
-    )
-  ENDIF()
-
   SET_PROPERTY(
     TARGET Tiff::Tiff
     PROPERTY IMPORTED_IMPLIB ${_lib_dir}/${_tiff_lib_name}

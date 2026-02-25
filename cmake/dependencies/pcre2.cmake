@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# PCRE2 is only used on Windows (Boost regex is used on Linux and MacOS).
+
 INCLUDE(ProcessorCount) # require CMake 3.15+
 PROCESSORCOUNT(_cpu_count)
 
@@ -22,58 +24,55 @@ SET(_install_dir
     ${RV_DEPS_BASE_DIR}/${_target}/install
 )
 
-# PCRE is not used for Linux and MacOS (Boost regex is used) in the current code.
-IF(RV_TARGET_WINDOWS)
-  SET(_pcre2_libname
-      libpcre2-8-0${CMAKE_SHARED_LIBRARY_SUFFIX}
+# MSVC debug builds add a "d" postfix to all library names.
+IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+  SET(_pcre2_debug_postfix
+      "d"
   )
-  SET(_pcre2_libname_posix
-      libpcre2-posix-3${CMAKE_SHARED_LIBRARY_SUFFIX}
-  )
-
-  SET(_pcre2_implibname
-      libpcre2-8.dll.a
-  )
-  SET(_pcre2_implibname_posix
-      libpcre2-posix.dll.a
-  )
-
-  SET(_pcre2_libpath
-      ${_bin_dir}/${_pcre2_libname}
-  )
-  SET(_pcre2_libpath_posix
-      ${_bin_dir}/${_pcre2_libname_posix}
-  )
-
-  SET(_pcre2_implibpath
-      ${_lib_dir}/${_pcre2_implibname}
-  )
-  SET(_pcre2_implibpath_posix
-      ${_lib_dir}/${_pcre2_implibname_posix}
+ELSE()
+  SET(_pcre2_debug_postfix
+      ""
   )
 ENDIF()
+
+SET(_pcre2_libname
+    pcre2-8${_pcre2_debug_postfix}${CMAKE_SHARED_LIBRARY_SUFFIX}
+)
+SET(_pcre2_libname_posix
+    pcre2-posix${_pcre2_debug_postfix}${CMAKE_SHARED_LIBRARY_SUFFIX}
+)
+
+SET(_pcre2_implibname
+    pcre2-8${_pcre2_debug_postfix}${CMAKE_IMPORT_LIBRARY_SUFFIX}
+)
+SET(_pcre2_implibname_posix
+    pcre2-posix${_pcre2_debug_postfix}${CMAKE_IMPORT_LIBRARY_SUFFIX}
+)
+
+SET(_pcre2_libpath
+    ${_bin_dir}/${_pcre2_libname}
+)
+SET(_pcre2_libpath_posix
+    ${_bin_dir}/${_pcre2_libname_posix}
+)
+
+SET(_pcre2_implibpath
+    ${_lib_dir}/${_pcre2_implibname}
+)
+SET(_pcre2_implibpath_posix
+    ${_lib_dir}/${_pcre2_implibname_posix}
+)
 
 SET(_pcre2_include_dir
     ${_install_dir}/include
 )
 
-SET(_pcre2_configure_command
-    sh ./configure
-)
-
-SET(_pcre2_autogen_command
-    sh ./autogen.sh
-)
-
-LIST(APPEND _pcre2_configure_args "--prefix=${_install_dir}")
-# Build as shared library
-LIST(APPEND _pcre2_configure_args "--disable-static")
-LIST(APPEND _pcre2_configure_args "--disable-pcre2grep-libbz2")
-LIST(APPEND _pcre2_configure_args "--disable-pcre2grep-libz")
-
-IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-  LIST(APPEND _pcre2_configure_args "--enable-debug")
-ENDIF()
+LIST(APPEND _pcre2_cmake_options "-DPCRE2_BUILD_PCRE2GREP=OFF")
+LIST(APPEND _pcre2_cmake_options "-DPCRE2_BUILD_TESTS=OFF")
+LIST(APPEND _pcre2_cmake_options "-DBUILD_SHARED_LIBS=ON")
+LIST(APPEND _pcre2_cmake_options "-DBUILD_STATIC_LIBS=OFF")
+LIST(APPEND _pcre2_cmake_options "-DPCRE2_SUPPORT_LIBBZ2=OFF")
+LIST(APPEND _pcre2_cmake_options "-DPCRE2_SUPPORT_LIBZ=OFF")
 
 EXTERNALPROJECT_ADD(
   ${_target}
@@ -83,23 +82,24 @@ EXTERNALPROJECT_ADD(
   DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR ${_source_dir}
+  BINARY_DIR ${_build_dir}
   INSTALL_DIR ${_install_dir}
   DEPENDS ZLIB::ZLIB
-  CONFIGURE_COMMAND ${_pcre2_autogen_command} && ${_pcre2_configure_command} ${_pcre2_configure_args}
-  BUILD_COMMAND make -j${_cpu_count}
-  BUILD_IN_SOURCE TRUE
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options} ${_pcre2_cmake_options}
+  BUILD_COMMAND ${_cmake_build_command}
+  INSTALL_COMMAND ${_cmake_install_command}
+  BUILD_IN_SOURCE FALSE
   BUILD_ALWAYS FALSE
-  BUILD_BYPRODUCTS ${_pcre2_libname} ${_pcre2_libname_posix} ${_pcre2_implibname} ${_pcre2_implibname_posix}
+  BUILD_BYPRODUCTS ${_pcre2_libpath} ${_pcre2_libpath_posix} ${_pcre2_implibpath} ${_pcre2_implibpath_posix}
   USES_TERMINAL_BUILD TRUE
 )
 
-# PCRE is not used for Linux and MacOS (Boost regex is used) in the current code.
 ADD_CUSTOM_COMMAND(
-  TARGET ${_target}
-  POST_BUILD
-  COMMENT "Installing ${_target}'s shared library into ${RV_STAGE_BIN_DIR}"
-  # Copy library files manually since there are tools that are not needed in the bin folder.
+  COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+  OUTPUT ${RV_STAGE_BIN_DIR}/${_pcre2_libname} ${RV_STAGE_BIN_DIR}/${_pcre2_libname_posix}
   COMMAND ${CMAKE_COMMAND} -E copy ${_pcre2_libpath} ${_pcre2_libpath_posix} -t ${RV_STAGE_BIN_DIR}
+  COMMAND ${CMAKE_COMMAND} -E copy ${_pcre2_implibpath} ${_pcre2_implibpath_posix} -t ${RV_STAGE_LIB_DIR}
+  DEPENDS ${_target}
 )
 
 ADD_CUSTOM_TARGET(

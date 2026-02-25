@@ -257,11 +257,11 @@ SET_TARGET_PROPERTIES(
 
 IF(RV_TARGET_WINDOWS)
   ADD_CUSTOM_COMMAND(
-    TARGET ${_target}
-    POST_BUILD
     COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+    OUTPUT ${_boost_stage_output}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_BIN_DIR}
+    DEPENDS ${_target}
   )
 ELSE()
   ADD_CUSTOM_COMMAND(
