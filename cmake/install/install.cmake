@@ -4,8 +4,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# Normalize all paths to forward slashes so that macro text-substitution
+# (used by after_copy / after_copy_platform) does not produce backslash
+# escape sequences that break CMake parsing on Windows.
+FILE(TO_CMAKE_PATH "${CMAKE_INSTALL_PREFIX}" CMAKE_INSTALL_PREFIX)
+FILE(TO_CMAKE_PATH "${RV_APP_ROOT}" RV_APP_ROOT)
+FILE(TO_CMAKE_PATH "${RV_STAGE_LIB_DIR}" RV_STAGE_LIB_DIR)
+FILE(TO_CMAKE_PATH "${RV_STAGE_BIN_DIR}" RV_STAGE_BIN_DIR)
+
 MESSAGE(STATUS "Install prefix: \"${CMAKE_INSTALL_PREFIX}\"")
-IF(NOT IS_ABSOLUTE ${CMAKE_INSTALL_PREFIX})
+IF(NOT IS_ABSOLUTE "${CMAKE_INSTALL_PREFIX}")
   MESSAGE(FATAL_ERROR "${CMAKE_INSTALL_PREFIX} is not an absolute path")
 ENDIF()
 

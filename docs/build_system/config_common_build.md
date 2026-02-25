@@ -40,15 +40,23 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 Command-line aliases are provided to simplify the process of setting up the environment and to build Open RV. Once in your OpenRV directory:
 
-```bash
+````{tabs}
+```{code-tab} bash Linux / macOS
 source rvcmds.sh
 ```
+```{code-tab} powershell Windows PowerShell
+. .\rvcmds.ps1
+```
+```{code-tab} bat Windows CMD
+call rvcmds.cmd
+```
+````
 
-By default, the commands and aliases will be configured for a release build, but you can swith between debug and release configurations by calling "rvdebug" or "rvrelease"
+By default, the commands and aliases will be configured for a release build, but you can switch between debug and release configurations by calling "rvdebug" or "rvrelease"
 
 #### 1.4 First-time build only: rvbootstrap
 
-This step only needs to be done on a freshly cloned git repository, after you source rvcmds.sh.
+This step only needs to be done on a freshly cloned git repository, after loading the command aliases above.
 
 Under the hood, this command will create an initial setup environment, will fetch source dependencies, install other required elements, and will create a Python virtual environment in the current directory under the `.venv` directory.
 
