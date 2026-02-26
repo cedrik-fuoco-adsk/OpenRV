@@ -24,12 +24,17 @@ MACRO(RV_COPY_LIB_BIN_FOLDERS)
 
   IF(RV_TARGET_WINDOWS)
 
+    # Use OUTPUT-based command (not POST_BUILD) to create a proper dependency chain.
+    # POST_BUILD only fires when the target actually rebuilds, which can cause the
+    # stage-target to reference a stale or missing file when the target is up-to-date.
     ADD_CUSTOM_COMMAND(
-      TARGET ${_target}
-      POST_BUILD
       COMMENT "Installing ${_target}'s libs and bin into ${RV_STAGE_LIB_DIR} and ${RV_STAGE_BIN_DIR}"
+      OUTPUT ${RV_STAGE_BIN_DIR}/${_libname}
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${_lib_dir}
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${_bin_dir}
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${_bin_dir} ${RV_STAGE_BIN_DIR}
+      DEPENDS ${_target}
     )
     ADD_CUSTOM_TARGET(
       ${_target}-stage-target ALL
