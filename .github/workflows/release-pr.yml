@@ -1,0 +1,60 @@
+name: Release PR
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    # Skip if this push is the merge of a release PR
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate full changelog
+        id: changelog
+        uses: orhun/git-cliff-action@v4.7.1
+        with:
+          config: cliff.toml
+          args: --bump
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get bumped version
+        id: version
+        uses: orhun/git-cliff-action@v4.7.1
+        with:
+          config: cliff.toml
+          args: --bumped-version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate release notes for PR body
+        id: release-notes
+        uses: orhun/git-cliff-action@v4.7.1
+        with:
+          config: cliff.toml
+          args: --unreleased --strip header
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create or update release PR
+        uses: peter-evans/create-pull-request@v8.1.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(release): update CHANGELOG for ${{ steps.version.outputs.content }}"
+          branch: release/next
+          delete-branch: true
+          title: "chore(release): release ${{ steps.version.outputs.content }}"
+          body: ${{ steps.release-notes.outputs.content }}
+          labels: autorelease
