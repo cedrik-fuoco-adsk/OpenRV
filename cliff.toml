@@ -45,6 +45,8 @@ commit_parsers = [
     { message = "^docs", group = "<!-- 5 -->Documentation" },
     { message = "^test", skip = true },
     { message = "^chore", skip = true },
+    # Skip anything that doesn't match the known types above
+    { message = ".*", skip = true },
 ]
 
 [remote.github]
