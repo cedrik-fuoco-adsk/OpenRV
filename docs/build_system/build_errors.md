@@ -165,10 +165,11 @@ error: subprocess-exited-with-error
 × pip subprocess to install build dependencies did not run successfully.
 ```
 
-Note: There's an issue with the latest version of MSYS2 and Python3.xx versions. Enter the following command from the same MSYS2-MinGW64 shell if you encounter an error when installing the **py7zr** python requirement:
+Note: If you encounter an error when installing the **py7zr** Python requirement, try the following:
 
-```shell
-SETUPTOOLS_USE_DISTUTILS=stdlib pip install py7zr
+```powershell
+$env:SETUPTOOLS_USE_DISTUTILS = "stdlib"
+pip install py7zr
 ```
 
 ### Windows : System-wide vcpkg

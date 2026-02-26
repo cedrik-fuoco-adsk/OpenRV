@@ -4,9 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-INCLUDE(ProcessorCount) # require CMake 3.15+
-PROCESSORCOUNT(_cpu_count)
-
 SET(_target
     "RV_DEPS_ATOMIC_OPS"
 )
@@ -32,83 +29,89 @@ SET(_lib_dir
     ${_install_dir}/lib
 )
 
-IF(RV_TARGET_WINDOWS)
-  SET(_atomic_ops_lib_name
-      libatomic_ops.a
-  )
-ELSE()
-  SET(_atomic_ops_lib_name
-      ${CMAKE_STATIC_LIBRARY_PREFIX}atomic_ops${CMAKE_STATIC_LIBRARY_SUFFIX}
-  )
-ENDIF()
+SET(_atomic_ops_lib_name
+    ${CMAKE_STATIC_LIBRARY_PREFIX}atomic_ops${CMAKE_STATIC_LIBRARY_SUFFIX}
+)
 
 SET(_atomic_ops_lib
     ${_lib_dir}/${_atomic_ops_lib_name}
 )
 
-SET(_make_command
-    make
-)
-SET(_configure_command
-    sh ./configure
-)
-SET(_autogen_command
-    sh ./autogen.sh
-)
+IF(RV_TARGET_WINDOWS)
+  # Use CMake build on Windows (replaces autotools sh/configure/make)
+  SET(_build_dir
+      ${RV_DEPS_BASE_DIR}/${_target}/build
+  )
 
-# Make sure NOT to enable GPL
-SET(_configure_args
-    "--disable-gpl"
-)
-LIST(APPEND _configure_args "--prefix=${_install_dir}")
+  EXTERNALPROJECT_ADD(
+    ${_target}
+    SOURCE_DIR ${RV_DEPS_BASE_DIR}/${_target}/src
+    INSTALL_DIR ${_install_dir}
+    URL ${_download_url}
+    URL_MD5 ${_download_hash}
+    DOWNLOAD_NAME ${_target}_${_version}.zip
+    DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
+    CONFIGURE_COMMAND ${CMAKE_COMMAND} -S ${RV_DEPS_BASE_DIR}/${_target}/src -B ${_build_dir}
+      -DCMAKE_INSTALL_PREFIX=${_install_dir}
+      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+      -Denable_gpl=OFF
+    BUILD_COMMAND ${CMAKE_COMMAND} --build ${_build_dir} --config ${CMAKE_BUILD_TYPE} -j${_cpu_count}
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${_install_dir} --config ${CMAKE_BUILD_TYPE}
+    BUILD_IN_SOURCE FALSE
+    BUILD_ALWAYS FALSE
+    BUILD_BYPRODUCTS ${_atomic_ops_lib}
+    USES_TERMINAL_BUILD TRUE
+  )
+ELSE()
+  # Use autotools on Linux/macOS
+  SET(_make_command
+      make
+  )
+  SET(_configure_command
+      sh ./configure
+  )
+  SET(_autogen_command
+      sh ./autogen.sh
+  )
 
-EXTERNALPROJECT_ADD(
-  ${_target}
-  SOURCE_DIR ${RV_DEPS_BASE_DIR}/${_target}/src
-  INSTALL_DIR ${_install_dir}
-  URL ${_download_url}
-  URL_MD5 ${_download_hash}
-  DOWNLOAD_NAME ${_target}_${_version}.zip
-  DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
-  CONFIGURE_COMMAND ${_autogen_command} && ${_configure_command} ${_configure_args}
-  BUILD_COMMAND ${_make_command} -j${_cpu_count}
-  INSTALL_COMMAND ${_make_command} install
-  BUILD_IN_SOURCE TRUE
-  BUILD_ALWAYS FALSE
-  BUILD_BYPRODUCTS ${_atomic_ops_lib}
-  USES_TERMINAL_BUILD TRUE
-)
+  # Make sure NOT to enable GPL
+  SET(_configure_args
+      "--disable-gpl"
+  )
+  LIST(APPEND _configure_args "--prefix=${_install_dir}")
 
-ADD_LIBRARY(atomic_ops::atomic_ops STATIC IMPORTED GLOBAL)
-ADD_DEPENDENCIES(atomic_ops::atomic_ops ${_target})
-SET_PROPERTY(
-  TARGET atomic_ops::atomic_ops
-  PROPERTY IMPORTED_LOCATION ${_atomic_ops_lib}
-)
+  EXTERNALPROJECT_ADD(
+    ${_target}
+    SOURCE_DIR ${RV_DEPS_BASE_DIR}/${_target}/src
+    INSTALL_DIR ${_install_dir}
+    URL ${_download_url}
+    URL_MD5 ${_download_hash}
+    DOWNLOAD_NAME ${_target}_${_version}.zip
+    DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
+    CONFIGURE_COMMAND ${_autogen_command} && ${_configure_command} ${_configure_args}
+    BUILD_COMMAND ${_make_command} -j${_cpu_count}
+    INSTALL_COMMAND ${_make_command} install
+    BUILD_IN_SOURCE TRUE
+    BUILD_ALWAYS FALSE
+    BUILD_BYPRODUCTS ${_atomic_ops_lib}
+    USES_TERMINAL_BUILD TRUE
+  )
+ENDIF()
 
 SET(_include_dir
     ${_install_dir}/include
 )
-FILE(MAKE_DIRECTORY ${_include_dir})
-TARGET_INCLUDE_DIRECTORIES(
-  atomic_ops::atomic_ops
-  INTERFACE ${_include_dir}
-)
-LIST(APPEND RV_DEPS_LIST atomic_ops::atomic_ops)
 
-ADD_CUSTOM_COMMAND(
-  COMMENT "Installing ${_target}'s libs into ${RV_STAGE_LIB_DIR}"
-  OUTPUT ${RV_STAGE_LIB_DIR}/${_atomic_ops_lib_name}
-  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_lib_dir} ${RV_STAGE_LIB_DIR}
+RV_ADD_IMPORTED_LIBRARY(
+  NAME atomic_ops::atomic_ops
+  TYPE STATIC
+  LOCATION ${_atomic_ops_lib}
+  INCLUDE_DIRS ${_include_dir}
   DEPENDS ${_target}
+  ADD_TO_DEPS_LIST
 )
 
-ADD_CUSTOM_TARGET(
-  ${_target}-stage-target ALL
-  DEPENDS ${RV_STAGE_LIB_DIR}/${_atomic_ops_lib_name}
-)
-
-ADD_DEPENDENCIES(dependencies ${_target}-stage-target)
+RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} OUTPUTS ${RV_STAGE_LIB_DIR}/${_atomic_ops_lib_name})
 
 SET(RV_DEPS_ATOMIC_OPS_VERSION
     ${_version}

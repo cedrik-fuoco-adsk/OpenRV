@@ -36,7 +36,7 @@ env:
 
 jobs:
   rocky-linux:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    #if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: 'Rocky Linux ${{ matrix.rocky-version }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -417,7 +417,7 @@ jobs:
           cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   macos:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    #if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -683,7 +683,7 @@ jobs:
           key: macos-${{ matrix.arch-type }}-${{ matrix.vfx-platform }}-dependencies
 
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    #if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
@@ -768,34 +768,44 @@ jobs:
           toolset: ${{ matrix.msvc-compiler }}
           arch: '${{ matrix.arch-type }}'
 
-      - name: Setup msys2 and install dependencies
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          # False because it keep creating new cache entry.
-          cache: false
-          install: >-
-            mingw-w64-x86_64-autotools
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-cmake-cmcldeps
-            mingw-w64-x86_64-glew
-            mingw-w64-x86_64-libarchive
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-meson
-            mingw-w64-x86_64-toolchain
-            autoconf
-            automake
-            bison
-            flex
-            git
-            libtool
-            nasm
-            p7zip
-            patch
-            unzip
-            zip
-    
+      - name: Install build tools
+        run: choco install winflexbison3 nasm ninja pkgconfiglite --no-progress -y
+
+      - name: Set up MSYS2 base packages
+        # MSYS2 is pre-installed on windows-2022 GitHub-hosted runners.
+        # Ensure the GNU toolchain (make, awk, sed, grep) used by FFmpeg's
+        # build system all come from the same MSYS2 runtime.  This avoids
+        # the awk backslash syntax errors caused by mixing MinGW make with
+        # Git-for-Windows awk.
+        run: |
+          # Refresh MSYS2 package database and install required GNU tools.
+          # The double-call to pacman -Syuu is intentional: the first run
+          # may update pacman itself and exit; the second completes the upgrade.
+          C:\msys64\usr\bin\bash.exe -lc "pacman -Syuu --noconfirm" || true
+          C:\msys64\usr\bin\bash.exe -lc "pacman -Syuu --noconfirm"
+          C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed make gawk diffutils"
+          
+      - name: Add tools to PATH
+        run: |
+          # MSYS2 usr/bin: provides make, awk, sed, grep, bash — all from the
+          # same GNU runtime, which is required for FFmpeg's build system.
+          # This must come BEFORE Git usr/bin so MSYS2 tools take precedence.
+          echo "C:\msys64\usr\bin" >> $env:GITHUB_PATH
+          echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+          # Git usr/bin provides patch, touch, true (used by cmake ExternalProject PATCH_COMMANDs)
+          echo "C:\Program Files\Git\usr\bin" >> $env:GITHUB_PATH
+          # NASM for FFmpeg assembly
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+
+      - name: Install Meson
+        run: pip install meson
+
+      - name: Use short TEMP path to avoid MAX_PATH issues
+        run: |
+          New-Item -ItemType Directory -Force -Path "D:\t"
+          echo "TEMP=D:\t" >> $env:GITHUB_ENV
+          echo "TMP=D:\t" >> $env:GITHUB_ENV
+
       - name: Activate Python ${{ matrix.python-version }}
         uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
         with:
@@ -822,36 +832,15 @@ jobs:
         run: |
           choco install cmake --version=${{ matrix.cmake-version }} --allow-downgrade
           
-      - name: Set PATH environment variable
-        run: |
-          echo "export PATH=\"/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
-        shell: msys2 {0}
-
-      - name: Set ACLOCAL_PATH environment variable
-        run: |
-          echo "export ACLOCAL_PATH=/c/msys64/usr/share/aclocal" >> ~/.bash_profile
-        shell: msys2 {0}
-
-      - name: Add Rust to PATH for msys2
-        run: |
-          echo "export PATH=\"/c/Users/runneradmin/.cargo/bin:\$PATH\"" >> ~/.bash_profile
-        shell: msys2 {0}
-
       - name: Display environment variables
         run: |
-          echo $PATH
-          echo $ACLOCAL_PATH
-          which python
-          which python3
-          which cmake
-          rustc --version || echo "WARNING: Rust not found in msys2 PATH"
-          cargo --version || echo "WARNING: Cargo not found in msys2 PATH"
-        shell: msys2 {0}
-    
+          Write-Host "PATH: $env:PATH"
+          Get-Command python, cmake, rustc, cargo | Format-Table Name, Source
+          rustc --version
+          cargo --version
+
       - name: Prepare Qt folder
-        run: |
-          mkdir -p /c/qt
-        shell: msys2 {0}
+        run: New-Item -ItemType Directory -Force -Path "C:\qt"
 
       - name: Install Qt ${{ matrix.qt-version }}
         if: ${{ matrix.vfx-platform == 'CY2023' }}
@@ -894,9 +883,7 @@ jobs:
           aqtversion: '==3.2.*'
 
       - name: Install Python dependencies
-        run: |
-          python3 -m pip install --user --upgrade -r ./requirements.txt
-        shell: msys2 {0}
+        run: python -m pip install --user --upgrade -r ./requirements.txt
 
       - name: Setup sccache
         # Used for this run only (SCCACHE_GHA_ENABLED=false); not stored in Actions cache.
@@ -907,48 +894,31 @@ jobs:
         with:
           version: "v0.8.1"
 
-      - name: Configure sccache for msys2
-        run: |
-          echo "export PATH=\"/c/Users/runneradmin/.cargo/bin:\$PATH\"" >> ~/.bash_profile
-          sccache --version || echo "WARNING: sccache not found in PATH"
-        shell: msys2 {0}
-
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2023' }}
         run: |
           cmake --version
-          export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
-        shell: msys2 {0}
+          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} "-DRV_DEPS_QT_LOCATION=c:/Qt/${{ matrix.qt-version }}/msvc2019_64" -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
 
       - name: Configure OpenRV
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
           cmake --version
-          export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
-        shell: msys2 {0}
-          
+          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} "-DRV_DEPS_QT_LOCATION=c:/Qt/${{ matrix.qt-version }}/msvc2019_64" -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
+
       - name: Build OpenRV dependencies
         if: steps.cmake-dependencies.outputs.cache-hit != 'true'
-        run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
-        shell: msys2 {0}
+        run: cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel $env:NUMBER_OF_PROCESSORS -v
         id: build_deps
 
       - name: Build OpenRV main executable
-        run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target main_executable --parallel=$(python -c 'import os; print(os.cpu_count())') -v
-        shell: msys2 {0}
+        run: cmake --build _build --config ${{ matrix.build-type }} --target main_executable --parallel $env:NUMBER_OF_PROCESSORS -v
 
       - name: Tests
         continue-on-error: true
         run: |
-          ls -al _build/stage/app/bin
+          Get-ChildItem _build/stage/app/bin
           ctest --test-dir _build -C ${{ matrix.build-type }} --extra-verbose
-        shell: msys2 {0}
 
       - name: Install OpenRV
-        run: |
-          cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
-        shell: msys2 {0}
+        run: cmake --install _build --prefix "$PWD/_install" --config ${{ matrix.build-type }}
