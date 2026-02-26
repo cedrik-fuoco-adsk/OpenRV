@@ -63,4 +63,6 @@ For **breaking changes**, append `!` after the type (e.g., `feat!: remove legacy
 
 ### Automated Releases
 
-This project uses [Release Please](https://github.com/googleapis/release-please) to automate changelog generation and version bumps. When PRs are merged to `main`, Release Please parses their titles to determine the next version and to build the changelog entry. Only PRs with types `feat`, `fix`, `perf`, `docs`, `build`, and `ci` appear in the generated changelog. Your PR title is what appears in the changelog, so make it clear and descriptive.
+This project uses [git-cliff](https://git-cliff.org/) to automate changelog generation and version bumps. When PRs are merged to `main`, a GitHub Actions workflow runs git-cliff to parse commit messages (which reflect the squash-merged PR titles) and creates or updates a release pull request. Only PRs with types `feat`, `fix`, `perf`, `docs`, `build`, and `ci` appear in the generated changelog. Your PR title is what appears in the changelog, so make it clear and descriptive.
+
+When the release PR is merged, a second workflow automatically creates a git tag and a GitHub Release with the generated release notes.
