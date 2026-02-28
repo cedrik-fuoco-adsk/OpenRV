@@ -8,6 +8,9 @@ on:
         default: 'false'
       qt5_modules:
         type: string
+      run_debug:
+        type: string
+        default: 'true'
 
 env:
   SKIP_DEPS_CACHE: ${{ inputs.skip_deps_cache }}
@@ -18,7 +21,7 @@ env:
 
 jobs:
   rocky-linux:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    if: matrix.build-type == 'Release' || inputs.run_debug == 'true'
     name: 'Rocky Linux ${{ matrix.rocky-version }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
