@@ -18,7 +18,6 @@ env:
 
 jobs:
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
