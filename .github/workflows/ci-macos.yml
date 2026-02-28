@@ -3,6 +3,9 @@ name: OpenRV macOS
 on:
   workflow_call:
     inputs:
+      run_debug:
+        type: string
+        default: 'false'
       skip_deps_cache:
         type: string
         default: 'false'
@@ -18,6 +21,7 @@ env:
 
 jobs:
   macos:
+    if: ${{ matrix.build-type == 'Release' || inputs.run_debug == 'true' }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},

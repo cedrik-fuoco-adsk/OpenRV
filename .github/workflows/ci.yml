@@ -15,11 +15,14 @@ on:
   # This allows manual triggering of the workflow from the web
   workflow_dispatch:
     inputs:
+      RUN_DEBUG:
+        description: 'Run debug builds'
+        required: false
+        default: 'false'
       SKIP_DEPS_CACHE:
         description: 'Skip dependencies caching'
         required: true
         default: 'false'
-
 jobs:
   check-changes:
     runs-on: ubuntu-latest
@@ -41,7 +44,7 @@ jobs:
     uses: ./.github/workflows/ci-linux.yml
     with:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
-      run_debug: ${{ needs.check-changes.outputs.cmake }}
+      run_debug: ${{ needs.check-changes.outputs.cmake || github.event_name == 'schedule' }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
 
   macos:
@@ -49,7 +52,7 @@ jobs:
     uses: ./.github/workflows/ci-macos.yml
     with:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
-      run_debug: ${{ needs.check-changes.outputs.cmake }}
+      run_debug: ${{ needs.check-changes.outputs.cmake || github.event_name == 'schedule' }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
 
   windows:
@@ -57,5 +60,5 @@ jobs:
     uses: ./.github/workflows/ci-windows.yml
     with:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
-      run_debug: ${{ needs.check-changes.outputs.cmake }}
+      run_debug: ${{ needs.check-changes.outputs.cmake || github.event_name == 'schedule' }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
