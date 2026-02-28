@@ -21,20 +21,36 @@ on:
         default: 'false'
 
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        id: debug-filter
+        with:
+          filters: |
+            cmake:
+              - '**CMakeLists.txt'
+              - '**/*.cmake'
+              - 'cmake/**'
+              
   linux:
     uses: ./.github/workflows/ci-linux.yml
     with:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
+      run_debug: ${{ steps.debug-filter.outputs.cmake }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
 
   macos:
     uses: ./.github/workflows/ci-macos.yml
     with:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
+      run_debug: ${{ steps.debug-filter.outputs.cmake }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
 
   windows:
     uses: ./.github/workflows/ci-windows.yml
     with:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
+      run_debug: ${{ steps.debug-filter.outputs.cmake }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
