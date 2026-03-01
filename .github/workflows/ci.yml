@@ -33,11 +33,13 @@ jobs:
           else
             echo 'vfx_platforms=["CY2024"]' >> $GITHUB_OUTPUT
           fi
-          echo $vfx_platforms
+          echo $GITHUB_OUTPUT
 
   linux:
+    needs: [ setup ]
     uses: ./.github/workflows/ci-linux.yml
     with:
+      vfx_platforms: ${{ needs.setup.outputs.vfx_platforms }}
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
 
