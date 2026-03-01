@@ -8,6 +8,9 @@ on:
         default: 'false'
       qt5_modules:
         type: string
+      vfx_platforms:          # replaces run_cy2023
+        type: string
+        default: '["CY2024"]'
 
 env:
   SKIP_DEPS_CACHE: ${{ inputs.skip_deps_cache }}
