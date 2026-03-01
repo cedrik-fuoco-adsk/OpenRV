@@ -21,6 +21,20 @@ on:
         default: 'false'
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs: 
+      vfx_platforms: ${{ steps.platforms.outputs.vfx_platforms }}
+    steps:
+      - id: platforms
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo 'vfx_platforms=["CY2023","CY2024"]' >> $GITHUB_OUTPUT
+          else
+            echo 'vfx_platforms=["CY2024"]' >> $GITHUB_OUTPUT
+          fi
+          echo $vfx_platforms
+
   linux:
     uses: ./.github/workflows/ci-linux.yml
     with:
