@@ -46,6 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        vfx-platform: ${{ fromJSON(inputs.vfx_platforms) }}
         include:
           - os: "ubuntu-latest"
             rocky-version: "8"
