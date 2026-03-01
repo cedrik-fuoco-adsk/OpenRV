@@ -60,11 +60,13 @@ jobs:
             image: amd64/rockylinux:9
             arch-type: x86_64
             extra_repo: crb
-          - vfx-platform: CY2023
+          - os: ubuntu-latest
+            vfx-platform: CY2023
             qt-version: "5.15.2"
             cmake-version: "3.31.6"
             python-version: "3.10"
-          - vfx-platform: CY2024
+          - os: ubuntu-latest
+            vfx-platform: CY2024
             qt-version: "6.5.3"
             cmake-version: "3.31.6"
             python-version: "3.11.8"
