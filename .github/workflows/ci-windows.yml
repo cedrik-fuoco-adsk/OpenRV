@@ -11,6 +11,9 @@ on:
       run_debug:
         type: string
         default: 'true'
+      run_cy2023:
+        type: string
+        default: 'true'
 
 env:
   SKIP_DEPS_CACHE: ${{ inputs.skip_deps_cache }}
@@ -34,24 +37,8 @@ jobs:
       fail-fast: false
       matrix:
         build-type: ${{ fromJSON(inputs.run_debug == 'true' && '["Release","Debug"]' || '["Release"]') }}
-        vfx-platform: [CY2023, CY2024]
-        include:
-          - vfx-platform: CY2023
-            os: "windows-2022"
-            arch-type: "x86_64"
-            qt-version: "5.15.2"
-            python-version: "3.10"
-            cmake-version: "3.31.6"
-            msvc-component: "14.40.17.10.x86.x64"
-            msvc-compiler: "14.40.33807"
-          - vfx-platform: CY2024
-            os: "windows-2022"
-            arch-type: "x86_64"
-            qt-version: "6.5.3"
-            python-version: "3.11"
-            cmake-version: "3.31.6"
-            msvc-component: "14.40.17.10.x86.x64"
-            msvc-compiler: "14.40.33807"
+        vfx-platform: ${{ fromJSON(inputs.run_cy2023 == 'true' && '["CY2023","CY2024"]' || '["CY2024"]') }}
+        include: ${{ fromJSON(inputs.run_cy2023 == 'true' && '[{"vfx-platform":"CY2023","os":"windows-2022","arch-type":"x86_64","qt-version":"5.15.2","python-version":"3.10","cmake-version":"3.31.6","msvc-component":"14.40.17.10.x86.x64","msvc-compiler":"14.40.33807"},{"vfx-platform":"CY2024","os":"windows-2022","arch-type":"x86_64","qt-version":"6.5.3","python-version":"3.11","cmake-version":"3.31.6","msvc-component":"14.40.17.10.x86.x64","msvc-compiler":"14.40.33807"}]' || '[{"vfx-platform":"CY2024","os":"windows-2022","arch-type":"x86_64","qt-version":"6.5.3","python-version":"3.11","cmake-version":"3.31.6","msvc-component":"14.40.17.10.x86.x64","msvc-compiler":"14.40.33807"}]') }}
 
     runs-on: ${{ matrix.os }}
     env:

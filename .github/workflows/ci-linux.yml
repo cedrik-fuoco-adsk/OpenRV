@@ -11,6 +11,9 @@ on:
       run_debug:
         type: string
         default: 'true'
+      run_cy2023:
+        type: string
+        default: 'true'
 
 env:
   SKIP_DEPS_CACHE: ${{ inputs.skip_deps_cache }}
@@ -46,27 +49,9 @@ jobs:
       fail-fast: false
       matrix:
         build-type: ${{ fromJSON(inputs.run_debug == 'true' && '["Release","Debug"]' || '["Release"]') }}
-        vfx-platform: [CY2023, CY2024]
+        vfx-platform: ${{ fromJSON(inputs.run_cy2023 == 'true' && '["CY2023","CY2024"]' || '["CY2024"]') }}
         rocky-version: ["8", "9"]
-        include:
-          - rocky-version: "8"
-            os: "ubuntu-latest"
-            image: "amd64/rockylinux:8"
-            arch-type: "x86_64"
-            extra_repo: "powertools"
-          - rocky-version: "9"
-            os: "ubuntu-latest"
-            image: "amd64/rockylinux:9"
-            arch-type: "x86_64"
-            extra_repo: "crb"
-          - vfx-platform: CY2023
-            qt-version: "5.15.2"
-            cmake-version: "3.31.6"
-            python-version: "3.10"
-          - vfx-platform: CY2024
-            qt-version: "6.5.3"
-            cmake-version: "3.31.6"
-            python-version: "3.11.8"
+        include: ${{ fromJSON(inputs.run_cy2023 == 'true' && '[{"rocky-version":"8","os":"ubuntu-latest","image":"amd64/rockylinux:8","arch-type":"x86_64","extra_repo":"powertools"},{"rocky-version":"9","os":"ubuntu-latest","image":"amd64/rockylinux:9","arch-type":"x86_64","extra_repo":"crb"},{"vfx-platform":"CY2023","qt-version":"5.15.2","cmake-version":"3.31.6","python-version":"3.10"},{"vfx-platform":"CY2024","qt-version":"6.5.3","cmake-version":"3.31.6","python-version":"3.11.8"}]' || '[{"rocky-version":"8","os":"ubuntu-latest","image":"amd64/rockylinux:8","arch-type":"x86_64","extra_repo":"powertools"},{"rocky-version":"9","os":"ubuntu-latest","image":"amd64/rockylinux:9","arch-type":"x86_64","extra_repo":"crb"},{"vfx-platform":"CY2024","qt-version":"6.5.3","cmake-version":"3.31.6","python-version":"3.11.8"}]') }}
     steps:
       - name: Display disk space
         run: |

@@ -46,6 +46,7 @@ jobs:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
       run_debug: ${{ needs.detect-changes.outputs.cmake_changed == 'true' || github.event_name == 'schedule' }}
+      run_cy2023: ${{ github.event_name != 'pull_request' }}
 
   macos:
     needs: detect-changes
@@ -62,3 +63,4 @@ jobs:
       skip_deps_cache: ${{ inputs.SKIP_DEPS_CACHE || 'false' }}
       qt5_modules: 'debug_info qtcharts qtdatavis3d qtlottie qtnetworkauth qtquick3d qtquicktimeline qtscript qtwebengine qtwebglplugin'
       run_debug: ${{ needs.detect-changes.outputs.cmake_changed == 'true' || github.event_name == 'schedule' }}
+      run_cy2023: ${{ github.event_name != 'pull_request' }}
