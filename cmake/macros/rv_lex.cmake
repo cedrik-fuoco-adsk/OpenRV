@@ -6,7 +6,15 @@
 
 INCLUDE(rv_sed)
 
-FIND_PROGRAM(_lex flex NO_CACHE REQUIRED)
+# Find the lexer tool: prefer win_flex on Windows, fall back to flex
+IF(RV_TARGET_WINDOWS)
+  FIND_PROGRAM(_lex win_flex NO_CACHE)
+  IF(NOT _lex)
+    FIND_PROGRAM(_lex flex NO_CACHE REQUIRED)
+  ENDIF()
+ELSE()
+  FIND_PROGRAM(_lex flex NO_CACHE REQUIRED)
+ENDIF()
 
 # Get flex version using CMake string operations (no bash needed)
 EXECUTE_PROCESS(
