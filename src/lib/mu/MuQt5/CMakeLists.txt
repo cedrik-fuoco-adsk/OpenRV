@@ -325,7 +325,7 @@ ADD_CUSTOM_COMMAND(
   COMMAND
     ${CMAKE_COMMAND} -DINPUT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/${_target}/generated/moc_SignalSpy.cpp
     -DOUTPUT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/${_target}/generated/moc_SignalSpy_filtered.hpp
-    -DSED_FILE=${CMAKE_CURRENT_SOURCE_DIR}/signalspy.sed -P ${PROJECT_SOURCE_DIR}/cmake/scripts/apply_signalspy_filter.cmake
+    -DSED_FILE=${CMAKE_CURRENT_SOURCE_DIR}/signalspy.sed -P ${PROJECT_SOURCE_DIR}/cmake/scripts/apply_sed_filter.cmake
   COMMENT "Patching the moc_SignalSpy.cpp file ..."
 )
 
