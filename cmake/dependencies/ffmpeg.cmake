@@ -43,12 +43,38 @@ SET(${_target}_ROOT_DIR
     ${_install_dir}
 )
 
-SET(_make_command
-    make
-)
-SET(_configure_command
-    sh ./configure
-)
+IF(RV_TARGET_WINDOWS)
+  # Find bash from Git for Windows, with PATH fallback (picks up MSYS2)
+  FIND_PROGRAM(_ffmpeg_bash bash
+    PATHS
+      "$ENV{ProgramFiles}/Git/bin"
+      "$ENV{ProgramFiles\(x86\)}/Git/bin"
+      "$ENV{LOCALAPPDATA}/Programs/Git/bin"
+    NO_CACHE
+  )
+  IF(NOT _ffmpeg_bash)
+    MESSAGE(FATAL_ERROR "Cannot find bash.exe. Install Git for Windows or add bash to PATH.")
+  ENDIF()
+
+  FIND_PROGRAM(_ffmpeg_make make NO_CACHE)
+  IF(NOT _ffmpeg_make)
+    MESSAGE(FATAL_ERROR "Cannot find 'make'. Install GNU Make (e.g., choco install make).")
+  ENDIF()
+
+  SET(_make_command
+      "${_ffmpeg_make}"
+  )
+  SET(_configure_command
+      "${_ffmpeg_bash}" ./configure
+  )
+ELSE()
+  SET(_make_command
+      make
+  )
+  SET(_configure_command
+      sh ./configure
+  )
+ENDIF()
 
 SET(_include_dir
     ${_install_dir}/include
