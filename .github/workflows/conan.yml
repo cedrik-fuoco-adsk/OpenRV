@@ -352,6 +352,8 @@ jobs:
       - name: Export OpenRVCore recipe to Conan's cache
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
+          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          echo "QT_HOME=$QT_HOME" >> $GITHUB_ENV
           $CONAN_EXECUTABLE export openrvcore-conanfile.py
 
       - name: Build OpenRV dependencies
