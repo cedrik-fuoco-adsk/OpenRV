@@ -2,6 +2,7 @@ import os
 import sys
 from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeDeps, cmake_layout, CMakeToolchain
+from conan.tools.gnu import PkgConfigDeps
 from conan.tools.microsoft import VCVars
 from conan.tools.env import VirtualBuildEnv
 from conan.errors import ConanException
@@ -134,6 +135,11 @@ class OpenRVBase:
 
         deps = CMakeDeps(self)
         deps.generate()
+
+        # Generate pkg-config .pc files so that ExternalProject builds (FFmpeg)
+        # can discover Conan-provided shared libraries like dav1d via pkg-config.
+        pc = PkgConfigDeps(self)
+        pc.generate()
 
         # Setup CMakeToolchain generator.
         if not self.settings.os == "Windows":
