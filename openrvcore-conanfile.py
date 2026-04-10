@@ -134,6 +134,9 @@ class OpenRVBase:
             ms.generate()
 
         deps = CMakeDeps(self)
+        # OIIO 3.x links openjph via $<TARGET_NAME_IF_EXISTS:openjph> which
+        # requires a non-namespaced target. CMakeDeps defaults to openjph::openjph.
+        deps.set_property("openjph", "cmake_target_name", "openjph")
         deps.generate()
 
         # Generate pkg-config .pc files so that ExternalProject builds (FFmpeg)
