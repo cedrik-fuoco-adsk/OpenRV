@@ -332,11 +332,13 @@ SET(_requirements_install_command
     ${CMAKE_COMMAND} -E env ${_otio_debug_env} ${_sdkroot_env}
 )
 # On Windows, pip-built packages (opentimelineio) invoke cmake to compile C++ extensions.
-# The MSVC compiler may not be in PATH inside pip's subprocess. Pass the compiler via
-# CC/CXX env vars (cmake -E env handles spaces in paths; CMAKE_ARGS cannot because
-# it is a space-separated string and "C:/Program Files/..." gets split).
+# cmake on Windows ignores CC/CXX env vars for MSVC detection — it finds the compiler either
+# via cl.exe in PATH (Ninja/NMake generators) or via the Windows Registry (Visual Studio generator).
+# Set CMAKE_GENERATOR so pip's inner cmake uses the same VS generator as the outer build,
+# which discovers MSVC through the Windows Registry and does not require cl.exe in PATH.
+# cmake 3.15+ respects the CMAKE_GENERATOR environment variable.
 IF(RV_TARGET_WINDOWS)
-  LIST(APPEND _requirements_install_command "CC=${CMAKE_C_COMPILER}" "CXX=${CMAKE_CXX_COMPILER}")
+  LIST(APPEND _requirements_install_command "CMAKE_GENERATOR=${CMAKE_GENERATOR}")
 ENDIF()
 
 # Only set OPENSSL_DIR if we built OpenSSL ourselves (not for Rocky Linux 8 CY2023 which uses system OpenSSL)
