@@ -331,6 +331,13 @@ SET(_build_deps_install_command
 SET(_requirements_install_command
     ${CMAKE_COMMAND} -E env ${_otio_debug_env} ${_sdkroot_env}
 )
+# On Windows, pip-built packages (opentimelineio) invoke cmake to compile C++ extensions.
+# The MSVC compiler may not be in PATH inside pip's subprocess. Pass the compiler via
+# CC/CXX env vars (cmake -E env handles spaces in paths; CMAKE_ARGS cannot because
+# it is a space-separated string and "C:/Program Files/..." gets split).
+IF(RV_TARGET_WINDOWS)
+  LIST(APPEND _requirements_install_command "CC=${CMAKE_C_COMPILER}" "CXX=${CMAKE_CXX_COMPILER}")
+ENDIF()
 
 # Only set OPENSSL_DIR if we built OpenSSL ourselves (not for Rocky Linux 8 CY2023 which uses system OpenSSL)
 IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
