@@ -320,7 +320,14 @@ IF(RV_TARGET_DARWIN OR RV_TARGET_APPLE_ARM64)
   ENDIF()
 ENDIF()
 
-RV_BUILD_PKG_CONFIG_PATH(_ffmpeg_pkg_config_path EXTRA_DIRS "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig")
+# Include the Conan generators folder when available: PkgConfigDeps.generate() writes dav1d.pc
+# and other Conan-provided .pc files there. Without this, pkg-config cannot find dav1d when the
+# Conan binary package lacks a lib/pkgconfig/ subdirectory.
+SET(_ffmpeg_extra_pkgconfig_dirs "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig")
+IF(RV_CONAN_CMAKE_PREFIX_PATH)
+  LIST(APPEND _ffmpeg_extra_pkgconfig_dirs "${RV_CONAN_CMAKE_PREFIX_PATH}")
+ENDIF()
+RV_BUILD_PKG_CONFIG_PATH(_ffmpeg_pkg_config_path EXTRA_DIRS ${_ffmpeg_extra_pkgconfig_dirs})
 
 SEPARATE_ARGUMENTS(RV_FFMPEG_PATCH_COMMAND_STEP)
 

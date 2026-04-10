@@ -337,9 +337,14 @@ SET(_requirements_install_command
 # Prepend the directory of our outer build's cmake binary (the Windows cmake from Conan's
 # tool_require) to PATH so pip's subprocess finds the correct cmake first. The Windows cmake
 # auto-detects the Visual Studio 17 2022 generator via the Windows Registry.
+#
+# Use --modify PATH=path_list_prepend rather than PATH=dir;$ENV{PATH}: $ENV{PATH} expands at
+# cmake configure time inside msys2 (POSIX colon-separated paths). When MSBuild's CUSTOMBUILD
+# later runs the command, the semicolon splits the value and the POSIX tail is misinterpreted
+# as the command to execute ("no such file or directory"). --modify prepends at runtime instead.
 IF(RV_TARGET_WINDOWS)
   cmake_path(GET CMAKE_COMMAND PARENT_PATH _cmake_bin_dir)
-  LIST(APPEND _requirements_install_command "PATH=${_cmake_bin_dir};$ENV{PATH}")
+  LIST(APPEND _requirements_install_command "--modify" "PATH=path_list_prepend:${_cmake_bin_dir}")
 ENDIF()
 
 # Only set OPENSSL_DIR if we built OpenSSL ourselves (not for Rocky Linux 8 CY2023 which uses system OpenSSL)
