@@ -209,6 +209,18 @@ IF(NOT RV_TARGET_LINUX)
 ENDIF()
 LIST(APPEND _configure_options "-DZLIB_ROOT=${RV_DEPS_ZLIB_ROOT_DIR}")
 
+# OIIO 3.x finds openjph via find_package.
+IF(TARGET openjph)
+  RV_RESOLVE_IMPORTED_LINKER_FILE(openjph _openjph_library)
+  RV_RESOLVE_IMPORTED_INCLUDE_DIR(openjph _openjph_include_dir)
+ELSEIF(TARGET OpenJph::OpenJph)
+  RV_RESOLVE_IMPORTED_LINKER_FILE(OpenJph::OpenJph _openjph_library)
+  RV_RESOLVE_IMPORTED_INCLUDE_DIR(OpenJph::OpenJph _openjph_include_dir)
+ENDIF()
+IF(_openjph_include_dir)
+  LIST(APPEND _configure_options "-Dopenjph_ROOT=${RV_DEPS_OPENJPH_ROOT_DIR}")
+ENDIF()
+
 # OIIO tools are not needed.
 LIST(APPEND _configure_options "-DOIIO_BUILD_TOOLS=OFF" "-DOIIO_BUILD_TESTS=OFF")
 
@@ -233,6 +245,7 @@ IF(NOT RV_TARGET_WINDOWS)
             TIFF::TIFF
             OpenEXR::OpenEXR
             OpenJpeg::OpenJpeg
+            OpenJph::OpenJph
             libjpeg-turbo::turbojpeg
             PNG::PNG
             Boost::headers
@@ -288,6 +301,7 @@ ELSE()
             TIFF::TIFF
             OpenEXR::OpenEXR
             OpenJpeg::OpenJpeg
+            OpenJph::OpenJph
             libjpeg-turbo::turbojpeg
             PNG::PNG
             Boost::headers
