@@ -331,14 +331,15 @@ SET(_build_deps_install_command
 SET(_requirements_install_command
     ${CMAKE_COMMAND} -E env ${_otio_debug_env} ${_sdkroot_env}
 )
-# On Windows, pip-built packages (opentimelineio) invoke cmake to compile C++ extensions.
-# cmake on Windows ignores CC/CXX env vars for MSVC detection — it finds the compiler either
-# via cl.exe in PATH (Ninja/NMake generators) or via the Windows Registry (Visual Studio generator).
-# Set CMAKE_GENERATOR so pip's inner cmake uses the same VS generator as the outer build,
-# which discovers MSVC through the Windows Registry and does not require cl.exe in PATH.
-# cmake 3.15+ respects the CMAKE_GENERATOR environment variable.
+# On Windows, the MinGW cmake (from msys2) appears before the Windows cmake in PATH.
+# MinGW cmake defaults to MinGW Makefiles and cannot find the MSVC compiler.
+# OTIO's setup.py always calls "cmake" by name from PATH — it does not read CMAKE_GENERATOR.
+# Prepend the directory of our outer build's cmake binary (the Windows cmake from Conan's
+# tool_require) to PATH so pip's subprocess finds the correct cmake first. The Windows cmake
+# auto-detects the Visual Studio 17 2022 generator via the Windows Registry.
 IF(RV_TARGET_WINDOWS)
-  LIST(APPEND _requirements_install_command "CMAKE_GENERATOR=${CMAKE_GENERATOR}")
+  cmake_path(GET CMAKE_COMMAND PARENT_PATH _cmake_bin_dir)
+  LIST(APPEND _requirements_install_command "PATH=${_cmake_bin_dir};$ENV{PATH}")
 ENDIF()
 
 # Only set OPENSSL_DIR if we built OpenSSL ourselves (not for Rocky Linux 8 CY2023 which uses system OpenSSL)
