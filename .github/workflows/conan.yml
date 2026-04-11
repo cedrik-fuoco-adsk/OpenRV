@@ -693,12 +693,25 @@ jobs:
           
       - name: Set PATH environment variable
         run: |
-          echo 'export PATH="/c/Program\ Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin"' >> ~/.bash_profile
+          CMAKE_BIN=$(cygpath -u "C:/Program Files/CMake/bin")
+          PYTHON_BIN=$(cygpath -u "$(python -c 'import sys, os; print(os.path.dirname(sys.executable))')")
+          echo "export PATH=\"$CMAKE_BIN:$PYTHON_BIN:/c/msys64/mingw64/bin:\$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Set ACLOCAL_PATH environment variable
         run: |
           echo "export ACLOCAL_PATH=/c/msys64/usr/share/aclocal" >> ~/.bash_profile
+        shell: msys2 {0}
+
+      - name: Add MSVC compiler to PATH for msys2
+        run: |
+          if [ -n "$VCToolsInstallDir" ]; then
+            MSVC_BIN=$(cygpath -u "$VCToolsInstallDir/bin/Hostx64/x64")
+            echo "export PATH=\"$MSVC_BIN:\$PATH\"" >> ~/.bash_profile
+            echo "Added MSVC bin to PATH: $MSVC_BIN"
+          else
+            echo "WARNING: VCToolsInstallDir not set — cl.exe will not be on PATH"
+          fi
         shell: msys2 {0}
 
       - name: Add Rust to PATH for msys2

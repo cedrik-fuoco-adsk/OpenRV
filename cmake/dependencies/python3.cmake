@@ -368,18 +368,14 @@ IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
   LIST(APPEND _requirements_install_command "OPENSSL_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR}")
 ENDIF()
 
-# Build the CMAKE_ARGS env var value. On Windows, also pass explicit compiler paths so that
-# OTIO's internal CMake invocation (via scikit-build / setup.py) does not rely solely on
-# auto-detection, which can fail when cl.exe is not yet on PATH inside the pip subprocess.
-IF(RV_TARGET_WINDOWS AND CMAKE_C_COMPILER AND CMAKE_CXX_COMPILER)
-  SET(_cmake_args_env
-      "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
-  )
-ELSE()
-  SET(_cmake_args_env
-      "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
-  )
-ENDIF()
+# CMAKE_ARGS is split on whitespace by pip/setuptools, so compiler paths containing spaces
+# (e.g. "C:/Program Files/Microsoft Visual Studio/...") cannot be passed via CMAKE_ARGS.
+# Instead, cl.exe is made discoverable by prepending the MSVC compiler directory to PATH
+# (see the --modify PATH=path_list_prepend blocks above). CMake then auto-detects the
+# Visual Studio generator via the Windows Registry and locates cl.exe through PATH.
+SET(_cmake_args_env
+    "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
+)
 
 # Build all packages from source except those in RV_PYTHON_WHEEL_SAFE. Packages with native extensions (opentimelineio, numpy, PyOpenGL-accelerate,
 # cryptography, pydantic, cffi, etc.) will be built from source for proper ABI compatibility.
