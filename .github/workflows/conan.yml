@@ -695,7 +695,7 @@ jobs:
         run: |
           CMAKE_BIN=$(cygpath -u "C:/Program Files/CMake/bin")
           PYTHON_BIN=$(cygpath -u "$(python -c 'import sys, os; print(os.path.dirname(sys.executable))')")
-          echo "export PATH=\"$CMAKE_BIN:$PYTHON_BIN:/c/msys64/mingw64/bin:\$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
+          echo "export PATH=\"$CMAKE_BIN:/c/hostedtoolcache/windows/Python/3.11.9/x64:/c/msys64/mingw64/bin:\$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Set ACLOCAL_PATH environment variable
