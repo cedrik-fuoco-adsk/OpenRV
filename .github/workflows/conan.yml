@@ -33,7 +33,7 @@ env:
 
 jobs:
   rocky-linux:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    #if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: 'Rocky Linux ${{ matrix.rocky-version }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -352,6 +352,8 @@ jobs:
       - name: Export OpenRVCore recipe to Conan's cache
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
+          export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ matrix.qt-version}}/gcc_64
+          echo "QT_HOME=$QT_HOME" >> $GITHUB_ENV
           $CONAN_EXECUTABLE export openrvcore-conanfile.py
 
       - name: Build OpenRV dependencies
@@ -377,7 +379,7 @@ jobs:
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   macos:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    #if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -583,7 +585,7 @@ jobs:
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    #if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
@@ -592,6 +594,9 @@ jobs:
        cmake=${{ matrix.cmake-version }},
        arch=${{ matrix.arch-type }},
        config=${{ matrix.build-type }}>'
+
+    env:
+      MSYS2_ENV_CONV_EXCL: "INCLUDE;LIB;LIBPATH"
 
     strategy:
       fail-fast: false
@@ -691,12 +696,25 @@ jobs:
           
       - name: Set PATH environment variable
         run: |
-          echo 'export PATH="/c/Program\ Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.10.11/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin"' >> ~/.bash_profile
+          CMAKE_BIN=$(cygpath -u "C:/Program Files/CMake/bin")
+          PYTHON_BIN=$(cygpath -u "$(python -c 'import sys, os; print(os.path.dirname(sys.executable))')")
+          echo "export PATH=\"$CMAKE_BIN:/c/hostedtoolcache/windows/Python/3.11.9/x64:/c/msys64/mingw64/bin:\$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Set ACLOCAL_PATH environment variable
         run: |
           echo "export ACLOCAL_PATH=/c/msys64/usr/share/aclocal" >> ~/.bash_profile
+        shell: msys2 {0}
+
+      - name: Add MSVC compiler to PATH for msys2
+        run: |
+          if [ -n "$VCToolsInstallDir" ]; then
+            MSVC_BIN=$(cygpath -u "$VCToolsInstallDir/bin/Hostx64/x64")
+            echo "export PATH=\"$MSVC_BIN:\$PATH\"" >> ~/.bash_profile
+            echo "Added MSVC bin to PATH: $MSVC_BIN"
+          else
+            echo "WARNING: VCToolsInstallDir not set — cl.exe will not be on PATH"
+          fi
         shell: msys2 {0}
 
       - name: Add Rust to PATH for msys2
@@ -762,8 +780,11 @@ jobs:
         run: |
           python3 -m pip install --user --upgrade -r ./requirements.txt
           python3 -m pip install --user conan
-          echo 'export PATH="$PATH:/c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts"' >> ~/.bash_profile
-          ls -al /c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts
+          PYTHON_SCRIPTS_DIR=$(python3 -c "import site, os; scripts = site.getusersitepackages(); print(os.path.join(os.path.dirname(scripts), 'Scripts'))")
+          echo "Python user Scripts dir: $PYTHON_SCRIPTS_DIR"
+          PYTHON_SCRIPTS_MSYS=$(cygpath -u "$PYTHON_SCRIPTS_DIR")
+          echo "export PATH=\"\$PATH:$PYTHON_SCRIPTS_MSYS\"" >> ~/.bash_profile
+          ls -al "$PYTHON_SCRIPTS_MSYS" || echo "WARNING: Scripts dir not found at $PYTHON_SCRIPTS_MSYS"
         shell: msys2 {0}
 
       - name: Set Conan Home Path
@@ -806,6 +827,23 @@ jobs:
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
           conan export openrvcore-conanfile.py
+        shell: msys2 {0}
+
+      - name: Verify compiler and toolchain resolution
+        run: |
+          source ~/.bash_profile
+          echo "=== Toolchain diagnostics ==="
+          echo "PATH: $PATH"
+          echo "--- cmake ---"
+          which cmake && cmake --version || echo "WARNING: cmake not found"
+          echo "--- cl (MSVC compiler) ---"
+          command -v cl 2>/dev/null && cl 2>&1 | head -1 || echo "WARNING: cl.exe not found in PATH"
+          echo "--- MSVC env vars ---"
+          echo "VCINSTALLDIR=${VCINSTALLDIR:-<not set>}"
+          echo "VCToolsInstallDir=${VCToolsInstallDir:-<not set>}"
+          echo "INCLUDE=${INCLUDE:-<not set>}"
+          echo "LIB=${LIB:-<not set>}"
+          echo "=== End diagnostics ==="
         shell: msys2 {0}
 
       - name: Build and install OpenRV dependencies

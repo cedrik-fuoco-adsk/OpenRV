@@ -617,11 +617,17 @@ if __name__ == "__main__":
         LIB_DIR = "lib"
     else:
         # Assuming Linux because that variable is not used for Windows.
-        # TODO: Note: This might not be right on Debian based platform.
+        # Prefer lib64 for VFX >= 2024 (RHEL/Rocky convention), but fall back
+        # to lib when the directory doesn't exist (e.g. Conan packages).
         if VFX_PLATFORM == 2023:
             LIB_DIR = "lib"
         elif VFX_PLATFORM >= 2024:
-            LIB_DIR = "lib64"
+            if OPENSSL_OUTPUT_DIR and os.path.isdir(os.path.join(str(OPENSSL_OUTPUT_DIR), "lib64")):
+                LIB_DIR = "lib64"
+            elif OPENSSL_OUTPUT_DIR and os.path.isdir(os.path.join(str(OPENSSL_OUTPUT_DIR), "lib")):
+                LIB_DIR = "lib"
+            else:
+                LIB_DIR = "lib64"
 
     if platform.system() == "Windows":
         PYTHON_VERSION = args.python_version

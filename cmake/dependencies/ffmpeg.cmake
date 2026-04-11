@@ -297,7 +297,37 @@ LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTRA_C_OPTIONS)
 LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTRA_LIBPATH_OPTIONS)
 LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTERNAL_LIBS)
 
-RV_BUILD_PKG_CONFIG_PATH(_ffmpeg_pkg_config_path EXTRA_DIRS "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig")
+# On macOS, Conan-provided shared libraries use @rpath install names. FFmpeg's
+# configure compiles and RUNS small test binaries linked against these libs; without
+# an LC_RPATH in the test binary, dyld can't locate them at runtime (SIGABRT /
+# Abort trap: 6). DYLD_LIBRARY_PATH cannot be used because macOS dyld strips it for
+# hardened binaries like /bin/sh before the configure script ever runs.
+# For every -L<dir> flag we add a matching -Wl,-rpath,<dir> so that test binaries
+# can find all Conan shared libraries at runtime. The embedded rpaths are harmless:
+# RV_STAGE_DEPENDENCY_LIBS rewrites all install names to @rpath/<basename> via
+# install_name_tool, so Conan cache paths never reach the final staged build.
+IF(RV_TARGET_DARWIN OR RV_TARGET_APPLE_ARM64)
+  SET(_ffmpeg_rpath_options)
+  FOREACH(_opt IN LISTS RV_FFMPEG_EXTRA_LIBPATH_OPTIONS)
+    STRING(REGEX MATCH "^--extra-ldflags=-L(.+)$" _match "${_opt}")
+    IF(CMAKE_MATCH_1)
+      LIST(APPEND _ffmpeg_rpath_options "--extra-ldflags=-Wl,-rpath,${CMAKE_MATCH_1}")
+    ENDIF()
+  ENDFOREACH()
+  IF(_ffmpeg_rpath_options)
+    LIST(APPEND RV_FFMPEG_EXTRA_LIBPATH_OPTIONS ${_ffmpeg_rpath_options})
+    LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTRA_LIBPATH_OPTIONS)
+  ENDIF()
+ENDIF()
+
+# Include the Conan generators folder when available: PkgConfigDeps.generate() writes dav1d.pc
+# and other Conan-provided .pc files there. Without this, pkg-config cannot find dav1d when the
+# Conan binary package lacks a lib/pkgconfig/ subdirectory.
+SET(_ffmpeg_extra_pkgconfig_dirs "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig")
+IF(RV_CONAN_CMAKE_PREFIX_PATH)
+  LIST(APPEND _ffmpeg_extra_pkgconfig_dirs "${RV_CONAN_CMAKE_PREFIX_PATH}")
+ENDIF()
+RV_BUILD_PKG_CONFIG_PATH(_ffmpeg_pkg_config_path EXTRA_DIRS ${_ffmpeg_extra_pkgconfig_dirs})
 
 SEPARATE_ARGUMENTS(RV_FFMPEG_PATCH_COMMAND_STEP)
 
