@@ -712,6 +712,10 @@ jobs:
           else
             echo "WARNING: VCToolsInstallDir not set — cl.exe will not be on PATH"
           fi
+          # Prevent MSYS2 from converting Windows paths in INCLUDE and LIB to POSIX paths,
+          # which breaks MSBuild when CMake tries to compile a test program.
+          echo "export MSYS2_ENV_CONV_EXCL=\"INCLUDE;LIB\"" >> ~/.bash_profile
+          echo "export MSYS2_ARG_CONV_EXCL=\"*\"" >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Add Rust to PATH for msys2

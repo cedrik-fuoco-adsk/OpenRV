@@ -368,14 +368,27 @@ IF(DEFINED RV_DEPS_OPENSSL_INSTALL_DIR)
   LIST(APPEND _requirements_install_command "OPENSSL_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR}")
 ENDIF()
 
-# CMAKE_ARGS is split on whitespace by pip/setuptools, so compiler paths containing spaces
-# (e.g. "C:/Program Files/Microsoft Visual Studio/...") cannot be passed via CMAKE_ARGS.
-# Instead, cl.exe is made discoverable by prepending the MSVC compiler directory to PATH
-# (see the --modify PATH=path_list_prepend blocks above). CMake then auto-detects the
-# Visual Studio generator via the Windows Registry and locates cl.exe through PATH.
-SET(_cmake_args_env
-    "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
-)
+# CMAKE_ARGS is split on whitespace by pip/setuptools/OTIO setup.py, so compiler paths
+# containing spaces (e.g. "C:/Program Files/Microsoft Visual Studio/...") cannot be passed
+# directly. We use cygpath to get the short (8.3) path without spaces, and pass that.
+IF(RV_TARGET_WINDOWS AND CMAKE_C_COMPILER AND CMAKE_CXX_COMPILER)
+  find_program(CYGPATH_EXECUTABLE cygpath)
+  if(CYGPATH_EXECUTABLE)
+    execute_process(COMMAND ${CYGPATH_EXECUTABLE} -m -s "${CMAKE_C_COMPILER}" OUTPUT_VARIABLE _msvc_c_compiler_short OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${CYGPATH_EXECUTABLE} -m -s "${CMAKE_CXX_COMPILER}" OUTPUT_VARIABLE _msvc_cxx_compiler_short OUTPUT_STRIP_TRAILING_WHITESPACE)
+    SET(_cmake_args_env
+        "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable} -DCMAKE_C_COMPILER=${_msvc_c_compiler_short} -DCMAKE_CXX_COMPILER=${_msvc_cxx_compiler_short}"
+    )
+  else()
+    SET(_cmake_args_env
+        "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
+    )
+  endif()
+ELSE()
+  SET(_cmake_args_env
+      "CMAKE_ARGS=-DPYTHON_LIBRARY=${_python3_cmake_library} -DPYTHON_INCLUDE_DIR=${_include_dir} -DPYTHON_EXECUTABLE=${_python3_executable}"
+  )
+ENDIF()
 
 # Build all packages from source except those in RV_PYTHON_WHEEL_SAFE. Packages with native extensions (opentimelineio, numpy, PyOpenGL-accelerate,
 # cryptography, pydantic, cffi, etc.) will be built from source for proper ABI compatibility.
