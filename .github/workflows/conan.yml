@@ -764,8 +764,11 @@ jobs:
         run: |
           python3 -m pip install --user --upgrade -r ./requirements.txt
           python3 -m pip install --user conan
-          echo 'export PATH="$PATH:/c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts"' >> ~/.bash_profile
-          ls -al /c/Users/runneradmin/AppData/Roaming/Python/Python310/Scripts
+          PYTHON_SCRIPTS_DIR=$(python3 -c "import site, os; scripts = site.getusersitepackages(); print(os.path.join(os.path.dirname(scripts), 'Scripts'))")
+          echo "Python user Scripts dir: $PYTHON_SCRIPTS_DIR"
+          PYTHON_SCRIPTS_MSYS=$(cygpath -u "$PYTHON_SCRIPTS_DIR")
+          echo "export PATH=\"\$PATH:$PYTHON_SCRIPTS_MSYS\"" >> ~/.bash_profile
+          ls -al "$PYTHON_SCRIPTS_MSYS" || echo "WARNING: Scripts dir not found at $PYTHON_SCRIPTS_MSYS"
         shell: msys2 {0}
 
       - name: Set Conan Home Path
@@ -808,6 +811,23 @@ jobs:
         if: ${{ matrix.vfx-platform == 'CY2024' }}
         run: |
           conan export openrvcore-conanfile.py
+        shell: msys2 {0}
+
+      - name: Verify compiler and toolchain resolution
+        run: |
+          source ~/.bash_profile
+          echo "=== Toolchain diagnostics ==="
+          echo "PATH: $PATH"
+          echo "--- cmake ---"
+          which cmake && cmake --version || echo "WARNING: cmake not found"
+          echo "--- cl (MSVC compiler) ---"
+          command -v cl 2>/dev/null && cl 2>&1 | head -1 || echo "WARNING: cl.exe not found in PATH"
+          echo "--- MSVC env vars ---"
+          echo "VCINSTALLDIR=${VCINSTALLDIR:-<not set>}"
+          echo "VCToolsInstallDir=${VCToolsInstallDir:-<not set>}"
+          echo "INCLUDE=${INCLUDE:-<not set>}"
+          echo "LIB=${LIB:-<not set>}"
+          echo "=== End diagnostics ==="
         shell: msys2 {0}
 
       - name: Build and install OpenRV dependencies
