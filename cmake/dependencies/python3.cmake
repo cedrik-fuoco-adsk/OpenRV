@@ -361,6 +361,15 @@ IF(RV_TARGET_WINDOWS)
   ELSE()
     MESSAGE(WARNING "CMAKE_C_COMPILER or CMAKE_CXX_COMPILER not set on Windows — opentimelineio pip build may fail to find cl.exe")
   ENDIF()
+
+  # Override TEMP/TMP so pip builds in a short path. In msys2, TMPDIR maps to
+  # C:\Users\...\conan2\p\b\msys2...\p\bin\msys64\tmp\ (~72 chars). Pip adds
+  # pip-install-XXX/<package_hash>/build/.../CMakeFiles/CMakeScratch/TryCompile-XXX
+  # which easily exceeds Windows' 260-char MAX_PATH, breaking cmake TryCompile.
+  # Redirect to a short directory inside the build tree.
+  SET(_pip_tmp_dir "${CMAKE_BINARY_DIR}/_t")
+  FILE(MAKE_DIRECTORY "${_pip_tmp_dir}")
+  LIST(APPEND _requirements_install_command "TMP=${_pip_tmp_dir}" "TEMP=${_pip_tmp_dir}" "TMPDIR=${_pip_tmp_dir}")
 ENDIF()
 
 # Only set OPENSSL_DIR if we built OpenSSL ourselves (not for Rocky Linux 8 CY2023 which uses system OpenSSL)
