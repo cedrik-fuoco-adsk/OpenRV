@@ -87,6 +87,15 @@ ENDIF()
 # NOTE: CMAKE_IGNORE_PREFIX_PATH is NOT set for Homebrew-only builds (no Conan). Although RV_DEPS_IGNORE_PREFIXES contains /opt/homebrew, blocking it would
 # prevent OIIO from finding transitive deps (libdeflate, etc.) that only exist at the Homebrew prefix. The CMAKE_CXX_FLAGS -I workaround below handles Boost
 # header contamination for the Homebrew path.
+# OIIO 3.x finds openjph via find_package.
+IF(TARGET openjph)
+  RV_RESOLVE_IMPORTED_LINKER_FILE(openjph _openjph_library)
+  RV_RESOLVE_IMPORTED_INCLUDE_DIR(openjph _openjph_include_dir)
+ELSEIF(TARGET OpenJph::OpenJph)
+  RV_RESOLVE_IMPORTED_LINKER_FILE(OpenJph::OpenJph _openjph_library)
+  RV_RESOLVE_IMPORTED_INCLUDE_DIR(OpenJph::OpenJph _openjph_include_dir)
+ENDIF()
+
 # OIIO 3.x jpeg2000.imageio uses $<TARGET_NAME_IF_EXISTS:openjph> (non-namespaced) to link
 # against openjph. In the Conan path, the generators folder in CMAKE_PREFIX_PATH already
 # provides a non-namespaced 'openjph' target. In the build-from-source path, OpenJPH's own
@@ -229,14 +238,6 @@ IF(NOT RV_TARGET_LINUX)
 ENDIF()
 LIST(APPEND _configure_options "-DZLIB_ROOT=${RV_DEPS_ZLIB_ROOT_DIR}")
 
-# OIIO 3.x finds openjph via find_package.
-IF(TARGET openjph)
-  RV_RESOLVE_IMPORTED_LINKER_FILE(openjph _openjph_library)
-  RV_RESOLVE_IMPORTED_INCLUDE_DIR(openjph _openjph_include_dir)
-ELSEIF(TARGET OpenJph::OpenJph)
-  RV_RESOLVE_IMPORTED_LINKER_FILE(OpenJph::OpenJph _openjph_library)
-  RV_RESOLVE_IMPORTED_INCLUDE_DIR(OpenJph::OpenJph _openjph_include_dir)
-ENDIF()
 IF(_openjph_include_dir)
   LIST(APPEND _configure_options "-Dopenjph_ROOT=${RV_DEPS_OPENJPH_ROOT_DIR}")
 ENDIF()
