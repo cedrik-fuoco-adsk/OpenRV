@@ -362,12 +362,15 @@ IF(RV_TARGET_WINDOWS)
     MESSAGE(WARNING "CMAKE_C_COMPILER or CMAKE_CXX_COMPILER not set on Windows — opentimelineio pip build may fail to find cl.exe")
   ENDIF()
 
-  # Override TEMP/TMP so pip builds in a short path. In msys2, TMPDIR maps to
-  # C:\Users\...\conan2\p\b\msys2...\p\bin\msys64\tmp\ (~72 chars). Pip adds
-  # pip-install-XXX/<package_hash>/build/.../CMakeFiles/CMakeScratch/TryCompile-XXX
-  # which easily exceeds Windows' 260-char MAX_PATH, breaking cmake TryCompile.
-  # Redirect to a short directory inside the build tree.
-  SET(_pip_tmp_dir "${CMAKE_BINARY_DIR}/_t")
+  # Override TEMP/TMP so pip builds in a short path. MSBuild's FileTracker
+  # (FTK1011) uses legacy Win32 APIs that enforce the 260-char MAX_PATH limit
+  # regardless of the LongPathsEnabled registry key. Pip + OTIO + cmake's
+  # TryCompile create ~230 chars of nested subdirectories, so the temp root
+  # must be very short. Using the drive root (e.g. C:/_t) instead of a
+  # subdirectory of CMAKE_BINARY_DIR keeps total paths under 260 chars even
+  # on workspaces with long absolute paths.
+  STRING(SUBSTRING "${CMAKE_BINARY_DIR}" 0 2 _pip_drive)
+  SET(_pip_tmp_dir "${_pip_drive}/_t")
   FILE(MAKE_DIRECTORY "${_pip_tmp_dir}")
   LIST(APPEND _requirements_install_command "TMP=${_pip_tmp_dir}" "TEMP=${_pip_tmp_dir}" "TMPDIR=${_pip_tmp_dir}")
 ENDIF()

@@ -17,6 +17,13 @@ IF(RV_TARGET_LINUX)
   )
 ENDIF()
 
+# Force build from source: Conan's libraw links against a shared lcms2 (lcms2-2.dll)
+# that isn't packaged.  Building from source uses OpenRV's own LCMS (lcms.dll).
+SET(RV_DEPS_RAW_FORCE_BUILD
+    ON
+    CACHE BOOL "libraw must be built from source (lcms2 DLL mismatch with Conan)" FORCE
+)
+
 # LibRaw uses autotools (not CMake), so no CONFIG files. Fall back to pkg-config. vcpkg creates libraw::raw, Conan creates libraw::libraw — list both so
 # DEPS_LIST_TARGETS works regardless of which package manager provides it.
 RV_FIND_DEPENDENCY(

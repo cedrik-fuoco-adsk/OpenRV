@@ -110,7 +110,22 @@ ELSE()
     )
   ENDIF()
 
-  RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} TARGET_LIBS ZLIB::ZLIB)
+  IF(RV_TARGET_WINDOWS)
+    # Conan's zlib names the DLL zlib1.dll but the import lib zdll.lib.
+    # conan_package_library_targets can't match them, creating an UNKNOWN
+    # target whose IMPORTED_LOCATION is the .lib.  TARGET_LIBS-based staging
+    # would copy the .lib instead of the DLL.  Fall back to BIN_DIR staging.
+    FILE(GLOB _found_zlib_dlls "${_bin_dir}/zlib*.dll")
+    IF(_found_zlib_dlls)
+      LIST(GET _found_zlib_dlls 0 _found_zlib_dll)
+      GET_FILENAME_COMPONENT(_found_zlib_dll_name "${_found_zlib_dll}" NAME)
+      RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} BIN_DIR ${_bin_dir} OUTPUTS ${RV_STAGE_BIN_DIR}/${_found_zlib_dll_name})
+    ELSE()
+      RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} TARGET_LIBS ZLIB::ZLIB)
+    ENDIF()
+  ELSE()
+    RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} TARGET_LIBS ZLIB::ZLIB)
+  ENDIF()
 ENDIF()
 
 SET(RV_DEPS_ZLIB_INCLUDE_DIR
