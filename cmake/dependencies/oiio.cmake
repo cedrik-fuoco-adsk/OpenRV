@@ -216,13 +216,7 @@ IF(NOT RV_TARGET_LINUX)
 ENDIF()
 LIST(APPEND _configure_options "-DZLIB_ROOT=${RV_DEPS_ZLIB_ROOT_DIR}")
 
-<<<<<<< HEAD
-IF(_openjph_include_dir)
-  LIST(APPEND _configure_options "-Dopenjph_ROOT=${RV_DEPS_OPENJPH_ROOT_DIR}")
-ENDIF()
-=======
 LIST(APPEND _configure_options "-Dopenjph_ROOT=${RV_DEPS_OPENJPH_ROOT_DIR}")
->>>>>>> e11e3ef0c11a15e7f2fe742deb6345cd85e497f3
 
 # OIIO tools are not needed.
 LIST(APPEND _configure_options "-DOIIO_BUILD_TOOLS=OFF" "-DOIIO_BUILD_TESTS=OFF")
