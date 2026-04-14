@@ -108,10 +108,14 @@ IF(_openjph_include_dir
    AND NOT RV_CONAN_CMAKE_PREFIX_PATH
 )
   STRING(REPLACE "\\" "/" _openjph_config_cmake "${RV_DEPS_OPENJPH_ROOT_DIR}/lib/cmake/openjph/openjph-config.cmake")
+  STRING(REPLACE "\\" "/" _openjph_root_dir "${RV_DEPS_OPENJPH_ROOT_DIR}")
   STRING(APPEND _oiio_cache_content
     "include(\"${_openjph_config_cmake}\" OPTIONAL)\n"
-    "if(TARGET openjph::openjph AND NOT TARGET openjph)\n"
-    "  add_library(openjph ALIAS openjph::openjph)\n"
+    "if(TARGET openjph::openjph)\n"
+    "  set_property(TARGET openjph::openjph APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES \"${_openjph_root_dir}/include\")\n"
+    "  if(NOT TARGET openjph)\n"
+    "    add_library(openjph ALIAS openjph::openjph)\n"
+    "  endif()\n"
     "endif()\n"
   )
 ENDIF()
