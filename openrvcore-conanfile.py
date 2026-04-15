@@ -217,6 +217,7 @@ class OpenRVBase:
         for dep in [
             "BOOST",
             "DAV1D",
+            "LIBDEFLATE",
             "OPENEXR",
             "IMATH",
             "ZLIB",
