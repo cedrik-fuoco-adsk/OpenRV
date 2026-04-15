@@ -2,6 +2,7 @@ import os
 import sys
 from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeDeps, cmake_layout, CMakeToolchain
+from conan.tools.gnu import PkgConfigDeps
 from conan.tools.microsoft import VCVars
 from conan.tools.env import VirtualBuildEnv
 from conan.errors import ConanException
@@ -106,6 +107,8 @@ class OpenRVBase:
         # Override imath version for other dependencies.
         self.requires("imath/3.2.1", force=True, options={"shared": True})
 
+        self.requires("libdeflate/1.19", force=True, options={"shared": True})
+
         self.requires("openexr/3.2.5", force=True, options={"shared": True})
 
         self.requires("libpng/1.6.55", force=True, options={"shared": True})
@@ -133,7 +136,15 @@ class OpenRVBase:
             ms.generate()
 
         deps = CMakeDeps(self)
+        # OIIO 3.x links openjph via $<TARGET_NAME_IF_EXISTS:openjph> which
+        # requires a non-namespaced target. CMakeDeps defaults to openjph::openjph.
+        deps.set_property("openjph", "cmake_target_name", "openjph")
         deps.generate()
+
+        # Generate pkg-config .pc files so that ExternalProject builds (FFmpeg)
+        # can discover Conan-provided shared libraries like dav1d via pkg-config.
+        pc = PkgConfigDeps(self)
+        pc.generate()
 
         # Setup CMakeToolchain generator.
         if not self.settings.os == "Windows":
@@ -206,6 +217,7 @@ class OpenRVBase:
         for dep in [
             "BOOST",
             "DAV1D",
+            "LIBDEFLATE",
             "OPENEXR",
             "IMATH",
             "ZLIB",

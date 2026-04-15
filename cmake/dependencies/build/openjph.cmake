@@ -4,6 +4,9 @@
 
 # Do not build the executables.
 LIST(APPEND _configure_options "-DBUILD_CODEC=OFF")
+# OpenJPH >= 0.23 sets CMAKE_DEBUG_POSTFIX=_d, producing libopenjph_d. Override to keep
+# consistent naming across build types (matches what RV_MAKE_STANDARD_LIB_NAME expects).
+LIST(APPEND _configure_options "-DCMAKE_DEBUG_POSTFIX=")
 
 EXTERNALPROJECT_ADD(
   ${_target}

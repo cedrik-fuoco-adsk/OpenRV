@@ -103,5 +103,9 @@ IF(NOT ${_target}_FOUND)
   LIST(APPEND RV_DEPS_LIST libjpeg-turbo::jpeg)
   LIST(APPEND RV_DEPS_LIST libjpeg-turbo::turbojpeg)
 ELSE()
-  RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} TARGET_LIBS libjpeg-turbo::jpeg libjpeg-turbo::turbojpeg)
+  # BIN_DIR is needed because Conan's CMakeDeps derives the DLL name from the component name ("jpeg")
+  # but the actual DLL is "jpeg62.dll". The name mismatch causes IMPORTED_LOCATION to fall back to
+  # jpeg.lib (import library) instead of the DLL. BIN_DIR copies the entire Conan bin/ directory,
+  # ensuring jpeg62.dll reaches RV_STAGE_BIN_DIR regardless of IMPORTED_LOCATION resolution.
+  RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} TARGET_LIBS libjpeg-turbo::jpeg libjpeg-turbo::turbojpeg BIN_DIR ${_bin_dir})
 ENDIF()

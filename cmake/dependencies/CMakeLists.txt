@@ -119,6 +119,9 @@ INCLUDE(openjpeg) # depends on zlib, tiff, png
 INCLUDE(openjph)
 INCLUDE(webp)
 INCLUDE(openexr)
+IF(RV_DEPS_OPENEXR_FOUND)
+  INCLUDE(libdeflate)
+ENDIF()
 INCLUDE(ocio)
 # src/pub: freetype: src/pub will be removed eventually, this path will needed to change.
 ADD_SUBDIRECTORY(../../src/pub/freetype src/pub/freetype) # required by oiio
