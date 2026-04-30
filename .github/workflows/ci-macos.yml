@@ -6,8 +6,6 @@ on:
       skip_deps_cache:
         type: string
         default: 'false'
-      qt5_modules:
-        type: string
       full_matrix:
         type: string
         default: 'true'
@@ -60,7 +58,6 @@ jobs:
           cmake-version: ${{ matrix.cmake-version }}
           vfx-platform: ${{ matrix.vfx-platform }}
           skip_deps_cache: ${{ inputs.skip_deps_cache }}
-          qt5_modules: ${{ inputs.qt5_modules }}
 
   # CY2025 Debug — runs when cmake files change or on full matrix
   macos-debug:
@@ -107,7 +104,6 @@ jobs:
           cmake-version: ${{ matrix.cmake-version }}
           vfx-platform: ${{ matrix.vfx-platform }}
           skip_deps_cache: ${{ inputs.skip_deps_cache }}
-          qt5_modules: ${{ inputs.qt5_modules }}
 
   macos-cy2024:
     if: ${{ inputs.full_matrix == 'true' }}
@@ -169,4 +165,3 @@ jobs:
           cmake-version: ${{ matrix.cmake-version }}
           vfx-platform: ${{ matrix.vfx-platform }}
           skip_deps_cache: ${{ inputs.skip_deps_cache }}
-          qt5_modules: ${{ inputs.qt5_modules }}

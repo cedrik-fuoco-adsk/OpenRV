@@ -6,8 +6,6 @@ on:
       skip_deps_cache:
         type: string
         default: 'false'
-      qt5_modules:
-        type: string
       full_matrix:
         type: string
         default: 'true'
@@ -80,7 +78,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           vfx-platform: ${{ matrix.vfx-platform }}
           extra_repo: ${{ matrix.extra_repo }}
-          qt5_modules: ${{ inputs.qt5_modules }}
 
   # CY2025 Debug — runs when cmake files change or on full matrix
   rocky-linux-debug:
@@ -147,7 +144,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           vfx-platform: ${{ matrix.vfx-platform }}
           extra_repo: ${{ matrix.extra_repo }}
-          qt5_modules: ${{ inputs.qt5_modules }}
 
   # CY2024 — full matrix only (daily/push/dispatch)
   rocky-linux-cy2024:
@@ -234,4 +230,3 @@ jobs:
           python-version: ${{ matrix.python-version }}
           vfx-platform: ${{ matrix.vfx-platform }}
           extra_repo: ${{ matrix.extra_repo }}
-          qt5_modules: ${{ inputs.qt5_modules }}
