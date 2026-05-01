@@ -80,11 +80,11 @@ class OpenRVBase:
         )
 
         # Override openssl version for ffmpeg, but do not use it for OpenRV right now.
-        self.requires("openssl/3.5.0", force=True, options={"shared": True, "no_zlib": True})
+        self.requires("openssl/3.6.2", force=True, options={"shared": True, "no_zlib": True})
 
         # Override boost version for other dependencies.
         self.requires(
-            "boost/1.82.0#7053477b271b8c39e046f784405b402f",
+            "boost/1.85.0",
             force=True,
             options={"shared": True, "extra_b2_flags": "-d+0 -s NO_LZMA=1"},
         )
@@ -105,11 +105,11 @@ class OpenRVBase:
             )
 
         # Override imath version for other dependencies.
-        self.requires("imath/3.2.1", force=True, options={"shared": True})
+        self.requires("imath/3.1.12", force=True, options={"shared": True})
 
         self.requires("libdeflate/1.25", force=True, options={"shared": True})
 
-        self.requires("openexr/3.2.5", force=True, options={"shared": True})
+        self.requires("openexr/3.3.6", force=True, options={"shared": True})
 
         self.requires("libpng/1.6.55", force=True, options={"shared": True})
 
