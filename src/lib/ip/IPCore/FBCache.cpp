@@ -13,6 +13,8 @@
 #include <TwkUtil/EnvVar.h>
 #include <TwkUtil/ThreadName.h>
 #include <TwkUtil/Timer.h>
+#include <cerrno>
+#include <ctime>
 
 static ENVVAR_BOOL(evActiveTailCaching, "RV_ACTIVE_TAIL_CACHING", false);
 
@@ -773,6 +775,7 @@ namespace IPCore
         m_cacheEdges = new CacheEdges(this);
         m_perNodeCache = new PerNodeCache(this);
         pthread_mutex_init(&m_statMutex, 0);
+        pthread_cond_init(&m_decodeCond, 0);
 
         m_cacheStatsDisabled = IPCore::App()->optionValue<bool>("disableCacheStats", false);
 
@@ -791,6 +794,7 @@ namespace IPCore
         delete m_perNodeCache;
         unlock();
         pthread_mutex_destroy(&m_statMutex);
+        pthread_cond_destroy(&m_decodeCond);
     }
 
     bool FBCache::hasPartialFrameCache(int frame) const
@@ -1712,7 +1716,34 @@ namespace IPCore
                 m_framesScheduledForFreeing.erase(i->second);
             }
             m_framesBeingCached.erase(i);
+            pthread_cond_broadcast(&m_decodeCond);
         }
+    }
+
+    bool FBCache::waitForFrameDecodeIfInFlight(int frame, unsigned int timeoutMs)
+    {
+        lock();
+
+        if (!frameIsBeingCached(frame))
+        {
+            unlock();
+            return false;
+        }
+
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += timeoutMs * 1000000L;
+        ts.tv_sec += ts.tv_nsec / 1000000000L;
+        ts.tv_nsec %= 1000000000L;
+
+        while (frameIsBeingCached(frame))
+        {
+            int rc = pthread_cond_timedwait(&m_decodeCond, &m_mutex, &ts);
+            if (rc == ETIMEDOUT) break;
+        }
+
+        unlock();
+        return true;
     }
 
     void FBCache::considerFrameForFreeing(int f, int& targetFrame, float& targetUtility)

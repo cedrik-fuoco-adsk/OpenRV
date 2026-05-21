@@ -220,6 +220,16 @@ namespace IPCore
 
         static bool cacheOutsideRegion() { return m_cacheOutsideRegion; };
 
+        bool frameIsBeingCached(int frame) const { return (m_framesBeingCached.find(frame) != m_framesBeingCached.end()); }
+
+        //
+        //  If a cache thread is currently decoding `frame`, block until
+        //  it finishes or `timeoutMs` elapses.  Returns true if the frame
+        //  was in-flight (waited on it), false if it was not.
+        //  Caller must NOT hold the cache lock.
+        //
+        bool waitForFrameDecodeIfInFlight(int frame, unsigned int timeoutMs);
+
     protected:
         struct CacheFrame
         {
@@ -286,8 +296,6 @@ namespace IPCore
 
         int cachedFrameOfLesserUtility(int frame);
 
-        bool frameIsBeingCached(int frame) const { return (m_framesBeingCached.find(frame) != m_framesBeingCached.end()); }
-
         bool utilityStateChanged() const { return m_utilityStateChanged; };
 
         void resetUtilityState() { m_utilityStateChanged = false; };
@@ -342,6 +350,7 @@ namespace IPCore
         size_t m_overflowBoundary;
         std::map<int, int> m_framesBeingCached;
         std::set<int> m_framesScheduledForFreeing;
+        pthread_cond_t m_decodeCond;
         bool m_utilityStateChanged;
         float m_targetCacheFrameUtility;
         CacheEdges* m_cacheEdges;

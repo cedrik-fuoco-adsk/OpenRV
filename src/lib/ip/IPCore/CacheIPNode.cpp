@@ -515,6 +515,44 @@ namespace IPCore
             }
 
             //
+            //  If a cache thread is already decoding this frame, wait
+            //  briefly for it to finish rather than starting a redundant
+            //  decode.  On timeout, fall through to decode normally.
+            //
+            if (thread != CacheEvalThread)
+            {
+                bool wasInFlight = context.cache.waitForFrameDecodeIfInFlight(
+                    context.baseFrame, 50);
+
+                if (wasInFlight)
+                {
+                    TWK_CACHE_LOCK(context.cache, "recheck");
+                    bool nowCached = context.cache.isFrameCached(context.baseFrame);
+                    TWK_CACHE_UNLOCK(context.cache, "recheck");
+
+                    if (nowCached)
+                    {
+                        thread_local int retryDepth = 0;
+                        if (retryDepth == 0)
+                        {
+                            ++retryDepth;
+                            try
+                            {
+                                IPImage* result = evaluate(context);
+                                --retryDepth;
+                                return result;
+                            }
+                            catch (...)
+                            {
+                                --retryDepth;
+                                throw;
+                            }
+                        }
+                    }
+                }
+            }
+
+            //
             //  Evaluate the images.
             //
 
