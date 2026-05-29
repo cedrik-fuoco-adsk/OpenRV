@@ -9,6 +9,7 @@
 
 #include <QWidget>
 #include <QSize>
+#include <memory>
 
 class QEvent;
 class QWindow;
@@ -16,6 +17,7 @@ class QWindow;
 namespace Rv
 {
     class GLView;
+    class QTVulkanVideoDevice;
     class RvDocument;
 
     // Linux-only QWidget wrapper around a native QWindow container that is
@@ -24,7 +26,7 @@ namespace Rv
     {
     public:
         explicit VulkanView(RvDocument* doc, GLView* backendView, QWidget* parent = nullptr);
-        ~VulkanView() override = default;
+        ~VulkanView() override;
 
         GLView* backendView() const { return m_backendView; }
         void setBackendView(GLView* backendView);
@@ -37,7 +39,7 @@ namespace Rv
         QSize sizeHint() const override { return m_csize; }
         QSize minimumSizeHint() const override { return m_msize; }
 
-        bool isNoOp() const { return true; }
+        bool isNoOp() const;
 
     protected:
         bool event(QEvent* event) override;
@@ -45,12 +47,14 @@ namespace Rv
 
     private:
         bool forwardEventToBackend(QEvent* event);
+        void renderVulkanFrame();
 
     private:
         RvDocument* m_doc;
         GLView* m_backendView;
         QWindow* m_presentationWindow;
         QWidget* m_windowContainer;
+        std::unique_ptr<QTVulkanVideoDevice> m_vulkanVideoDevice;
         bool m_stopProcessingEvents;
         QSize m_csize;
         QSize m_msize;

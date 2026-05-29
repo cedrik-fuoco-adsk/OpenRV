@@ -8,12 +8,13 @@
 
 #include <RvCommon/VulkanView.h>
 #include <RvCommon/GLView.h>
+#include <RvCommon/QTVulkanVideoDevice.h>
 #include <RvCommon/RvDocument.h>
 #include <QCoreApplication>
-#include <QVBoxLayout>
-#include <QWindow>
 #include <QColor>
 #include <QPalette>
+#include <QVBoxLayout>
+#include <QWindow>
 
 namespace Rv
 {
@@ -23,6 +24,7 @@ namespace Rv
         , m_backendView(nullptr)
         , m_presentationWindow(new QWindow())
         , m_windowContainer(nullptr)
+        , m_vulkanVideoDevice(makeNoOpQTVulkanVideoDevice())
         , m_stopProcessingEvents(false)
         , m_csize(1024, 576)
         , m_msize(128, 128)
@@ -50,6 +52,17 @@ namespace Rv
         setBackendView(backendView);
 
         m_windowContainer->installEventFilter(this);
+        m_presentationWindow->installEventFilter(this);
+    }
+
+    VulkanView::~VulkanView()
+    {
+        m_vulkanVideoDevice.reset();
+    }
+
+    bool VulkanView::isNoOp() const
+    {
+        return !m_vulkanVideoDevice || m_vulkanVideoDevice->isNoOp();
     }
 
     void VulkanView::setBackendView(GLView* backendView)
@@ -93,6 +106,24 @@ namespace Rv
         return false;
     }
 
+    void VulkanView::renderVulkanFrame()
+    {
+        if (m_stopProcessingEvents || !m_presentationWindow || !m_vulkanVideoDevice)
+            return;
+
+        if (!m_presentationWindow->isExposed())
+            return;
+
+        if (!m_vulkanVideoDevice->isInitialized() &&
+            !m_vulkanVideoDevice->initializeForWindow(m_presentationWindow))
+        {
+            return;
+        }
+
+        m_vulkanVideoDevice->renderFrame();
+        m_presentationWindow->requestUpdate();
+    }
+
     bool VulkanView::event(QEvent* event)
     {
         if (m_stopProcessingEvents)
@@ -116,8 +147,6 @@ namespace Rv
         case QEvent::UpdateRequest:
             if (m_backendView)
                 m_backendView->update();
-            if (m_presentationWindow)
-                m_presentationWindow->requestUpdate();
             break;
         case QEvent::Resize:
         {
@@ -131,6 +160,8 @@ namespace Rv
                 const QSize s = size();
                 m_doc->viewSizeChanged(s.width(), s.height());
             }
+            if (m_vulkanVideoDevice)
+                m_vulkanVideoDevice->resizeSwapchain();
             break;
         }
         default:
@@ -142,6 +173,28 @@ namespace Rv
 
     bool VulkanView::eventFilter(QObject* watched, QEvent* event)
     {
+        if (watched == m_presentationWindow)
+        {
+            switch (event->type())
+            {
+            case QEvent::Expose:
+                if (m_presentationWindow && m_presentationWindow->isExposed())
+                    m_presentationWindow->requestUpdate();
+                break;
+            case QEvent::Resize:
+                if (m_vulkanVideoDevice)
+                    m_vulkanVideoDevice->resizeSwapchain();
+                if (m_presentationWindow && m_presentationWindow->isExposed())
+                    m_presentationWindow->requestUpdate();
+                break;
+            case QEvent::UpdateRequest:
+                renderVulkanFrame();
+                return true;
+            default:
+                break;
+            }
+        }
+
         // Only forward QWidget-container input events. QWindow-native events use
         // different event classes/coordinates and can recurse badly when routed
         // through the GLView Qt-translator path.
