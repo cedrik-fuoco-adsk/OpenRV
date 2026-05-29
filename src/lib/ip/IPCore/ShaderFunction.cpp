@@ -94,7 +94,12 @@ namespace IPCore
                     else
                     {
                         cerr << "ERROR: GL_SHADING_LANGUAGE_VERSION query failed" << endl;
-                        abort();
+                        // Keep startup alive even if GLSL version is queried
+                        // before a current GL context exists (e.g. Vulkan
+                        // presentation plumbing paths). Default to a
+                        // compatibility-safe baseline.
+                        glslMajor = 1;
+                        glslMinor = 20;
                     }
                 }
             }

@@ -736,6 +736,18 @@ namespace Rv
 
         // doc->ensurePolished();
         Rv::RvSession* s = doc->session();
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+        for (int i = 0; !s && i < 80; ++i)
+        {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
+            s = doc->session();
+        }
+#endif
+        if (!s)
+        {
+            cerr << "ERROR: session initialization failed: OpenGL backend context is not ready" << endl;
+            return doc;
+        }
 
         s->queryAndStoreGLInfo();
 

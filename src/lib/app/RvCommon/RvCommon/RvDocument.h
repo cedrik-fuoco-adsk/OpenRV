@@ -30,6 +30,9 @@ namespace TwkApp
 namespace Rv
 {
     class GLView;
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+    class VulkanView;
+#endif
 #if defined(PLATFORM_DARWIN) && defined(USE_METAL)
     class MetalView;
 #endif
@@ -176,6 +179,9 @@ namespace Rv
         QDockWidget* m_diagnosticsDock;
         GLView* m_glView;
         GLView* m_oldGLView;
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+        VulkanView* m_vulkanView;
+#endif
 #if defined(PLATFORM_DARWIN) && defined(USE_METAL)
         MetalView* m_metalView;
 #endif

@@ -26,6 +26,9 @@
 #include <RvCommon/GLView.h> // WINDOWS: include AFTER other stuff
 #include <RvCommon/DiagnosticsView.h>
 #include <RvCommon/QTGLVideoDevice.h>
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+#include <RvCommon/VulkanView.h>
+#endif
 #include <QtGui/QtGui>
 #include <QtNetwork/QtNetwork>
 #include <IPCore/AudioRenderer.h>
@@ -149,6 +152,9 @@ namespace Rv
         , m_vsyncDisabled(false)
         , m_oldGLView(0)
         , m_glView(0)
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+        , m_vulkanView(nullptr)
+#endif
         , m_viewWidget(nullptr)
 #if defined(PLATFORM_DARWIN) && defined(USE_METAL)
         , m_metalView(nullptr)
@@ -230,6 +236,35 @@ namespace Rv
         // m_diagnosticsView stays nullptr; m_diagnosticsDock is not created.
 #else
         // --- OpenGL path ---
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+        if (docs.empty())
+        {
+            m_glView =
+                new GLView(this, 0, this, opts.stereoMode && !strcmp(opts.stereoMode, "hardware"), opts.vsync != 0 && !m_vsyncDisabled,
+                           true, opts.dispRedBits, opts.dispGreenBits, opts.dispBlueBits, opts.dispAlphaBits, !m_startupResize);
+        }
+        else
+        {
+            RvSession* s = static_cast<RvSession*>(docs.front());
+            RvDocument* rvDoc = (RvDocument*)s->opaquePointer();
+            m_glView = new GLView(this, rvDoc->view()->context(), this, opts.stereoMode && !strcmp(opts.stereoMode, "hardware"),
+                                  opts.vsync != 0 && !m_vsyncDisabled,
+                                  true, // double buffer
+                                  opts.dispRedBits, opts.dispGreenBits, opts.dispBlueBits, opts.dispAlphaBits, !m_startupResize);
+        }
+
+        m_vulkanView = new VulkanView(this, m_glView, m_centralWidget);
+        m_vulkanView->setFocusPolicy(Qt::StrongFocus);
+        m_vulkanView->setMouseTracking(true);
+        m_vulkanView->setAcceptDrops(true);
+        m_vulkanView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        m_vulkanView->resize(m_vulkanView->sizeHint());
+        m_viewWidget = m_vulkanView;
+
+        // Session initialization remains tied to GLView::initializeGL().
+        // VulkanView keeps the backend GLView alive offscreen so we still get
+        // a valid GL context before constructing RvSession.
+#else
         if (docs.empty())
         {
             m_glView =
@@ -246,6 +281,7 @@ namespace Rv
                                   opts.dispRedBits, opts.dispGreenBits, opts.dispBlueBits, opts.dispAlphaBits, !m_startupResize);
         }
         m_viewWidget = m_glView;
+#endif
 #endif // PLATFORM_DARWIN && USE_METAL
 
         // Dockable to QMainWindow, not centralwidget.
@@ -807,6 +843,17 @@ namespace Rv
 #if defined(PLATFORM_DARWIN) && defined(USE_METAL)
         m_metalView->setMinimumContentSize(64, 64);
         m_metalView->setMinimumSize(QSize(64, 64));
+#elif defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+        if (m_vulkanView)
+        {
+            m_vulkanView->setMinimumContentSize(64, 64);
+            m_vulkanView->setMinimumSize(QSize(64, 64));
+            m_vulkanView->setSizePolicy(QSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred));
+            return;
+        }
+        m_glView->setMinimumContentSize(64, 64);
+        m_glView->setMinimumSize(QSize(64, 64));
+        m_glView->setSizePolicy(QSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred));
 #else
         m_glView->setMinimumContentSize(64, 64);
         m_glView->setMinimumSize(QSize(64, 64));
@@ -835,6 +882,10 @@ namespace Rv
 #if defined(PLATFORM_DARWIN) && defined(USE_METAL)
         if (!m_glView)
             return; // Metal path has no GL view to rebuild
+#endif
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+        if (m_vulkanView)
+            return; // Step 4 keeps Vulkan path to view plumbing only.
 #endif
         //
         //  On the mac, we need to carefully replace the content GL widget so
@@ -1178,6 +1229,26 @@ namespace Rv
         }
         else
 #endif
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+            if (m_vulkanView)
+        {
+            m_vulkanView->setContentSize(w, h);
+            m_vulkanView->setMinimumContentSize(w, h);
+            m_vulkanView->updateGeometry();
+
+            const int dh = m_vulkanView->height() - h;
+            const int dw = m_vulkanView->width() - w;
+
+            if (dh || dw)
+            {
+                resize(width() - dw, height() - dh);
+                m_vulkanView->setContentSize(w, h);
+                m_vulkanView->setMinimumContentSize(w, h);
+                m_vulkanView->updateGeometry();
+            }
+        }
+        else
+#endif
         {
             m_glView->setContentSize(w, h);
             m_glView->setMinimumContentSize(w, h);
@@ -1415,6 +1486,27 @@ namespace Rv
                 m_metalView->updateGeometry();
             }
             DB("resizeToFit final resulting size w " << m_metalView->width() << " h " << m_metalView->height());
+        }
+        else
+#endif
+#if defined(PLATFORM_LINUX) && defined(USE_VULKAN_PRESENTATION)
+            if (m_vulkanView)
+        {
+            m_vulkanView->setContentSize(int(w), int(h));
+            m_vulkanView->setMinimumContentSize(int(w), int(h));
+            m_vulkanView->updateGeometry();
+            DB("resizeToFit resulting size w " << m_vulkanView->width() << " h " << m_vulkanView->height());
+            const int dh = m_vulkanView->height() - int(h);
+            const int dw = m_vulkanView->width() - int(w);
+            DB("resizeToFit dw " << dw << " dh " << dh);
+            if (!firstTime && (dh || dw))
+            {
+                resize(width() - dw, height() - dh);
+                m_vulkanView->setContentSize(int(w), int(h));
+                m_vulkanView->setMinimumContentSize(int(w), int(h));
+                m_vulkanView->updateGeometry();
+            }
+            DB("resizeToFit final resulting size w " << m_vulkanView->width() << " h " << m_vulkanView->height());
         }
         else
 #endif
