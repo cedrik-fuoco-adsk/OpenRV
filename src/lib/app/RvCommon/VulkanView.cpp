@@ -68,6 +68,8 @@ namespace Rv
     void VulkanView::setBackendView(GLView* backendView)
     {
         m_backendView = backendView;
+        if (m_vulkanVideoDevice)
+            m_vulkanVideoDevice->setBridgeSourceView(m_backendView);
         if (!m_backendView)
             return;
 
