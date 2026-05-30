@@ -50,8 +50,14 @@ namespace Rv
         bool createSyncObjects();
         bool recreateSwapchain();
         bool ensureBridgeResources();
+        bool ensureGpuBridgeResources();
         bool prepareBridgeFrameData();
-        bool recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, bool useBridgePath);
+        bool prepareGpuBridgeFrameData(std::string& failureReason);
+        bool recordCommandBuffer(VkCommandBuffer commandBuffer,
+                                 uint32_t imageIndex,
+                                 bool useBridgePath,
+                                 bool useGpuBridgePath);
+        void destroyGpuBridgeResources();
         void destroyBridgeResources();
         uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
         void cleanupSwapchain();
@@ -67,8 +73,18 @@ namespace Rv
         bool m_surfaceFormatsLogged{false};
         bool m_bridgeCopySupported{false};
         bool m_bridgeUnavailableLogged{false};
-        bool m_bridgeActivationLogged{false};
+        bool m_bridgeActivationLogged{false}; // CPU bridge activation
+        bool m_gpuBridgeActivationLogged{false};
         bool m_bridgeStatusLogged{false};
+        bool m_gpuBridgeRuntimeDisabled{false};
+        bool m_vulkanExternalMemorySupported{false};
+        bool m_vulkanExternalMemoryFdSupported{false};
+        bool m_vulkanExternalSemaphoreSupported{false};
+        bool m_vulkanExternalSemaphoreFdSupported{false};
+        bool m_gpuBridgeBlitSupported{false};
+        bool m_gpuBridgeUsesBlit{false};
+        bool m_gpuBridgeSemaphoreSyncActive{false};
+        bool m_isRadvDevice{false};
         uint64_t m_frameCounter{0};
         uint64_t m_bridgeFrameCounter{0};
         GLView* m_bridgeSourceView{nullptr};
@@ -100,12 +116,28 @@ namespace Rv
         uint32_t m_bridgeSourceWidth{0};
         uint32_t m_bridgeSourceHeight{0};
         std::string m_bridgePackPath;
+        std::string m_gpuBridgeMechanism;
+        std::string m_gpuBridgeMode;
+        std::string m_gpuBridgeDisableReason;
         VkBuffer m_bridgeStagingBuffer{VK_NULL_HANDLE};
         VkDeviceMemory m_bridgeStagingMemory{VK_NULL_HANDLE};
         VkDeviceSize m_bridgeStagingCapacity{0};
         VkImage m_bridgeImage{VK_NULL_HANDLE};
         VkDeviceMemory m_bridgeImageMemory{VK_NULL_HANDLE};
         VkImageLayout m_bridgeImageLayout{VK_IMAGE_LAYOUT_UNDEFINED};
+        VkImage m_gpuBridgeImage{VK_NULL_HANDLE};
+        VkDeviceMemory m_gpuBridgeImageMemory{VK_NULL_HANDLE};
+        VkImageLayout m_gpuBridgeImageLayout{VK_IMAGE_LAYOUT_UNDEFINED};
+        VkFormat m_gpuBridgeImageFormat{VK_FORMAT_UNDEFINED};
+        VkDeviceSize m_gpuBridgeImageMemorySize{0};
+        unsigned int m_gpuBridgeGLMemoryObject{0};
+        unsigned int m_gpuBridgeGLTexture{0};
+        unsigned int m_gpuBridgeGLFramebuffer{0};
+        std::vector<unsigned int> m_gpuBridgeGLReadySemaphores;
+        std::vector<unsigned int> m_gpuBridgeGLDoneSemaphores;
+        std::vector<uint8_t> m_gpuBridgeAwaitVkDoneOnGl;
+        std::vector<VkSemaphore> m_gpuBridgeVkReadySemaphores;
+        std::vector<VkSemaphore> m_gpuBridgeVkDoneSemaphores;
 
         std::vector<VkSemaphore> m_imageAvailableSemaphores;
         std::vector<VkSemaphore> m_renderFinishedSemaphores;

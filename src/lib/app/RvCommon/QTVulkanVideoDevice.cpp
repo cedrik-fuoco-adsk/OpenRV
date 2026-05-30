@@ -12,6 +12,7 @@
 
 #include <QGuiApplication>
 #include <QImage>
+#include <QOpenGLContext>
 #include <QWindow>
 
 #ifndef VK_USE_PLATFORM_XLIB_KHR
@@ -27,7 +28,28 @@
 #include <limits>
 #include <set>
 #include <sstream>
+#include <unistd.h>
 #include <vector>
+
+#ifndef GL_HANDLE_TYPE_OPAQUE_FD_EXT
+#define GL_HANDLE_TYPE_OPAQUE_FD_EXT 0x9586
+#endif
+
+#ifndef GL_LAYOUT_GENERAL_EXT
+#define GL_LAYOUT_GENERAL_EXT 0x958D
+#endif
+
+#ifndef GL_TEXTURE_TILING_EXT
+#define GL_TEXTURE_TILING_EXT 0x9580
+#endif
+
+#ifndef GL_LINEAR_TILING_EXT
+#define GL_LINEAR_TILING_EXT 0x9585
+#endif
+
+#ifndef VK_QUEUE_FAMILY_EXTERNAL
+#define VK_QUEUE_FAMILY_EXTERNAL VK_QUEUE_FAMILY_EXTERNAL_KHR
+#endif
 
 namespace
 {
@@ -159,6 +181,151 @@ namespace
     {
         return static_cast<uint32_t>((static_cast<uint32_t>(c) * 3u + 127u) / 255u);
     }
+
+    using GLCreateMemoryObjectsEXTProc = void (*)(GLsizei n, GLuint* memoryObjects);
+    using GLDeleteMemoryObjectsEXTProc = void (*)(GLsizei n, const GLuint* memoryObjects);
+    using GLImportMemoryFdEXTProc = void (*)(GLuint memory, GLuint64 size, GLenum handleType, GLint fd);
+    using GLTexStorageMem2DEXTProc =
+        void (*)(GLenum target, GLsizei levels, GLenum internalFormat, GLsizei width, GLsizei height, GLuint memory, GLuint64 offset);
+    using GLGenSemaphoresEXTProc = void (*)(GLsizei n, GLuint* semaphores);
+    using GLDeleteSemaphoresEXTProc = void (*)(GLsizei n, const GLuint* semaphores);
+    using GLImportSemaphoreFdEXTProc = void (*)(GLuint semaphore, GLenum handleType, GLint fd);
+    using GLWaitSemaphoreEXTProc = void (*)(GLuint semaphore,
+                                            GLuint numBufferBarriers,
+                                            const GLuint* buffers,
+                                            GLuint numTextureBarriers,
+                                            const GLuint* textures,
+                                            const GLenum* srcLayouts);
+    using GLSignalSemaphoreEXTProc = void (*)(GLuint semaphore,
+                                              GLuint numBufferBarriers,
+                                              const GLuint* buffers,
+                                              GLuint numTextureBarriers,
+                                              const GLuint* textures,
+                                              const GLenum* dstLayouts);
+
+    struct GLInteropFunctions
+    {
+        GLCreateMemoryObjectsEXTProc createMemoryObjects{nullptr};
+        GLDeleteMemoryObjectsEXTProc deleteMemoryObjects{nullptr};
+        GLImportMemoryFdEXTProc importMemoryFd{nullptr};
+        GLTexStorageMem2DEXTProc texStorageMem2D{nullptr};
+
+        bool valid() const
+        {
+            return createMemoryObjects && deleteMemoryObjects && importMemoryFd && texStorageMem2D;
+        }
+    };
+
+    struct GLSemaphoreInteropFunctions
+    {
+        GLGenSemaphoresEXTProc genSemaphores{nullptr};
+        GLDeleteSemaphoresEXTProc deleteSemaphores{nullptr};
+        GLImportSemaphoreFdEXTProc importSemaphoreFd{nullptr};
+        GLWaitSemaphoreEXTProc waitSemaphore{nullptr};
+        GLSignalSemaphoreEXTProc signalSemaphore{nullptr};
+
+        bool valid() const
+        {
+            return genSemaphores && deleteSemaphores && importSemaphoreFd && waitSemaphore && signalSemaphore;
+        }
+    };
+
+    bool resolveGLInteropFunctions(QOpenGLContext* context,
+                                   GLInteropFunctions& fns,
+                                   std::string& reason)
+    {
+        if (!context)
+        {
+            reason = "No current OpenGL context is available.";
+            return false;
+        }
+
+        const bool hasMemoryObject = context->hasExtension(QByteArrayLiteral("GL_EXT_memory_object"));
+        const bool hasMemoryObjectFd = context->hasExtension(QByteArrayLiteral("GL_EXT_memory_object_fd"));
+        if (!hasMemoryObject || !hasMemoryObjectFd)
+        {
+            reason = "OpenGL context is missing GL_EXT_memory_object and/or GL_EXT_memory_object_fd.";
+            return false;
+        }
+
+        fns.createMemoryObjects = reinterpret_cast<GLCreateMemoryObjectsEXTProc>(context->getProcAddress("glCreateMemoryObjectsEXT"));
+        fns.deleteMemoryObjects = reinterpret_cast<GLDeleteMemoryObjectsEXTProc>(context->getProcAddress("glDeleteMemoryObjectsEXT"));
+        fns.importMemoryFd = reinterpret_cast<GLImportMemoryFdEXTProc>(context->getProcAddress("glImportMemoryFdEXT"));
+        fns.texStorageMem2D = reinterpret_cast<GLTexStorageMem2DEXTProc>(context->getProcAddress("glTexStorageMem2DEXT"));
+        if (!fns.valid())
+        {
+            reason = "Failed to resolve GL_EXT_memory_object_fd function pointers.";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool resolveGLSemaphoreInteropFunctions(QOpenGLContext* context,
+                                            GLSemaphoreInteropFunctions& fns,
+                                            std::string& reason)
+    {
+        if (!context)
+        {
+            reason = "No current OpenGL context is available for semaphore interop.";
+            return false;
+        }
+
+        const bool hasSemaphore = context->hasExtension(QByteArrayLiteral("GL_EXT_semaphore"));
+        const bool hasSemaphoreFd = context->hasExtension(QByteArrayLiteral("GL_EXT_semaphore_fd"));
+        if (!hasSemaphore || !hasSemaphoreFd)
+        {
+            reason = "OpenGL context is missing GL_EXT_semaphore and/or GL_EXT_semaphore_fd.";
+            return false;
+        }
+
+        fns.genSemaphores = reinterpret_cast<GLGenSemaphoresEXTProc>(context->getProcAddress("glGenSemaphoresEXT"));
+        fns.deleteSemaphores = reinterpret_cast<GLDeleteSemaphoresEXTProc>(context->getProcAddress("glDeleteSemaphoresEXT"));
+        fns.importSemaphoreFd = reinterpret_cast<GLImportSemaphoreFdEXTProc>(context->getProcAddress("glImportSemaphoreFdEXT"));
+        fns.waitSemaphore = reinterpret_cast<GLWaitSemaphoreEXTProc>(context->getProcAddress("glWaitSemaphoreEXT"));
+        fns.signalSemaphore = reinterpret_cast<GLSignalSemaphoreEXTProc>(context->getProcAddress("glSignalSemaphoreEXT"));
+        if (!fns.valid())
+        {
+            reason = "Failed to resolve GL_EXT_semaphore_fd function pointers.";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool formatSupportsBlitSrc(VkPhysicalDevice physicalDevice, VkFormat format)
+    {
+        VkFormatProperties props{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+        return (props.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT) != 0;
+    }
+
+    bool formatSupportsBlitDst(VkPhysicalDevice physicalDevice, VkFormat format)
+    {
+        VkFormatProperties props{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+        return (props.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT) != 0;
+    }
+
+    bool formatSupportsTransferSrc(VkPhysicalDevice physicalDevice, VkFormat format)
+    {
+        VkFormatProperties props{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+        return (props.optimalTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT) != 0;
+    }
+
+    bool formatSupportsTransferDst(VkPhysicalDevice physicalDevice, VkFormat format)
+    {
+        VkFormatProperties props{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+        return (props.optimalTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) != 0;
+    }
+
+    bool isA2R10SwapchainFormat(VkFormat format)
+    {
+        return format == VK_FORMAT_A2R10G10B10_UNORM_PACK32 ||
+               format == VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+    }
 } // namespace
 
 namespace Rv
@@ -204,6 +371,8 @@ namespace Rv
             return false;
         if (!createCommandBuffers())
             return false;
+        m_gpuBridgeRuntimeDisabled = false;
+        m_gpuBridgeDisableReason.clear();
         if (!ensureBridgeResources())
         {
             logWarn("Failed to create Vulkan bridge resources; keeping clear-only fallback path.");
@@ -224,10 +393,18 @@ namespace Rv
 
     void QTVulkanVideoDevice::setBridgeSourceView(GLView* sourceView)
     {
+        if (m_bridgeSourceView != sourceView)
+        {
+            destroyGpuBridgeResources();
+        }
+
         m_bridgeSourceView = sourceView;
         m_bridgeUnavailableLogged = false;
         m_bridgeActivationLogged = false;
+        m_gpuBridgeActivationLogged = false;
         m_bridgeStatusLogged = false;
+        m_gpuBridgeRuntimeDisabled = false;
+        m_gpuBridgeDisableReason.clear();
     }
 
     void QTVulkanVideoDevice::renderFrame()
@@ -247,7 +424,18 @@ namespace Rv
             std::ostringstream bridgeStatus;
             bridgeStatus << "Bridge status: sourceView=" << (m_bridgeSourceView ? "set" : "null")
                          << " copySupported=" << (m_bridgeCopySupported ? "true" : "false")
+                         << " gpuInteropDeviceExt="
+                         << ((m_vulkanExternalMemorySupported && m_vulkanExternalMemoryFdSupported) ? "true" : "false")
+                         << " gpuInteropSyncExt="
+                         << ((m_vulkanExternalSemaphoreSupported && m_vulkanExternalSemaphoreFdSupported) ? "true" : "false")
+                         << " gpuInteropSync=" << (m_gpuBridgeSemaphoreSyncActive ? "semaphore-fd" : "legacy-finish")
+                         << " gpuInteropMode=" << (m_gpuBridgeMode.empty() ? "unset" : m_gpuBridgeMode)
+                         << " gpuInteropState=" << (m_gpuBridgeRuntimeDisabled ? "disabled" : "enabled")
                          << " swapchainExtent=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height;
+            if (m_gpuBridgeRuntimeDisabled && !m_gpuBridgeDisableReason.empty())
+            {
+                bridgeStatus << " gpuFallbackReason=" << m_gpuBridgeDisableReason;
+            }
             logInfo(bridgeStatus.str());
             m_bridgeStatusLogged = true;
         }
@@ -303,14 +491,45 @@ namespace Rv
         vkResetCommandBuffer(m_commandBuffers[imageIndex], 0);
 
         bool useBridgePath = false;
+        bool useGpuBridgePath = false;
         if (m_bridgeCopySupported && m_bridgeSourceView && ensureBridgeResources())
+        {
+            if (!m_gpuBridgeRuntimeDisabled &&
+                m_gpuBridgeImage != VK_NULL_HANDLE &&
+                m_gpuBridgeImageMemory != VK_NULL_HANDLE &&
+                m_gpuBridgeGLFramebuffer != 0)
+            {
+                std::string gpuBridgeFailureReason;
+                useBridgePath = prepareGpuBridgeFrameData(gpuBridgeFailureReason);
+                if (useBridgePath)
+                {
+                    useGpuBridgePath = true;
+                    m_bridgeUnavailableLogged = false;
+                    if (!m_gpuBridgeActivationLogged)
+                    {
+                        logInfo("GPU bridge path active: GL framebuffer blit -> Vulkan external-memory image -> swapchain transfer (no CPU readback).");
+                        m_gpuBridgeActivationLogged = true;
+                    }
+                }
+                else if (!gpuBridgeFailureReason.empty())
+                {
+                    m_gpuBridgeRuntimeDisabled = true;
+                    m_gpuBridgeDisableReason = gpuBridgeFailureReason;
+                    destroyGpuBridgeResources();
+                    logWarn("GPU bridge fallback activated: " + gpuBridgeFailureReason +
+                            " Falling back to CPU readback bridge.");
+                }
+            }
+        }
+
+        if (!useBridgePath && m_bridgeCopySupported && m_bridgeSourceView && ensureBridgeResources())
         {
             useBridgePath = prepareBridgeFrameData();
             if (useBridgePath)
             {
                 if (!m_bridgeActivationLogged)
                 {
-                    logInfo("Bridge path active: GL readback -> CPU pack -> Vulkan staging upload -> swapchain copy");
+                    logInfo("CPU bridge path active: GL readback -> CPU pack -> Vulkan staging upload -> swapchain copy");
                     m_bridgeActivationLogged = true;
                 }
                 m_bridgeUnavailableLogged = false;
@@ -322,22 +541,29 @@ namespace Rv
             }
         }
 
-        if (!recordCommandBuffer(m_commandBuffers[imageIndex], imageIndex, useBridgePath))
+        if (!recordCommandBuffer(m_commandBuffers[imageIndex], imageIndex, useBridgePath, useGpuBridgePath))
             return;
 
-        const VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-        const VkSemaphore waitSemaphores[] = {m_imageAvailableSemaphores[m_currentFrame]};
-        const VkSemaphore signalSemaphores[] = {m_renderFinishedSemaphores[m_currentFrame]};
+        std::vector<VkPipelineStageFlags> waitStages = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+        std::vector<VkSemaphore> waitSemaphores = {m_imageAvailableSemaphores[m_currentFrame]};
+        std::vector<VkSemaphore> signalSemaphores = {m_renderFinishedSemaphores[m_currentFrame]};
+        if (useGpuBridgePath && m_gpuBridgeSemaphoreSyncActive)
+        {
+            const size_t syncIndex = static_cast<size_t>(m_currentFrame);
+            waitStages.push_back(VK_PIPELINE_STAGE_TRANSFER_BIT);
+            waitSemaphores.push_back(m_gpuBridgeVkReadySemaphores[syncIndex]);
+            signalSemaphores.push_back(m_gpuBridgeVkDoneSemaphores[syncIndex]);
+        }
 
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = waitSemaphores;
-        submitInfo.pWaitDstStageMask = waitStages;
+        submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+        submitInfo.pWaitSemaphores = waitSemaphores.data();
+        submitInfo.pWaitDstStageMask = waitStages.data();
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &m_commandBuffers[imageIndex];
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = signalSemaphores;
+        submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
+        submitInfo.pSignalSemaphores = signalSemaphores.data();
 
         result = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, currentFence);
         if (result != VK_SUCCESS)
@@ -345,11 +571,16 @@ namespace Rv
             logError(std::string("vkQueueSubmit failed: ") + vkResultString(result));
             return;
         }
+        if (useGpuBridgePath && m_gpuBridgeSemaphoreSyncActive)
+        {
+            const size_t syncIndex = static_cast<size_t>(m_currentFrame);
+            m_gpuBridgeAwaitVkDoneOnGl[syncIndex] = 1;
+        }
 
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = signalSemaphores;
+        presentInfo.pWaitSemaphores = &signalSemaphores[0];
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &m_swapchain;
         presentInfo.pImageIndices = &imageIndex;
@@ -515,12 +746,31 @@ namespace Rv
             vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
 
             bool hasSwapchainExtension = false;
+            bool hasExternalMemoryExtension = false;
+            bool hasExternalMemoryFdExtension = false;
+            bool hasExternalSemaphoreExtension = false;
+            bool hasExternalSemaphoreFdExtension = false;
             for (const VkExtensionProperties& extension : availableExtensions)
             {
                 if (std::strcmp(extension.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
                 {
                     hasSwapchainExtension = true;
-                    break;
+                }
+                else if (std::strcmp(extension.extensionName, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME) == 0)
+                {
+                    hasExternalMemoryExtension = true;
+                }
+                else if (std::strcmp(extension.extensionName, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME) == 0)
+                {
+                    hasExternalMemoryFdExtension = true;
+                }
+                else if (std::strcmp(extension.extensionName, VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME) == 0)
+                {
+                    hasExternalSemaphoreExtension = true;
+                }
+                else if (std::strcmp(extension.extensionName, VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME) == 0)
+                {
+                    hasExternalSemaphoreFdExtension = true;
                 }
             }
             if (!hasSwapchainExtension)
@@ -537,10 +787,23 @@ namespace Rv
             m_physicalDevice = device;
             m_graphicsQueueFamily = graphicsFamily;
             m_presentQueueFamily = presentFamily;
+            m_vulkanExternalMemorySupported = hasExternalMemoryExtension;
+            m_vulkanExternalMemoryFdSupported = hasExternalMemoryFdExtension;
+            m_vulkanExternalSemaphoreSupported = hasExternalSemaphoreExtension;
+            m_vulkanExternalSemaphoreFdSupported = hasExternalSemaphoreFdExtension;
 
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
+            m_isRadvDevice = std::strstr(properties.deviceName, "RADV") != nullptr;
             logInfo("Selected Vulkan physical device: " + std::string(properties.deviceName));
+            if (!m_vulkanExternalMemorySupported || !m_vulkanExternalMemoryFdSupported)
+            {
+                logWarn("Selected Vulkan device lacks VK_KHR_external_memory and/or VK_KHR_external_memory_fd; GPU bridge interop will use CPU fallback.");
+            }
+            if (!m_vulkanExternalSemaphoreSupported || !m_vulkanExternalSemaphoreFdSupported)
+            {
+                logWarn("Selected Vulkan device lacks VK_KHR_external_semaphore and/or VK_KHR_external_semaphore_fd; GPU bridge sync will use CPU fallback.");
+            }
             return true;
         }
 
@@ -565,9 +828,17 @@ namespace Rv
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
-        const std::vector<const char*> deviceExtensions = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
-        };
+        std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        if (m_vulkanExternalMemorySupported && m_vulkanExternalMemoryFdSupported)
+        {
+            deviceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+            deviceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+        }
+        if (m_vulkanExternalSemaphoreSupported && m_vulkanExternalSemaphoreFdSupported)
+        {
+            deviceExtensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
+            deviceExtensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
+        }
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -1024,7 +1295,10 @@ namespace Rv
             m_bridgeStagingCapacity >= requiredSize;
 
         if (hasReusableResources)
+        {
+            ensureGpuBridgeResources();
             return true;
+        }
 
         destroyBridgeResources();
 
@@ -1141,10 +1415,664 @@ namespace Rv
         m_bridgeImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
         std::ostringstream os;
-        os << "Bridge resources ready: uploadExtent=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height
+        os << "CPU bridge resources ready: uploadExtent=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height
            << " dstFormat=" << formatName(m_swapchainImageFormat)
            << " colorSpace=" << colorSpaceName(m_swapchainColorSpace);
         logInfo(os.str());
+
+        ensureGpuBridgeResources();
+        return true;
+    }
+
+    bool QTVulkanVideoDevice::ensureGpuBridgeResources()
+    {
+        if (m_gpuBridgeRuntimeDisabled)
+            return true;
+
+        if (!m_bridgeSourceView)
+            return true;
+
+        if (m_device == VK_NULL_HANDLE || m_swapchainExtent.width == 0 || m_swapchainExtent.height == 0)
+            return false;
+
+        const bool canUse10BitBridge =
+            isA2R10SwapchainFormat(m_swapchainImageFormat) &&
+            formatSupportsTransferSrc(m_physicalDevice, m_swapchainImageFormat) &&
+            formatSupportsTransferDst(m_physicalDevice, m_swapchainImageFormat);
+        const VkFormat expectedInteropFormat = canUse10BitBridge ? m_swapchainImageFormat : VK_FORMAT_R8G8B8A8_UNORM;
+
+        const bool hasReusableGpuResources =
+            m_gpuBridgeImage != VK_NULL_HANDLE &&
+            m_gpuBridgeImageMemory != VK_NULL_HANDLE &&
+            m_gpuBridgeGLMemoryObject != 0 &&
+            m_gpuBridgeGLTexture != 0 &&
+            m_gpuBridgeGLFramebuffer != 0 &&
+            m_gpuBridgeVkReadySemaphores.size() == kFramesInFlight &&
+            m_gpuBridgeVkDoneSemaphores.size() == kFramesInFlight &&
+            m_gpuBridgeGLReadySemaphores.size() == kFramesInFlight &&
+            m_gpuBridgeGLDoneSemaphores.size() == kFramesInFlight &&
+            std::all_of(m_gpuBridgeVkReadySemaphores.begin(),
+                        m_gpuBridgeVkReadySemaphores.end(),
+                        [](VkSemaphore semaphore) { return semaphore != VK_NULL_HANDLE; }) &&
+            std::all_of(m_gpuBridgeVkDoneSemaphores.begin(),
+                        m_gpuBridgeVkDoneSemaphores.end(),
+                        [](VkSemaphore semaphore) { return semaphore != VK_NULL_HANDLE; }) &&
+            std::all_of(m_gpuBridgeGLReadySemaphores.begin(),
+                        m_gpuBridgeGLReadySemaphores.end(),
+                        [](GLuint semaphore) { return semaphore != 0; }) &&
+            std::all_of(m_gpuBridgeGLDoneSemaphores.begin(),
+                        m_gpuBridgeGLDoneSemaphores.end(),
+                        [](GLuint semaphore) { return semaphore != 0; }) &&
+            m_gpuBridgeAwaitVkDoneOnGl.size() == kFramesInFlight &&
+            m_gpuBridgeSemaphoreSyncActive &&
+            m_gpuBridgeImageFormat == expectedInteropFormat;
+        if (hasReusableGpuResources)
+            return true;
+
+        auto disableGpuBridge = [this](const std::string& reason)
+        {
+            m_gpuBridgeRuntimeDisabled = true;
+            m_gpuBridgeDisableReason = reason;
+            m_bridgeStatusLogged = false;
+            destroyGpuBridgeResources();
+            logWarn("GPU bridge interop unavailable: " + reason + " Using CPU readback bridge.");
+        };
+
+        if (!m_vulkanExternalMemorySupported || !m_vulkanExternalMemoryFdSupported)
+        {
+            disableGpuBridge("Vulkan external-memory-fd device extensions are not enabled.");
+            return true;
+        }
+        if (!m_vulkanExternalSemaphoreSupported || !m_vulkanExternalSemaphoreFdSupported)
+        {
+            disableGpuBridge("Vulkan external-semaphore-fd device extensions are not enabled.");
+            return true;
+        }
+
+        bool use10BitBridge = isA2R10SwapchainFormat(m_swapchainImageFormat);
+        if (use10BitBridge &&
+            (!formatSupportsTransferSrc(m_physicalDevice, m_swapchainImageFormat) ||
+             !formatSupportsTransferDst(m_physicalDevice, m_swapchainImageFormat)))
+        {
+            logWarn("10-bit GPU bridge format does not support transfer src/dst; falling back to 8-bit bridge + blit mode.");
+            use10BitBridge = false;
+        }
+
+        const VkFormat interopFormat = use10BitBridge ? m_swapchainImageFormat : VK_FORMAT_R8G8B8A8_UNORM;
+        const GLenum interopGLInternalFormat = use10BitBridge ? GL_RGB10_A2 : GL_RGBA8;
+        const char* interopGLFormatName = use10BitBridge ? "GL_RGB10_A2" : "GL_RGBA8";
+        m_gpuBridgeMode = use10BitBridge ? "10-bit-copy" : "8-bit-blit";
+        m_gpuBridgeUsesBlit = interopFormat != m_swapchainImageFormat;
+        m_gpuBridgeBlitSupported =
+            !m_gpuBridgeUsesBlit ||
+            (formatSupportsBlitSrc(m_physicalDevice, interopFormat) &&
+             formatSupportsBlitDst(m_physicalDevice, m_swapchainImageFormat));
+        if (m_gpuBridgeUsesBlit && !m_gpuBridgeBlitSupported)
+        {
+            disableGpuBridge("vkCmdBlitImage format conversion is not supported for src=" + formatName(interopFormat) +
+                             " dst=" + formatName(m_swapchainImageFormat) + ".");
+            return true;
+        }
+
+        m_bridgeSourceView->makeCurrent();
+        QOpenGLContext* context = QOpenGLContext::currentContext();
+        if (!context)
+        {
+            return true;
+        }
+        GLInteropFunctions glFns;
+        std::string glInteropReason;
+        if (!resolveGLInteropFunctions(context, glFns, glInteropReason))
+        {
+            disableGpuBridge(glInteropReason);
+            return true;
+        }
+
+        GLSemaphoreInteropFunctions glSemaphoreFns;
+        std::string glSemaphoreInteropReason;
+        if (!resolveGLSemaphoreInteropFunctions(context, glSemaphoreFns, glSemaphoreInteropReason))
+        {
+            disableGpuBridge(glSemaphoreInteropReason);
+            return true;
+        }
+
+        VkImage interopImage = VK_NULL_HANDLE;
+        VkDeviceMemory interopMemory = VK_NULL_HANDLE;
+        GLuint glMemoryObject = 0;
+        GLuint glTexture = 0;
+        GLuint glFramebuffer = 0;
+        std::vector<VkSemaphore> vkReadySemaphores;
+        std::vector<VkSemaphore> vkDoneSemaphores;
+        std::vector<GLuint> glReadySemaphores;
+        std::vector<GLuint> glDoneSemaphores;
+        int memoryFd = -1;
+        vkReadySemaphores.reserve(kFramesInFlight);
+        vkDoneSemaphores.reserve(kFramesInFlight);
+        glReadySemaphores.reserve(kFramesInFlight);
+        glDoneSemaphores.reserve(kFramesInFlight);
+
+        VkExternalMemoryImageCreateInfo externalImageInfo{};
+        externalImageInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+        externalImageInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.pNext = &externalImageInfo;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = interopFormat;
+        imageInfo.extent.width = m_swapchainExtent.width;
+        imageInfo.extent.height = m_swapchainExtent.height;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        // Use LINEAR tiling for the shared external-memory image. The OPAQUE_FD handle
+        // shares raw bytes with no tiling metadata, and on Mesa the GL driver (radeonsi)
+        // and the Vulkan driver (RADV) do not agree on an OPTIMAL swizzle for the same
+        // memory -- importing an OPTIMAL image into GL yields a statically garbled /
+        // sheared frame. LINEAR has a deterministic row-major layout both drivers honor.
+        imageInfo.tiling = VK_IMAGE_TILING_LINEAR;
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VkResult result = vkCreateImage(m_device, &imageInfo, nullptr, &interopImage);
+        if (result != VK_SUCCESS)
+        {
+            disableGpuBridge(std::string("vkCreateImage(GPU bridge image) failed: ") + vkResultString(result));
+            return true;
+        }
+
+        VkMemoryRequirements imageMemReq{};
+        vkGetImageMemoryRequirements(m_device, interopImage, &imageMemReq);
+
+        uint32_t imageMemoryType = findMemoryType(imageMemReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (imageMemoryType == std::numeric_limits<uint32_t>::max())
+        {
+            imageMemoryType = findMemoryType(imageMemReq.memoryTypeBits, 0);
+        }
+        if (imageMemoryType == std::numeric_limits<uint32_t>::max())
+        {
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge("No compatible memory type for GPU bridge external-memory image.");
+            return true;
+        }
+
+        VkExportMemoryAllocateInfo exportAllocInfo{};
+        exportAllocInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+        exportAllocInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+
+        VkMemoryDedicatedAllocateInfo dedicatedAllocInfo{};
+        dedicatedAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+        dedicatedAllocInfo.image = interopImage;
+        dedicatedAllocInfo.buffer = VK_NULL_HANDLE;
+        exportAllocInfo.pNext = &dedicatedAllocInfo;
+
+        VkMemoryAllocateInfo imageAllocInfo{};
+        imageAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        imageAllocInfo.pNext = &exportAllocInfo;
+        imageAllocInfo.allocationSize = imageMemReq.size;
+        imageAllocInfo.memoryTypeIndex = imageMemoryType;
+
+        result = vkAllocateMemory(m_device, &imageAllocInfo, nullptr, &interopMemory);
+        if (result != VK_SUCCESS)
+        {
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge(std::string("vkAllocateMemory(GPU bridge image) failed: ") + vkResultString(result));
+            return true;
+        }
+
+        result = vkBindImageMemory(m_device, interopImage, interopMemory, 0);
+        if (result != VK_SUCCESS)
+        {
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge(std::string("vkBindImageMemory(GPU bridge image) failed: ") + vkResultString(result));
+            return true;
+        }
+
+        // glTexStorageMem2DEXT assumes a tightly-packed linear layout (rowPitch == width*bpp,
+        // offset 0). If the driver padded the linear row pitch, the GL import would shear the
+        // frame, so fall back to the CPU bridge rather than presenting corruption.
+        {
+            VkImageSubresource interopSubresource{};
+            interopSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            interopSubresource.mipLevel = 0;
+            interopSubresource.arrayLayer = 0;
+            VkSubresourceLayout interopLayout{};
+            vkGetImageSubresourceLayout(m_device, interopImage, &interopSubresource, &interopLayout);
+            const VkDeviceSize expectedRowPitch =
+                static_cast<VkDeviceSize>(m_swapchainExtent.width) * 4u; // both interop formats are 32-bit
+            if (interopLayout.offset != 0 || interopLayout.rowPitch != expectedRowPitch)
+            {
+                std::ostringstream reason;
+                reason << "Linear GPU bridge image is not tightly packed (offset=" << interopLayout.offset
+                       << " rowPitch=" << interopLayout.rowPitch << " expected=" << expectedRowPitch << ").";
+                vkFreeMemory(m_device, interopMemory, nullptr);
+                vkDestroyImage(m_device, interopImage, nullptr);
+                disableGpuBridge(reason.str());
+                return true;
+            }
+        }
+
+        PFN_vkGetMemoryFdKHR vkGetMemoryFd =
+            reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(m_device, "vkGetMemoryFdKHR"));
+        if (!vkGetMemoryFd)
+        {
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge("vkGetMemoryFdKHR is unavailable.");
+            return true;
+        }
+        PFN_vkGetSemaphoreFdKHR vkGetSemaphoreFd =
+            reinterpret_cast<PFN_vkGetSemaphoreFdKHR>(vkGetDeviceProcAddr(m_device, "vkGetSemaphoreFdKHR"));
+        if (!vkGetSemaphoreFd)
+        {
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge("vkGetSemaphoreFdKHR is unavailable.");
+            return true;
+        }
+
+        VkMemoryGetFdInfoKHR getFdInfo{};
+        getFdInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
+        getFdInfo.memory = interopMemory;
+        getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+        result = vkGetMemoryFd(m_device, &getFdInfo, &memoryFd);
+        if (result != VK_SUCCESS || memoryFd < 0)
+        {
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge(std::string("vkGetMemoryFdKHR failed: ") + vkResultString(result));
+            return true;
+        }
+
+        while (glGetError() != GL_NO_ERROR)
+        {
+            // Clear stale GL errors before interop calls.
+        }
+
+        glFns.createMemoryObjects(1, &glMemoryObject);
+        if (glMemoryObject == 0)
+        {
+            close(memoryFd);
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge("glCreateMemoryObjectsEXT returned 0.");
+            return true;
+        }
+
+        glFns.importMemoryFd(glMemoryObject,
+                             static_cast<GLuint64>(imageMemReq.size),
+                             GL_HANDLE_TYPE_OPAQUE_FD_EXT,
+                             memoryFd);
+        if (glGetError() != GL_NO_ERROR)
+        {
+            if (memoryFd >= 0)
+            {
+                close(memoryFd);
+                memoryFd = -1;
+            }
+            glFns.deleteMemoryObjects(1, &glMemoryObject);
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge("glImportMemoryFdEXT failed.");
+            return true;
+        }
+        memoryFd = -1; // GL owns the file descriptor after successful import call.
+
+        GLint previousTexture = 0;
+        GLint previousFramebuffer = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+
+        glGenTextures(1, &glTexture);
+        glBindTexture(GL_TEXTURE_2D, glTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // Match the Vulkan image's LINEAR tiling so radeonsi interprets the imported
+        // RADV memory with the same row-major layout (default is OPTIMAL, which mismatches).
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_LINEAR_TILING_EXT);
+        glFns.texStorageMem2D(GL_TEXTURE_2D,
+                              1,
+                              interopGLInternalFormat,
+                              static_cast<GLsizei>(m_swapchainExtent.width),
+                              static_cast<GLsizei>(m_swapchainExtent.height),
+                              glMemoryObject,
+                              0);
+        if (glGetError() != GL_NO_ERROR)
+        {
+            glDeleteTextures(1, &glTexture);
+            glTexture = 0;
+            glBindTexture(GL_TEXTURE_2D, previousTexture);
+            glFns.deleteMemoryObjects(1, &glMemoryObject);
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge("glTexStorageMem2DEXT failed for imported memory object.");
+            return true;
+        }
+
+        glGenFramebuffers(1, &glFramebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, glFramebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, glTexture, 0);
+        const GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+        glBindTexture(GL_TEXTURE_2D, previousTexture);
+        if (fboStatus != GL_FRAMEBUFFER_COMPLETE)
+        {
+            glDeleteFramebuffers(1, &glFramebuffer);
+            glDeleteTextures(1, &glTexture);
+            glFns.deleteMemoryObjects(1, &glMemoryObject);
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+            disableGpuBridge("GPU bridge framebuffer is incomplete for imported memory texture.");
+            return true;
+        }
+
+        auto destroyInteropResources = [&]()
+        {
+            if (glSemaphoreFns.deleteSemaphores)
+            {
+                for (GLuint semaphore : glReadySemaphores)
+                {
+                    if (semaphore != 0)
+                        glSemaphoreFns.deleteSemaphores(1, &semaphore);
+                }
+                for (GLuint semaphore : glDoneSemaphores)
+                {
+                    if (semaphore != 0)
+                        glSemaphoreFns.deleteSemaphores(1, &semaphore);
+                }
+            }
+            for (VkSemaphore semaphore : vkReadySemaphores)
+            {
+                if (semaphore != VK_NULL_HANDLE)
+                    vkDestroySemaphore(m_device, semaphore, nullptr);
+            }
+            for (VkSemaphore semaphore : vkDoneSemaphores)
+            {
+                if (semaphore != VK_NULL_HANDLE)
+                    vkDestroySemaphore(m_device, semaphore, nullptr);
+            }
+
+            glDeleteFramebuffers(1, &glFramebuffer);
+            glDeleteTextures(1, &glTexture);
+            glFns.deleteMemoryObjects(1, &glMemoryObject);
+            vkFreeMemory(m_device, interopMemory, nullptr);
+            vkDestroyImage(m_device, interopImage, nullptr);
+        };
+
+        VkExportSemaphoreCreateInfo exportSemaphoreInfo{};
+        exportSemaphoreInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO;
+        exportSemaphoreInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+
+        VkSemaphoreCreateInfo semaphoreCreateInfo{};
+        semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        semaphoreCreateInfo.pNext = &exportSemaphoreInfo;
+
+        VkSemaphoreGetFdInfoKHR semaphoreFdInfo{};
+        semaphoreFdInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR;
+        semaphoreFdInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+
+        while (glGetError() != GL_NO_ERROR)
+        {
+            // Clear stale GL errors before semaphore interop calls.
+        }
+
+        for (size_t i = 0; i < kFramesInFlight; ++i)
+        {
+            VkSemaphore vkReadySemaphore = VK_NULL_HANDLE;
+            VkSemaphore vkDoneSemaphore = VK_NULL_HANDLE;
+            GLuint glReadySemaphore = 0;
+            GLuint glDoneSemaphore = 0;
+            int readySemaphoreFd = -1;
+            int doneSemaphoreFd = -1;
+
+            result = vkCreateSemaphore(m_device, &semaphoreCreateInfo, nullptr, &vkReadySemaphore);
+            if (result != VK_SUCCESS)
+            {
+                destroyInteropResources();
+                disableGpuBridge(std::string("vkCreateSemaphore(GL->VK ready) failed: ") + vkResultString(result));
+                return true;
+            }
+            vkReadySemaphores.push_back(vkReadySemaphore);
+
+            result = vkCreateSemaphore(m_device, &semaphoreCreateInfo, nullptr, &vkDoneSemaphore);
+            if (result != VK_SUCCESS)
+            {
+                destroyInteropResources();
+                disableGpuBridge(std::string("vkCreateSemaphore(VK->GL done) failed: ") + vkResultString(result));
+                return true;
+            }
+            vkDoneSemaphores.push_back(vkDoneSemaphore);
+
+            semaphoreFdInfo.semaphore = vkReadySemaphore;
+            result = vkGetSemaphoreFd(m_device, &semaphoreFdInfo, &readySemaphoreFd);
+            if (result != VK_SUCCESS || readySemaphoreFd < 0)
+            {
+                destroyInteropResources();
+                disableGpuBridge(std::string("vkGetSemaphoreFdKHR(GL->VK ready) failed: ") + vkResultString(result));
+                return true;
+            }
+
+            semaphoreFdInfo.semaphore = vkDoneSemaphore;
+            result = vkGetSemaphoreFd(m_device, &semaphoreFdInfo, &doneSemaphoreFd);
+            if (result != VK_SUCCESS || doneSemaphoreFd < 0)
+            {
+                close(readySemaphoreFd);
+                destroyInteropResources();
+                disableGpuBridge(std::string("vkGetSemaphoreFdKHR(VK->GL done) failed: ") + vkResultString(result));
+                return true;
+            }
+
+            glSemaphoreFns.genSemaphores(1, &glReadySemaphore);
+            if (glReadySemaphore == 0)
+            {
+                close(readySemaphoreFd);
+                close(doneSemaphoreFd);
+                destroyInteropResources();
+                disableGpuBridge("glGenSemaphoresEXT failed for GL->VK ready semaphore.");
+                return true;
+            }
+            glSemaphoreFns.importSemaphoreFd(glReadySemaphore, GL_HANDLE_TYPE_OPAQUE_FD_EXT, readySemaphoreFd);
+            if (glGetError() != GL_NO_ERROR)
+            {
+                if (readySemaphoreFd >= 0)
+                    close(readySemaphoreFd);
+                close(doneSemaphoreFd);
+                glSemaphoreFns.deleteSemaphores(1, &glReadySemaphore);
+                destroyInteropResources();
+                disableGpuBridge("glImportSemaphoreFdEXT failed for GL->VK ready semaphore.");
+                return true;
+            }
+            readySemaphoreFd = -1;
+            glReadySemaphores.push_back(glReadySemaphore);
+
+            glSemaphoreFns.genSemaphores(1, &glDoneSemaphore);
+            if (glDoneSemaphore == 0)
+            {
+                close(doneSemaphoreFd);
+                destroyInteropResources();
+                disableGpuBridge("glGenSemaphoresEXT failed for VK->GL done semaphore.");
+                return true;
+            }
+            glSemaphoreFns.importSemaphoreFd(glDoneSemaphore, GL_HANDLE_TYPE_OPAQUE_FD_EXT, doneSemaphoreFd);
+            if (glGetError() != GL_NO_ERROR)
+            {
+                if (doneSemaphoreFd >= 0)
+                    close(doneSemaphoreFd);
+                glSemaphoreFns.deleteSemaphores(1, &glDoneSemaphore);
+                destroyInteropResources();
+                disableGpuBridge("glImportSemaphoreFdEXT failed for VK->GL done semaphore.");
+                return true;
+            }
+            doneSemaphoreFd = -1;
+            glDoneSemaphores.push_back(glDoneSemaphore);
+        }
+
+        m_gpuBridgeImage = interopImage;
+        m_gpuBridgeImageMemory = interopMemory;
+        m_gpuBridgeImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        m_gpuBridgeImageFormat = interopFormat;
+        m_gpuBridgeImageMemorySize = imageMemReq.size;
+        m_gpuBridgeGLMemoryObject = glMemoryObject;
+        m_gpuBridgeGLTexture = glTexture;
+        m_gpuBridgeGLFramebuffer = glFramebuffer;
+        m_gpuBridgeGLReadySemaphores = std::move(glReadySemaphores);
+        m_gpuBridgeGLDoneSemaphores = std::move(glDoneSemaphores);
+        m_gpuBridgeVkReadySemaphores = std::move(vkReadySemaphores);
+        m_gpuBridgeVkDoneSemaphores = std::move(vkDoneSemaphores);
+        m_gpuBridgeAwaitVkDoneOnGl.assign(kFramesInFlight, 0);
+        m_gpuBridgeSemaphoreSyncActive = true;
+        m_bridgeStatusLogged = false;
+        m_gpuBridgeMechanism =
+            "external-memory-fd + external-semaphore-fd (VK_KHR_external_memory_fd + VK_KHR_external_semaphore_fd + GL_EXT_memory_object_fd + GL_EXT_semaphore_fd)";
+
+        std::ostringstream gpuBridgeLog;
+        gpuBridgeLog << "GPU bridge selected: mechanism=" << m_gpuBridgeMechanism
+                     << " reason=device+GL interop extensions available"
+                     << " mode=" << m_gpuBridgeMode
+                     << " sourceFormat=" << interopGLFormatName
+                     << " bridgeFormat=" << formatName(m_gpuBridgeImageFormat)
+                     << " destinationFormat=" << formatName(m_swapchainImageFormat)
+                     << " transferOp=" << (m_gpuBridgeUsesBlit ? "vkCmdBlitImage" : "vkCmdCopyImage")
+                     << " sync=external-semaphore-fd"
+                     << " syncSlots=" << kFramesInFlight;
+        logInfo(gpuBridgeLog.str());
+        return true;
+    }
+
+    bool QTVulkanVideoDevice::prepareGpuBridgeFrameData(std::string& failureReason)
+    {
+        failureReason.clear();
+        if (!m_bridgeSourceView || m_gpuBridgeGLFramebuffer == 0)
+        {
+            return false;
+        }
+
+        const double sourceDpr = m_bridgeSourceView->devicePixelRatio();
+        const int readWidth =
+            std::max(1, static_cast<int>(std::llround(static_cast<double>(m_bridgeSourceView->width()) * sourceDpr)));
+        const int readHeight =
+            std::max(1, static_cast<int>(std::llround(static_cast<double>(m_bridgeSourceView->height()) * sourceDpr)));
+        const int dstWidth = static_cast<int>(m_swapchainExtent.width);
+        const int dstHeight = static_cast<int>(m_swapchainExtent.height);
+        if (readWidth < 1 || readHeight < 1 || dstWidth < 1 || dstHeight < 1)
+        {
+            return false;
+        }
+
+        m_bridgeSourceView->makeCurrent();
+        QOpenGLContext* context = QOpenGLContext::currentContext();
+        if (!context)
+        {
+            return false;
+        }
+        GLSemaphoreInteropFunctions glSemaphoreFns;
+        if (m_gpuBridgeSemaphoreSyncActive)
+        {
+            std::string glSemaphoreReason;
+            if (!resolveGLSemaphoreInteropFunctions(context, glSemaphoreFns, glSemaphoreReason))
+            {
+                failureReason = glSemaphoreReason;
+                return false;
+            }
+        }
+
+        GLint previousReadFramebuffer = 0;
+        GLint previousDrawFramebuffer = 0;
+        const GLboolean previousScissor = glIsEnabled(GL_SCISSOR_TEST);
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFramebuffer);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFramebuffer);
+
+        if (previousScissor == GL_TRUE)
+        {
+            glDisable(GL_SCISSOR_TEST);
+        }
+
+        while (glGetError() != GL_NO_ERROR)
+        {
+            // Clear stale GL errors before frame blit.
+        }
+        const size_t syncIndex = static_cast<size_t>(m_currentFrame);
+        if (m_gpuBridgeSemaphoreSyncActive &&
+            (syncIndex >= m_gpuBridgeGLReadySemaphores.size() ||
+             syncIndex >= m_gpuBridgeGLDoneSemaphores.size() ||
+             syncIndex >= m_gpuBridgeAwaitVkDoneOnGl.size()))
+        {
+            failureReason = "GPU bridge semaphore slot is unavailable for the current frame.";
+            return false;
+        }
+        if (m_gpuBridgeSemaphoreSyncActive &&
+            syncIndex < m_gpuBridgeAwaitVkDoneOnGl.size() &&
+            m_gpuBridgeAwaitVkDoneOnGl[syncIndex] != 0)
+        {
+            const GLuint textures[] = {m_gpuBridgeGLTexture};
+            const GLenum layouts[] = {GL_LAYOUT_GENERAL_EXT};
+            glSemaphoreFns.waitSemaphore(m_gpuBridgeGLDoneSemaphores[syncIndex], 0, nullptr, 1, textures, layouts);
+            if (glGetError() != GL_NO_ERROR)
+            {
+                failureReason = "glWaitSemaphoreEXT failed for VK->GL bridge handoff.";
+                return false;
+            }
+            m_gpuBridgeAwaitVkDoneOnGl[syncIndex] = 0;
+        }
+
+        // Match glReadPixels-style completion behavior before reading from the source framebuffer.
+        glFinish();
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(m_bridgeSourceView->defaultFramebufferObject()));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_gpuBridgeGLFramebuffer);
+        glBlitFramebuffer(0, 0, readWidth, readHeight, 0, dstHeight, dstWidth, 0, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previousReadFramebuffer));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(previousDrawFramebuffer));
+        if (previousScissor == GL_TRUE)
+        {
+            glEnable(GL_SCISSOR_TEST);
+        }
+
+        if (glGetError() != GL_NO_ERROR)
+        {
+            failureReason = "glBlitFramebuffer failed while copying into GPU bridge image.";
+            return false;
+        }
+
+        glMemoryBarrier(GL_FRAMEBUFFER_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT);
+        if (m_gpuBridgeSemaphoreSyncActive)
+        {
+            const GLuint textures[] = {m_gpuBridgeGLTexture};
+            const GLenum layouts[] = {GL_LAYOUT_GENERAL_EXT};
+            glSemaphoreFns.signalSemaphore(m_gpuBridgeGLReadySemaphores[syncIndex], 0, nullptr, 1, textures, layouts);
+            if (glGetError() != GL_NO_ERROR)
+            {
+                failureReason = "glSignalSemaphoreEXT failed for GL->VK bridge handoff.";
+                return false;
+            }
+            glFlush();
+        }
+        else
+        {
+            glFinish();
+        }
+
+        m_bridgeSourceWidth = static_cast<uint32_t>(readWidth);
+        m_bridgeSourceHeight = static_cast<uint32_t>(readHeight);
+
+        std::ostringstream frameLog;
+        frameLog << "Bridge frame " << m_bridgeFrameCounter
+                 << ": source=" << m_bridgeSourceWidth << "x" << m_bridgeSourceHeight
+                 << " sourceFormat=" << (m_gpuBridgeMode == "10-bit-copy" ? "GL_RGB10_A2" : "GL_RGBA8")
+                 << " destination=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height
+                 << " bridgeFormat=" << formatName(m_gpuBridgeImageFormat)
+                 << " swapchainFormat=" << formatName(m_swapchainImageFormat)
+                 << " colorSpace=" << colorSpaceName(m_swapchainColorSpace)
+                 << " syncSlot=" << syncIndex
+                 << " packPath=gpu-interop mode=" << m_gpuBridgeMode
+                 << " transferOp=" << (m_gpuBridgeUsesBlit ? "vkCmdBlitImage" : "vkCmdCopyImage");
+        logInfo(frameLog.str());
+        ++m_bridgeFrameCounter;
+
         return true;
     }
 
@@ -1314,12 +2242,17 @@ namespace Rv
 
         m_imagesInFlight.assign(m_swapchainImages.size(), VK_NULL_HANDLE);
         m_swapchainDirty = false;
+        m_bridgeStatusLogged = false;
+        m_bridgeActivationLogged = false;
+        m_gpuBridgeActivationLogged = false;
+        m_bridgeUnavailableLogged = false;
         return true;
     }
 
     bool QTVulkanVideoDevice::recordCommandBuffer(VkCommandBuffer commandBuffer,
                                                   uint32_t imageIndex,
-                                                  bool useBridgePath)
+                                                  bool useBridgePath,
+                                                  bool useGpuBridgePath)
     {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1334,82 +2267,118 @@ namespace Rv
 
         if (useBridgePath && imageIndex < m_swapchainImages.size() && imageIndex < m_swapchainImageLayouts.size())
         {
-            VkImageMemoryBarrier bridgeToDst{};
-            bridgeToDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            bridgeToDst.oldLayout = m_bridgeImageLayout;
-            bridgeToDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            bridgeToDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            bridgeToDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            bridgeToDst.image = m_bridgeImage;
-            bridgeToDst.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            bridgeToDst.subresourceRange.baseMipLevel = 0;
-            bridgeToDst.subresourceRange.levelCount = 1;
-            bridgeToDst.subresourceRange.baseArrayLayer = 0;
-            bridgeToDst.subresourceRange.layerCount = 1;
-            bridgeToDst.srcAccessMask = (m_bridgeImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-                                            ? VK_ACCESS_TRANSFER_READ_BIT
-                                            : 0;
-            bridgeToDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            const VkImage bridgeSourceImage = useGpuBridgePath ? m_gpuBridgeImage : m_bridgeImage;
+            VkImageLayout& bridgeSourceLayout = useGpuBridgePath ? m_gpuBridgeImageLayout : m_bridgeImageLayout;
 
-            const VkPipelineStageFlags bridgeSrcStage =
-                (m_bridgeImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-                    ? VK_PIPELINE_STAGE_TRANSFER_BIT
-                    : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            if (useGpuBridgePath)
+            {
+                VkImageMemoryBarrier bridgeToSrc{};
+                bridgeToSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                bridgeToSrc.oldLayout = bridgeSourceLayout;
+                bridgeToSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                bridgeToSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
+                bridgeToSrc.dstQueueFamilyIndex = m_graphicsQueueFamily;
+                bridgeToSrc.image = bridgeSourceImage;
+                bridgeToSrc.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                bridgeToSrc.subresourceRange.baseMipLevel = 0;
+                bridgeToSrc.subresourceRange.levelCount = 1;
+                bridgeToSrc.subresourceRange.baseArrayLayer = 0;
+                bridgeToSrc.subresourceRange.layerCount = 1;
+                bridgeToSrc.srcAccessMask = 0;
+                bridgeToSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-            vkCmdPipelineBarrier(commandBuffer,
-                                 bridgeSrcStage,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 0,
-                                 0,
-                                 nullptr,
-                                 0,
-                                 nullptr,
-                                 1,
-                                 &bridgeToDst);
+                vkCmdPipelineBarrier(commandBuffer,
+                                     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     0,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &bridgeToSrc);
 
-            m_bridgeImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                bridgeSourceLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            }
+            else
+            {
+                VkImageMemoryBarrier bridgeToDst{};
+                bridgeToDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                bridgeToDst.oldLayout = bridgeSourceLayout;
+                bridgeToDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                bridgeToDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                bridgeToDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                bridgeToDst.image = bridgeSourceImage;
+                bridgeToDst.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                bridgeToDst.subresourceRange.baseMipLevel = 0;
+                bridgeToDst.subresourceRange.levelCount = 1;
+                bridgeToDst.subresourceRange.baseArrayLayer = 0;
+                bridgeToDst.subresourceRange.layerCount = 1;
+                bridgeToDst.srcAccessMask = (bridgeSourceLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+                                                ? VK_ACCESS_TRANSFER_READ_BIT
+                                                : 0;
+                bridgeToDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-            VkBufferImageCopy uploadRegion{};
-            uploadRegion.bufferOffset = 0;
-            uploadRegion.bufferRowLength = 0;
-            uploadRegion.bufferImageHeight = 0;
-            uploadRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            uploadRegion.imageSubresource.mipLevel = 0;
-            uploadRegion.imageSubresource.baseArrayLayer = 0;
-            uploadRegion.imageSubresource.layerCount = 1;
-            uploadRegion.imageOffset = {0, 0, 0};
-            uploadRegion.imageExtent = {m_swapchainExtent.width, m_swapchainExtent.height, 1};
+                const VkPipelineStageFlags bridgeSrcStage =
+                    (bridgeSourceLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+                        ? VK_PIPELINE_STAGE_TRANSFER_BIT
+                        : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 
-            vkCmdCopyBufferToImage(commandBuffer,
-                                   m_bridgeStagingBuffer,
-                                   m_bridgeImage,
-                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                   1,
-                                   &uploadRegion);
+                vkCmdPipelineBarrier(commandBuffer,
+                                     bridgeSrcStage,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     0,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &bridgeToDst);
 
-            VkImageMemoryBarrier bridgeToSrc{};
-            bridgeToSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            bridgeToSrc.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            bridgeToSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            bridgeToSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            bridgeToSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            bridgeToSrc.image = m_bridgeImage;
-            bridgeToSrc.subresourceRange = bridgeToDst.subresourceRange;
-            bridgeToSrc.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            bridgeToSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                bridgeSourceLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
-            vkCmdPipelineBarrier(commandBuffer,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 0,
-                                 0,
-                                 nullptr,
-                                 0,
-                                 nullptr,
-                                 1,
-                                 &bridgeToSrc);
+                VkBufferImageCopy uploadRegion{};
+                uploadRegion.bufferOffset = 0;
+                uploadRegion.bufferRowLength = 0;
+                uploadRegion.bufferImageHeight = 0;
+                uploadRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                uploadRegion.imageSubresource.mipLevel = 0;
+                uploadRegion.imageSubresource.baseArrayLayer = 0;
+                uploadRegion.imageSubresource.layerCount = 1;
+                uploadRegion.imageOffset = {0, 0, 0};
+                uploadRegion.imageExtent = {m_swapchainExtent.width, m_swapchainExtent.height, 1};
 
-            m_bridgeImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                vkCmdCopyBufferToImage(commandBuffer,
+                                       m_bridgeStagingBuffer,
+                                       bridgeSourceImage,
+                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                       1,
+                                       &uploadRegion);
+
+                VkImageMemoryBarrier bridgeToSrc{};
+                bridgeToSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                bridgeToSrc.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                bridgeToSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                bridgeToSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                bridgeToSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                bridgeToSrc.image = bridgeSourceImage;
+                bridgeToSrc.subresourceRange = bridgeToDst.subresourceRange;
+                bridgeToSrc.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                bridgeToSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+                vkCmdPipelineBarrier(commandBuffer,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     0,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &bridgeToSrc);
+
+                bridgeSourceLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            }
 
             const VkImageLayout oldSwapchainLayout = m_swapchainImageLayouts[imageIndex];
             VkImageMemoryBarrier swapchainToDst{};
@@ -1456,13 +2425,47 @@ namespace Rv
             copyRegion.dstOffset = {0, 0, 0};
             copyRegion.extent = {m_swapchainExtent.width, m_swapchainExtent.height, 1};
 
-            vkCmdCopyImage(commandBuffer,
-                           m_bridgeImage,
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           m_swapchainImages[imageIndex],
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1,
-                           &copyRegion);
+            if (useGpuBridgePath && m_gpuBridgeUsesBlit)
+            {
+                VkImageBlit blitRegion{};
+                blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blitRegion.srcSubresource.mipLevel = 0;
+                blitRegion.srcSubresource.baseArrayLayer = 0;
+                blitRegion.srcSubresource.layerCount = 1;
+                blitRegion.srcOffsets[0] = {0, 0, 0};
+                blitRegion.srcOffsets[1] = {
+                    static_cast<int32_t>(m_swapchainExtent.width),
+                    static_cast<int32_t>(m_swapchainExtent.height),
+                    1};
+                blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blitRegion.dstSubresource.mipLevel = 0;
+                blitRegion.dstSubresource.baseArrayLayer = 0;
+                blitRegion.dstSubresource.layerCount = 1;
+                blitRegion.dstOffsets[0] = {0, 0, 0};
+                blitRegion.dstOffsets[1] = {
+                    static_cast<int32_t>(m_swapchainExtent.width),
+                    static_cast<int32_t>(m_swapchainExtent.height),
+                    1};
+
+                vkCmdBlitImage(commandBuffer,
+                               bridgeSourceImage,
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               m_swapchainImages[imageIndex],
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               1,
+                               &blitRegion,
+                               VK_FILTER_LINEAR);
+            }
+            else
+            {
+                vkCmdCopyImage(commandBuffer,
+                               bridgeSourceImage,
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               m_swapchainImages[imageIndex],
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               1,
+                               &copyRegion);
+            }
 
             VkImageMemoryBarrier swapchainToPresent{};
             swapchainToPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1485,6 +2488,36 @@ namespace Rv
                                  nullptr,
                                  1,
                                  &swapchainToPresent);
+
+            if (useGpuBridgePath)
+            {
+                VkImageMemoryBarrier bridgeReleaseToExternal{};
+                bridgeReleaseToExternal.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                bridgeReleaseToExternal.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                bridgeReleaseToExternal.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                bridgeReleaseToExternal.srcQueueFamilyIndex = m_graphicsQueueFamily;
+                bridgeReleaseToExternal.dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
+                bridgeReleaseToExternal.image = bridgeSourceImage;
+                bridgeReleaseToExternal.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                bridgeReleaseToExternal.subresourceRange.baseMipLevel = 0;
+                bridgeReleaseToExternal.subresourceRange.levelCount = 1;
+                bridgeReleaseToExternal.subresourceRange.baseArrayLayer = 0;
+                bridgeReleaseToExternal.subresourceRange.layerCount = 1;
+                bridgeReleaseToExternal.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                bridgeReleaseToExternal.dstAccessMask = 0;
+
+                vkCmdPipelineBarrier(commandBuffer,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                     0,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &bridgeReleaseToExternal);
+                bridgeSourceLayout = VK_IMAGE_LAYOUT_GENERAL;
+            }
 
             m_swapchainImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         }
@@ -1522,8 +2555,101 @@ namespace Rv
         return true;
     }
 
+    void QTVulkanVideoDevice::destroyGpuBridgeResources()
+    {
+        if ((m_gpuBridgeGLFramebuffer != 0 || m_gpuBridgeGLTexture != 0 || m_gpuBridgeGLMemoryObject != 0) &&
+            m_bridgeSourceView)
+        {
+            m_bridgeSourceView->makeCurrent();
+            QOpenGLContext* context = QOpenGLContext::currentContext();
+            if (context)
+            {
+                GLInteropFunctions glFns;
+                GLSemaphoreInteropFunctions glSemaphoreFns;
+                std::string reason;
+                std::string semaphoreReason;
+                resolveGLInteropFunctions(context, glFns, reason);
+                resolveGLSemaphoreInteropFunctions(context, glSemaphoreFns, semaphoreReason);
+
+                if (glSemaphoreFns.deleteSemaphores)
+                {
+                    for (unsigned int semaphore : m_gpuBridgeGLReadySemaphores)
+                    {
+                        if (semaphore != 0)
+                            glSemaphoreFns.deleteSemaphores(1, &semaphore);
+                    }
+                    for (unsigned int semaphore : m_gpuBridgeGLDoneSemaphores)
+                    {
+                        if (semaphore != 0)
+                            glSemaphoreFns.deleteSemaphores(1, &semaphore);
+                    }
+                }
+
+                if (m_gpuBridgeGLFramebuffer != 0)
+                {
+                    glDeleteFramebuffers(1, &m_gpuBridgeGLFramebuffer);
+                    m_gpuBridgeGLFramebuffer = 0;
+                }
+                if (m_gpuBridgeGLTexture != 0)
+                {
+                    glDeleteTextures(1, &m_gpuBridgeGLTexture);
+                    m_gpuBridgeGLTexture = 0;
+                }
+                if (m_gpuBridgeGLMemoryObject != 0 && glFns.deleteMemoryObjects)
+                {
+                    glFns.deleteMemoryObjects(1, &m_gpuBridgeGLMemoryObject);
+                    m_gpuBridgeGLMemoryObject = 0;
+                }
+            }
+        }
+
+        if (m_device != VK_NULL_HANDLE)
+        {
+            if (m_gpuBridgeImage != VK_NULL_HANDLE)
+            {
+                vkDestroyImage(m_device, m_gpuBridgeImage, nullptr);
+                m_gpuBridgeImage = VK_NULL_HANDLE;
+            }
+
+            if (m_gpuBridgeImageMemory != VK_NULL_HANDLE)
+            {
+                vkFreeMemory(m_device, m_gpuBridgeImageMemory, nullptr);
+                m_gpuBridgeImageMemory = VK_NULL_HANDLE;
+            }
+            for (VkSemaphore semaphore : m_gpuBridgeVkReadySemaphores)
+            {
+                if (semaphore != VK_NULL_HANDLE)
+                    vkDestroySemaphore(m_device, semaphore, nullptr);
+            }
+            for (VkSemaphore semaphore : m_gpuBridgeVkDoneSemaphores)
+            {
+                if (semaphore != VK_NULL_HANDLE)
+                    vkDestroySemaphore(m_device, semaphore, nullptr);
+            }
+        }
+
+        m_gpuBridgeGLMemoryObject = 0;
+        m_gpuBridgeGLTexture = 0;
+        m_gpuBridgeGLFramebuffer = 0;
+        m_gpuBridgeGLReadySemaphores.clear();
+        m_gpuBridgeGLDoneSemaphores.clear();
+        m_gpuBridgeVkReadySemaphores.clear();
+        m_gpuBridgeVkDoneSemaphores.clear();
+        m_gpuBridgeAwaitVkDoneOnGl.clear();
+        m_gpuBridgeImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        m_gpuBridgeImageFormat = VK_FORMAT_UNDEFINED;
+        m_gpuBridgeImageMemorySize = 0;
+        m_gpuBridgeMechanism.clear();
+        m_gpuBridgeMode.clear();
+        m_gpuBridgeUsesBlit = false;
+        m_gpuBridgeSemaphoreSyncActive = false;
+        m_gpuBridgeActivationLogged = false;
+    }
+
     void QTVulkanVideoDevice::destroyBridgeResources()
     {
+        destroyGpuBridgeResources();
+
         if (m_device == VK_NULL_HANDLE)
             return;
 
@@ -1673,11 +2799,29 @@ namespace Rv
         m_bridgeCopySupported = false;
         m_bridgeUnavailableLogged = false;
         m_bridgeActivationLogged = false;
+        m_gpuBridgeActivationLogged = false;
         m_bridgeStatusLogged = false;
+        m_gpuBridgeRuntimeDisabled = false;
+        m_gpuBridgeDisableReason.clear();
+        m_vulkanExternalMemorySupported = false;
+        m_vulkanExternalMemoryFdSupported = false;
+        m_vulkanExternalSemaphoreSupported = false;
+        m_vulkanExternalSemaphoreFdSupported = false;
+        m_gpuBridgeBlitSupported = false;
+        m_gpuBridgeUsesBlit = false;
+        m_gpuBridgeSemaphoreSyncActive = false;
+        m_isRadvDevice = false;
         m_bridgeFrameCounter = 0;
         m_bridgeSourceWidth = 0;
         m_bridgeSourceHeight = 0;
         m_bridgePackPath.clear();
+        m_gpuBridgeMechanism.clear();
+        m_gpuBridgeMode.clear();
+        m_gpuBridgeGLReadySemaphores.clear();
+        m_gpuBridgeGLDoneSemaphores.clear();
+        m_gpuBridgeVkReadySemaphores.clear();
+        m_gpuBridgeVkDoneSemaphores.clear();
+        m_gpuBridgeAwaitVkDoneOnGl.clear();
         m_bridgePackedFrame.clear();
         m_currentFrame = 0;
         m_frameCounter = 0;
