@@ -58,7 +58,23 @@ namespace Rv
         assert(view);
     }
 
-    QTGLVideoDevice::~QTGLVideoDevice() { delete m_translator; }
+    QTGLVideoDevice::~QTGLVideoDevice()
+    {
+        if (m_renderFBO || m_renderColorTex)
+        {
+            // GLFBO/texture deletion needs the GL context current.
+            if (m_view && m_view->context() && m_view->context()->isValid())
+            {
+                m_view->makeCurrent();
+                delete m_renderFBO;
+                if (m_renderColorTex)
+                    glDeleteTextures(1, &m_renderColorTex);
+            }
+            m_renderFBO = nullptr;
+            m_renderColorTex = 0;
+        }
+        delete m_translator;
+    }
 
     void QTGLVideoDevice::setWidget(QOpenGLWidget* widget)
     {
@@ -82,9 +98,20 @@ namespace Rv
             m_view->makeCurrent();
             TWK_GLDEBUG;
 
-            GLint widgetFBO = m_view->defaultFramebufferObject();
-            if (widgetFBO != 0)
-                glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, widgetFBO);
+            if (m_highPrecisionRender)
+            {
+                // Render into the high-precision offscreen FBO instead of the
+                // 8-bit widget framebuffer.
+                ensureHighPrecisionFBO();
+                if (m_renderFBO)
+                    m_renderFBO->bind();
+            }
+            else
+            {
+                GLint widgetFBO = m_view->defaultFramebufferObject();
+                if (widgetFBO != 0)
+                    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, widgetFBO);
+            }
             TWK_GLDEBUG;
         }
 
@@ -92,8 +119,70 @@ namespace Rv
             GLVideoDevice::makeCurrent();
     }
 
+    void QTGLVideoDevice::setHighPrecisionRender(bool enable) { m_highPrecisionRender = enable; }
+
+    void QTGLVideoDevice::ensureHighPrecisionFBO() const
+    {
+        if (!m_highPrecisionRender || !m_view)
+            return;
+
+        const int w = std::max(1, static_cast<int>(width()));   // already DPR-scaled
+        const int h = std::max(1, static_cast<int>(height()));
+        if (m_renderFBO && m_renderFBOWidth == w && m_renderFBOHeight == h)
+            return;
+
+        // (Re)create the FBO + its RGBA16F color texture at the new size.
+        delete m_renderFBO;
+        m_renderFBO = nullptr;
+        if (m_renderColorTex)
+        {
+            glDeleteTextures(1, &m_renderColorTex);
+            m_renderColorTex = 0;
+        }
+
+        glGenTextures(1, &m_renderColorTex);
+        glBindTexture(GL_TEXTURE_2D, m_renderColorTex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F_ARB, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // GLFBO with owner=false on the texture (we delete it ourselves).
+        m_renderFBO = new GLFBO(static_cast<size_t>(w), static_cast<size_t>(h), GL_RGBA16F_ARB);
+        m_renderFBO->attachColorTexture(GL_TEXTURE_2D, m_renderColorTex);
+        m_renderFBOWidth = w;
+        m_renderFBOHeight = h;
+    }
+
+    GLFBO* QTGLVideoDevice::defaultFBO()
+    {
+        if (m_highPrecisionRender)
+        {
+            ensureHighPrecisionFBO();
+            if (m_renderFBO)
+                return m_renderFBO;
+        }
+        return GLVideoDevice::defaultFBO();
+    }
+
+    const GLFBO* QTGLVideoDevice::defaultFBO() const
+    {
+        if (m_highPrecisionRender)
+        {
+            ensureHighPrecisionFBO();
+            if (m_renderFBO)
+                return m_renderFBO;
+        }
+        return GLVideoDevice::defaultFBO();
+    }
+
     GLuint QTGLVideoDevice::fboID() const
     {
+        if (m_highPrecisionRender && m_renderFBO)
+            return m_renderFBO->fboID();
+
         if (m_view)
             return m_view->defaultFramebufferObject();
 

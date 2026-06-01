@@ -9,6 +9,7 @@
 #include <RvCommon/QTVulkanVideoDevice.h>
 
 #include <RvCommon/GLView.h>
+#include <RvCommon/QTGLVideoDevice.h>
 
 #include <QGuiApplication>
 #include <QImage>
@@ -399,6 +400,13 @@ namespace Rv
         }
 
         m_bridgeSourceView = sourceView;
+
+        // Render the session into a high-precision (RGBA16F) FBO so >8-bit content
+        // keeps its precision through the bridge into the 10-bit swapchain, instead
+        // of the 8-bit QOpenGLWidget default framebuffer.
+        if (m_bridgeSourceView && m_bridgeSourceView->videoDevice())
+            m_bridgeSourceView->videoDevice()->setHighPrecisionRender(true);
+
         m_bridgeUnavailableLogged = false;
         m_bridgeActivationLogged = false;
         m_gpuBridgeActivationLogged = false;
@@ -2022,7 +2030,41 @@ namespace Rv
 
         // Match glReadPixels-style completion behavior before reading from the source framebuffer.
         glFinish();
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(m_bridgeSourceView->defaultFramebufferObject()));
+        // Read from the device's active render target (the high-precision RGBA16F FBO when the
+        // bridge is active, otherwise the widget default framebuffer). The blit into the 10-bit
+        // GL_RGB10_A2 bridge texture performs the single, final 16F->10-bit quantization.
+        const GLuint sourceFbo = m_bridgeSourceView->videoDevice()
+                                     ? static_cast<GLuint>(m_bridgeSourceView->videoDevice()->fboID())
+                                     : static_cast<GLuint>(m_bridgeSourceView->defaultFramebufferObject());
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFbo);
+
+        // Optional precision diagnostic (enable with RV_BRIDGE_PRECISION_DIAG=1): read a middle
+        // scanline of the source render target as float and count distinct 10-bit vs 8-bit levels.
+        // A true >8-bit source yields many more distinct 10-bit levels than 8-bit (which caps at
+        // ~256, every 10-bit value a multiple of 4). Logged for the first few frames only.
+        static const bool s_precisionDiag = (getenv("RV_BRIDGE_PRECISION_DIAG") != nullptr);
+        if (s_precisionDiag && m_bridgeFrameCounter < 3 && readWidth > 1 && readHeight > 1)
+        {
+            std::vector<float> scan(static_cast<size_t>(readWidth) * 4u, 0.0f);
+            glReadPixels(0, readHeight / 2, readWidth, 1, GL_RGBA, GL_FLOAT, scan.data());
+            std::set<int> levels10, levels8;
+            float minR = 1e9f, maxR = -1e9f;
+            for (int i = 0; i < readWidth; ++i)
+            {
+                const float r = scan[static_cast<size_t>(i) * 4u];
+                minR = std::min(minR, r);
+                maxR = std::max(maxR, r);
+                const float c = std::max(0.0f, std::min(1.0f, r));
+                levels10.insert(static_cast<int>(c * 1023.0f + 0.5f));
+                levels8.insert(static_cast<int>(c * 255.0f + 0.5f));
+            }
+            std::ostringstream d;
+            d << "PRECISION DIAG frame " << m_bridgeFrameCounter << ": sourceFbo=" << sourceFbo
+              << " width=" << readWidth << " distinct10bit=" << levels10.size()
+              << " distinct8bit=" << levels8.size() << " minR=" << minR << " maxR=" << maxR;
+            logInfo(d.str());
+        }
+
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_gpuBridgeGLFramebuffer);
         glBlitFramebuffer(0, 0, readWidth, readHeight, 0, dstHeight, dstWidth, 0, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previousReadFramebuffer));

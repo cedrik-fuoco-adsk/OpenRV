@@ -408,8 +408,18 @@ namespace Rv
 
         makeCurrent();
 
+        // Read from the video device's active render target. With the high-precision
+        // bridge FBO enabled this is the RGBA16F FBO, not the (unused) 8-bit widget
+        // default framebuffer; reading as 8-bit lets the driver downconvert.
+        GLint previousReadFramebuffer = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFramebuffer);
+        const GLuint sourceFbo = m_videoDevice ? static_cast<GLuint>(m_videoDevice->fboID()) : 0;
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFbo);
+
         QImage image(w, h, QImage::Format_RGBA8888);
         glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, image.bits());
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previousReadFramebuffer));
 
         return image;
     }

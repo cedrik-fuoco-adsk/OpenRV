@@ -68,6 +68,20 @@ namespace Rv
 
         virtual GLuint fboID() const;
 
+        //
+        //  High-precision (RGBA16F) offscreen render target.
+        //
+        //  Opt-in. When enabled the session renders into a 16-bit float FBO
+        //  instead of the 8-bit QOpenGLWidget default framebuffer, so >8-bit
+        //  content keeps its precision (mirrors the macOS QTMetalVideoDevice
+        //  path). Used by the Linux Vulkan bridge backend; off by default so the
+        //  normal on-screen GL path and other platforms are unaffected.
+        //
+        void setHighPrecisionRender(bool enable);
+
+        virtual TwkGLF::GLFBO* defaultFBO() override;
+        virtual const TwkGLF::GLFBO* defaultFBO() const override;
+
         bool isWorkerDevice() const { return Capabilities(capabilities()) == NoCapabilities; }
 
         virtual void setPhysicalDevice(VideoDevice* d);
@@ -79,6 +93,10 @@ namespace Rv
     protected:
         QTGLVideoDevice(const std::string& name, QOpenGLWidget* view);
 
+        // Lazily (re)create the RGBA16F render FBO sized to the view; no-op when
+        // high-precision rendering is disabled or the size is unchanged.
+        void ensureHighPrecisionFBO() const;
+
     protected:
         int m_x;
         int m_y;
@@ -86,6 +104,12 @@ namespace Rv
         float m_devicePixelRatio{1.0f};
         QOpenGLWidget* m_view;
         QTTranslator* m_translator;
+
+        bool m_highPrecisionRender{false};
+        mutable TwkGLF::GLFBO* m_renderFBO{nullptr};
+        mutable unsigned int m_renderColorTex{0}; // attached to m_renderFBO; GLFBO does not own it
+        mutable int m_renderFBOWidth{0};
+        mutable int m_renderFBOHeight{0};
     };
 
 } // namespace Rv
