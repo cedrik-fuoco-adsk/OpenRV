@@ -13,6 +13,7 @@
 #include <QCoreApplication>
 #include <QColor>
 #include <QPalette>
+#include <QSurfaceFormat>
 #include <QVBoxLayout>
 #include <QWindow>
 
@@ -36,6 +37,17 @@ namespace Rv
 
         m_presentationWindow->setObjectName("VulkanPresentationWindow");
         m_presentationWindow->setSurfaceType(QSurface::VulkanSurface);
+
+        // Request a 10-bit (depth-30) X visual for the presentation window. Without this the xcb
+        // platform backs the window with the default depth-24 (8-bit) visual, and the 10-bit Vulkan
+        // swapchain is truncated to 8-bit when presented/composited into that window. Must be set
+        // before the native window is created (createWindowContainer below triggers creation).
+        QSurfaceFormat presentationFormat = m_presentationWindow->format();
+        presentationFormat.setRedBufferSize(10);
+        presentationFormat.setGreenBufferSize(10);
+        presentationFormat.setBlueBufferSize(10);
+        presentationFormat.setAlphaBufferSize(2);
+        m_presentationWindow->setFormat(presentationFormat);
 
         m_windowContainer = QWidget::createWindowContainer(m_presentationWindow, this);
         m_windowContainer->setFocusPolicy(Qt::NoFocus);

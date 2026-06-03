@@ -52,6 +52,8 @@ namespace Rv
         bool ensureBridgeResources();
         bool ensureGpuBridgeResources();
         bool prepareBridgeFrameData();
+        bool prepareTestPatternFrameData();
+        bool shouldLogBridgeFrame() const;
         bool prepareGpuBridgeFrameData(std::string& failureReason);
         bool recordCommandBuffer(VkCommandBuffer commandBuffer,
                                  uint32_t imageIndex,
@@ -74,6 +76,7 @@ namespace Rv
         bool m_bridgeCopySupported{false};
         bool m_bridgeUnavailableLogged{false};
         bool m_bridgeActivationLogged{false}; // CPU bridge activation
+        bool m_testPatternLogged{false};      // 10-bit A/B test pattern
         bool m_gpuBridgeActivationLogged{false};
         bool m_bridgeStatusLogged{false};
         bool m_gpuBridgeRuntimeDisabled{false};

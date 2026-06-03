@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -404,8 +405,13 @@ namespace Rv
         // Render the session into a high-precision (RGBA16F) FBO so >8-bit content
         // keeps its precision through the bridge into the 10-bit swapchain, instead
         // of the 8-bit QOpenGLWidget default framebuffer.
+        // Set RV_BRIDGE_HIGH_PRECISION=0 to force the legacy 8-bit render target for
+        // A/B precision testing (the bridge then carries only 8-bit precision).
+        const char* hpEnv = getenv("RV_BRIDGE_HIGH_PRECISION");
+        const bool highPrecision = !(hpEnv && std::string(hpEnv) == "0");
         if (m_bridgeSourceView && m_bridgeSourceView->videoDevice())
-            m_bridgeSourceView->videoDevice()->setHighPrecisionRender(true);
+            m_bridgeSourceView->videoDevice()->setHighPrecisionRender(highPrecision);
+        logInfo(std::string("High-precision (RGBA16F) render target: ") + (highPrecision ? "enabled" : "disabled (RV_BRIDGE_HIGH_PRECISION=0)"));
 
         m_bridgeUnavailableLogged = false;
         m_bridgeActivationLogged = false;
@@ -500,7 +506,19 @@ namespace Rv
 
         bool useBridgePath = false;
         bool useGpuBridgePath = false;
-        if (m_bridgeCopySupported && m_bridgeSourceView && ensureBridgeResources())
+
+        // 10-bit verification test pattern: when RV_VULKAN_TESTPATTERN is set, bypass the GL
+        // bridge entirely and synthesize a known A/B gradient straight into the swapchain at exact
+        // code values. This isolates the swapchain/scanout/monitor chain from IPCore and GL source
+        // precision so the only variable left is whether the display actually shows 10-bit. Falls
+        // through to the normal recordCommandBuffer/submit path below with the CPU staging copy.
+        static const bool s_testPattern = (getenv("RV_VULKAN_TESTPATTERN") != nullptr);
+        if (s_testPattern && m_bridgeCopySupported && ensureBridgeResources())
+        {
+            useBridgePath = prepareTestPatternFrameData();
+        }
+
+        if (!s_testPattern && m_bridgeCopySupported && m_bridgeSourceView && ensureBridgeResources())
         {
             if (!m_gpuBridgeRuntimeDisabled &&
                 m_gpuBridgeImage != VK_NULL_HANDLE &&
@@ -530,7 +548,7 @@ namespace Rv
             }
         }
 
-        if (!useBridgePath && m_bridgeCopySupported && m_bridgeSourceView && ensureBridgeResources())
+        if (!s_testPattern && !useBridgePath && m_bridgeCopySupported && m_bridgeSourceView && ensureBridgeResources())
         {
             useBridgePath = prepareBridgeFrameData();
             if (useBridgePath)
@@ -688,6 +706,21 @@ namespace Rv
         {
             logError("XOpenDisplay failed while creating Vulkan surface");
             return false;
+        }
+
+        // Report the X visual depth backing the presentation window. depth 30 = a 10-bit RGB visual
+        // (10-bit can survive to scanout); depth 24 = an 8-bit visual that truncates the 10-bit
+        // swapchain on present, which collapses the output to 8-bit no matter how good the swapchain.
+        XWindowAttributes winAttrs{};
+        if (XGetWindowAttributes(m_x11Display, static_cast<Window>(windowId), &winAttrs))
+        {
+            std::ostringstream d;
+            d << "Vulkan presentation X window depth=" << winAttrs.depth
+              << " (depth 30 => 10-bit visual; depth 24 => 8-bit visual that truncates 10-bit on present)";
+            if (winAttrs.depth < 30)
+                logWarn(d.str());
+            else
+                logInfo(d.str());
         }
 
         VkXlibSurfaceCreateInfoKHR surfaceCreateInfo{};
@@ -1639,9 +1672,13 @@ namespace Rv
             return true;
         }
 
-        // glTexStorageMem2DEXT assumes a tightly-packed linear layout (rowPitch == width*bpp,
-        // offset 0). If the driver padded the linear row pitch, the GL import would shear the
-        // frame, so fall back to the CPU bridge rather than presenting corruption.
+        // The driver may pad the linear image's row pitch for alignment (e.g. when
+        // width*bpp is not 256-aligned). glTexStorageMem2DEXT lays its rows out tightly,
+        // so to match the shared memory we size the GL texture to the ACTUAL pitch
+        // (rowPitch/bpp texels wide); only the real `width` columns are ever written by the
+        // GL blit and copied to the swapchain. This keeps the GPU 10-bit path active at any
+        // window size instead of falling back to the 8-bit CPU bridge.
+        GLsizei interopTexWidth = static_cast<GLsizei>(m_swapchainExtent.width);
         {
             VkImageSubresource interopSubresource{};
             interopSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1649,18 +1686,20 @@ namespace Rv
             interopSubresource.arrayLayer = 0;
             VkSubresourceLayout interopLayout{};
             vkGetImageSubresourceLayout(m_device, interopImage, &interopSubresource, &interopLayout);
-            const VkDeviceSize expectedRowPitch =
-                static_cast<VkDeviceSize>(m_swapchainExtent.width) * 4u; // both interop formats are 32-bit
-            if (interopLayout.offset != 0 || interopLayout.rowPitch != expectedRowPitch)
+            const uint32_t bytesPerPixel = 4u; // both interop formats are 32-bit
+            const VkDeviceSize minRowPitch = static_cast<VkDeviceSize>(m_swapchainExtent.width) * bytesPerPixel;
+            if (interopLayout.offset != 0 || (interopLayout.rowPitch % bytesPerPixel) != 0 ||
+                interopLayout.rowPitch < minRowPitch)
             {
                 std::ostringstream reason;
-                reason << "Linear GPU bridge image is not tightly packed (offset=" << interopLayout.offset
-                       << " rowPitch=" << interopLayout.rowPitch << " expected=" << expectedRowPitch << ").";
+                reason << "Unexpected linear GPU bridge layout (offset=" << interopLayout.offset
+                       << " rowPitch=" << interopLayout.rowPitch << " min=" << minRowPitch << ").";
                 vkFreeMemory(m_device, interopMemory, nullptr);
                 vkDestroyImage(m_device, interopImage, nullptr);
                 disableGpuBridge(reason.str());
                 return true;
             }
+            interopTexWidth = static_cast<GLsizei>(interopLayout.rowPitch / bytesPerPixel);
         }
 
         PFN_vkGetMemoryFdKHR vkGetMemoryFd =
@@ -1746,7 +1785,7 @@ namespace Rv
         glFns.texStorageMem2D(GL_TEXTURE_2D,
                               1,
                               interopGLInternalFormat,
-                              static_cast<GLsizei>(m_swapchainExtent.width),
+                              interopTexWidth,
                               static_cast<GLsizei>(m_swapchainExtent.height),
                               glMemoryObject,
                               0);
@@ -2101,18 +2140,21 @@ namespace Rv
         m_bridgeSourceWidth = static_cast<uint32_t>(readWidth);
         m_bridgeSourceHeight = static_cast<uint32_t>(readHeight);
 
-        std::ostringstream frameLog;
-        frameLog << "Bridge frame " << m_bridgeFrameCounter
-                 << ": source=" << m_bridgeSourceWidth << "x" << m_bridgeSourceHeight
-                 << " sourceFormat=" << (m_gpuBridgeMode == "10-bit-copy" ? "GL_RGB10_A2" : "GL_RGBA8")
-                 << " destination=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height
-                 << " bridgeFormat=" << formatName(m_gpuBridgeImageFormat)
-                 << " swapchainFormat=" << formatName(m_swapchainImageFormat)
-                 << " colorSpace=" << colorSpaceName(m_swapchainColorSpace)
-                 << " syncSlot=" << syncIndex
-                 << " packPath=gpu-interop mode=" << m_gpuBridgeMode
-                 << " transferOp=" << (m_gpuBridgeUsesBlit ? "vkCmdBlitImage" : "vkCmdCopyImage");
-        logInfo(frameLog.str());
+        if (shouldLogBridgeFrame())
+        {
+            std::ostringstream frameLog;
+            frameLog << "Bridge frame " << m_bridgeFrameCounter
+                     << ": source=" << m_bridgeSourceWidth << "x" << m_bridgeSourceHeight
+                     << " sourceFormat=" << (m_gpuBridgeMode == "10-bit-copy" ? "GL_RGB10_A2" : "GL_RGBA8")
+                     << " destination=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height
+                     << " bridgeFormat=" << formatName(m_gpuBridgeImageFormat)
+                     << " swapchainFormat=" << formatName(m_swapchainImageFormat)
+                     << " colorSpace=" << colorSpaceName(m_swapchainColorSpace)
+                     << " syncSlot=" << syncIndex
+                     << " packPath=gpu-interop mode=" << m_gpuBridgeMode
+                     << " transferOp=" << (m_gpuBridgeUsesBlit ? "vkCmdBlitImage" : "vkCmdCopyImage");
+            logInfo(frameLog.str());
+        }
         ++m_bridgeFrameCounter;
 
         return true;
@@ -2244,15 +2286,235 @@ namespace Rv
         std::memcpy(mapped, m_bridgePackedFrame.data(), m_bridgePackedFrame.size());
         vkUnmapMemory(m_device, m_bridgeStagingMemory);
 
-        std::ostringstream frameLog;
-        frameLog << "Bridge frame " << m_bridgeFrameCounter
-                 << ": source=" << m_bridgeSourceWidth << "x" << m_bridgeSourceHeight
-                 << " pixelFormat=GL_RGBA8 destination=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height
-                 << " swapchainFormat=" << formatName(m_swapchainImageFormat)
-                 << " colorSpace=" << colorSpaceName(m_swapchainColorSpace)
-                 << " packPath=" << m_bridgePackPath;
-        logInfo(frameLog.str());
+        if (shouldLogBridgeFrame())
+        {
+            std::ostringstream frameLog;
+            frameLog << "Bridge frame " << m_bridgeFrameCounter
+                     << ": source=" << m_bridgeSourceWidth << "x" << m_bridgeSourceHeight
+                     << " pixelFormat=GL_RGBA8 destination=" << m_swapchainExtent.width << "x" << m_swapchainExtent.height
+                     << " swapchainFormat=" << formatName(m_swapchainImageFormat)
+                     << " colorSpace=" << colorSpaceName(m_swapchainColorSpace)
+                     << " packPath=" << m_bridgePackPath;
+            logInfo(frameLog.str());
+        }
         ++m_bridgeFrameCounter;
+
+        return true;
+    }
+
+    bool QTVulkanVideoDevice::shouldLogBridgeFrame() const
+    {
+        // Per-frame "Bridge frame" logging is spammy at 60 fps. Log the first few frames (to confirm
+        // the path is active and report dimensions/format), then only a periodic heartbeat. Set
+        // RV_VULKAN_BRIDGE_FRAME_LOG=1 to restore full per-frame logging.
+        static const bool s_verbose = (getenv("RV_VULKAN_BRIDGE_FRAME_LOG") != nullptr);
+        if (s_verbose)
+            return true;
+        return m_bridgeFrameCounter < 3 || (m_bridgeFrameCounter % 600ull) == 0;
+    }
+
+    bool QTVulkanVideoDevice::prepareTestPatternFrameData()
+    {
+        if (m_bridgeStagingBuffer == VK_NULL_HANDLE || m_bridgeStagingMemory == VK_NULL_HANDLE)
+            return false;
+
+        const uint32_t W = m_swapchainExtent.width;
+        const uint32_t H = m_swapchainExtent.height;
+        if (W < 2 || H < 2)
+            return false;
+
+        // Gradient window in normalized [0,1]. Defaults give ~16 distinct 8-bit codes across the
+        // full width, so 8-bit banding is unmistakable while the same ramp at 10-bit (~64 codes)
+        // looks smooth. Override with RV_VULKAN_TESTPATTERN_BASE / _SPAN (floats).
+        auto envFloat = [](const char* name, float dflt) {
+            const char* v = getenv(name);
+            return v ? static_cast<float>(atof(v)) : dflt;
+        };
+        const float base = std::max(0.0f, std::min(1.0f, envFloat("RV_VULKAN_TESTPATTERN_BASE", 0.20f)));
+        const float span = std::max(0.0f, std::min(1.0f - base, envFloat("RV_VULKAN_TESTPATTERN_SPAN", 0.0627f)));
+
+        // Optional animation: RV_VULKAN_TESTPATTERN_ANIM=1 slowly sweeps the whole gradient up and
+        // down by up to one window's worth of brightness, so band boundaries crawl across the
+        // screen. Moving edges make residual 8-bit banding far easier to spot than a static ramp:
+        // the 8-bit top band crawls in coarse jumps, a true 10-bit bottom band crawls finely/smoothly.
+        // RV_VULKAN_TESTPATTERN_SPEED sets cycles-fraction advanced per frame (default ~4s/cycle@60fps).
+        const bool anim = (getenv("RV_VULKAN_TESTPATTERN_ANIM") != nullptr);
+        const float speed = envFloat("RV_VULKAN_TESTPATTERN_SPEED", 0.004f);
+        float animOffset = 0.0f;
+        if (anim)
+        {
+            const float phase = static_cast<float>(static_cast<double>(m_frameCounter) * speed);
+            const float fp = phase - std::floor(phase);              // 0..1
+            const float tri = 1.0f - std::fabs(2.0f * fp - 1.0f);    // 0..1..0 triangle
+            animOffset = span * tri;
+        }
+
+        // Flat-patch "seam" mode: RV_VULKAN_TESTPATTERN=patches draws a row of large adjacent flat
+        // patches, each one RV_VULKAN_TESTPATTERN_STEP (default 1) ten-bit code brighter than the
+        // last, separated by thin black lines. As with the gradient, TOP half = 8-bit reference,
+        // BOTTOM half = full precision. On true 10-bit the bottom row shows a faint clean seam
+        // between EVERY patch while the top collapses runs of ~4 patches into one shade; if the
+        // panel is 8-bit, top and bottom collapse identically. "Bottom has more seams than top"
+        // is an easy area-comparison yes/no, far less subjective than gradient smoothness.
+        const char* tpEnv = getenv("RV_VULKAN_TESTPATTERN");
+        const std::string tpMode = tpEnv ? std::string(tpEnv) : std::string();
+        const bool patchMode = (tpMode == "patches" || tpMode == "seam" || tpMode == "patch");
+        const int patchCount = std::max(2, static_cast<int>(envFloat("RV_VULKAN_TESTPATTERN_PATCHES", 32.0f)));
+        const int stepCode = std::max(1, static_cast<int>(envFloat("RV_VULKAN_TESTPATTERN_STEP", 1.0f)));
+        const int base10 = static_cast<int>(clampToRange(static_cast<uint32_t>(base * 1023.0f + 0.5f), 0u, 1023u));
+        const int patchPixW = std::max(1, static_cast<int>(W) / patchCount);
+        const int sepPixW = (patchPixW > 8) ? 2 : 0; // thin black separators when patches are wide enough
+
+        const bool is10BitFormat = m_swapchainImageFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+                                   m_swapchainImageFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32;
+
+        const size_t pixelCount = static_cast<size_t>(W) * static_cast<size_t>(H);
+        m_bridgePackedFrame.resize(pixelCount * sizeof(uint32_t));
+
+        // Two stacked horizontal bands sharing the same left->right gray ramp:
+        //   TOP half    : ramp quantized to 8-bit, then expanded to the channel depth (8-bit ref).
+        //   BOTTOM half : full-precision ramp at the channel depth.
+        // A thin black divider separates them. On a true 10-bit chain the bottom band is visibly
+        // smoother than the top; on an 8-bit chain (no dithering) the two bands look identical.
+        // Gray (equal channels) makes A2R10G10B10 vs A2B10G10R10 packing irrelevant.
+        const uint32_t dividerY0 = H / 2u - 1u;
+        const uint32_t dividerY1 = H / 2u + 1u;
+
+        for (uint32_t y = 0; y < H; ++y)
+        {
+            const bool topBand = (y < H / 2u);
+            const bool divider = (y >= dividerY0 && y <= dividerY1);
+            uint8_t* dstRow = m_bridgePackedFrame.data() + static_cast<size_t>(y) * static_cast<size_t>(W) * 4u;
+
+            for (uint32_t x = 0; x < W; ++x)
+            {
+                float targetN;
+                bool forceBlack = divider;
+                if (patchMode)
+                {
+                    int idx = static_cast<int>(x) / patchPixW;
+                    if (idx > patchCount - 1)
+                        idx = patchCount - 1;
+                    const int localX = static_cast<int>(x) - idx * patchPixW;
+                    if (idx > 0 && localX < sepPixW)
+                        forceBlack = true; // black seam between patches
+                    const int code10 =
+                        static_cast<int>(clampToRange(static_cast<uint32_t>(base10 + idx * stepCode), 0u, 1023u));
+                    targetN = static_cast<float>(code10) / 1023.0f;
+                }
+                else
+                {
+                    const float t = static_cast<float>(x) / static_cast<float>(W - 1u);
+                    targetN = base + span * t;
+                }
+
+                float out = std::max(0.0f, std::min(1.0f, targetN + animOffset)); // normalized value
+
+                if (forceBlack)
+                    out = 0.0f;
+                else if (topBand)
+                {
+                    // Round-trip through 8-bit: caps this band at 256 levels even when carried by a
+                    // 10-bit swapchain, so it is a fixed 8-bit reference regardless of panel depth.
+                    const int code8 = static_cast<int>(out * 255.0f + 0.5f);
+                    out = static_cast<float>(code8) / 255.0f;
+                }
+
+                uint8_t* dstPixel = dstRow + static_cast<size_t>(x) * 4u;
+                if (is10BitFormat)
+                {
+                    const uint32_t v10 = clampToRange(static_cast<uint32_t>(out * 1023.0f + 0.5f), 0u, 1023u);
+                    // Gray: identical channels, so the 30/20/10/0 bit packing is order-independent.
+                    const uint32_t packed = (3u << 30) | (v10 << 20) | (v10 << 10) | v10;
+                    std::memcpy(dstPixel, &packed, sizeof(uint32_t));
+                }
+                else
+                {
+                    const uint8_t v8 =
+                        static_cast<uint8_t>(clampToRange(static_cast<uint32_t>(out * 255.0f + 0.5f), 0u, 255u));
+                    dstPixel[0] = v8;
+                    dstPixel[1] = v8;
+                    dstPixel[2] = v8;
+                    dstPixel[3] = 255;
+                }
+            }
+        }
+
+        void* mapped = nullptr;
+        const VkResult mapResult = vkMapMemory(
+            m_device, m_bridgeStagingMemory, 0, static_cast<VkDeviceSize>(m_bridgePackedFrame.size()), 0, &mapped);
+        if (mapResult != VK_SUCCESS || !mapped)
+        {
+            logError(std::string("vkMapMemory(test pattern staging) failed: ") + vkResultString(mapResult));
+            return false;
+        }
+        std::memcpy(mapped, m_bridgePackedFrame.data(), m_bridgePackedFrame.size());
+        vkUnmapMemory(m_device, m_bridgeStagingMemory);
+
+        m_bridgeSourceWidth = W;
+        m_bridgeSourceHeight = H;
+
+        if (!m_testPatternLogged && patchMode)
+        {
+            std::set<int> distinct8;
+            for (int i = 0; i < patchCount; ++i)
+            {
+                const int code10 = static_cast<int>(clampToRange(static_cast<uint32_t>(base10 + i * stepCode), 0u, 1023u));
+                distinct8.insert(static_cast<int>(code10 / 1023.0f * 255.0f + 0.5f));
+            }
+
+            // Objective proof: count distinct 10-bit codes actually written into the buffer about to
+            // be presented, on one scanline from each half. For A2x10x10x10 the low 10 bits hold one
+            // (gray) channel. If bottomRowCodes >> topRowCodes here but the screen shows them equal,
+            // the truncation is strictly downstream of this buffer (scanout/link/panel), not in RV.
+            auto countRowCodes = [&](uint32_t y) -> int {
+                if (!is10BitFormat || y >= H)
+                    return -1;
+                std::set<int> codes;
+                const uint8_t* row = m_bridgePackedFrame.data() + static_cast<size_t>(y) * static_cast<size_t>(W) * 4u;
+                for (uint32_t x = 0; x < W; ++x)
+                {
+                    uint32_t p = 0;
+                    std::memcpy(&p, row + static_cast<size_t>(x) * 4u, sizeof(uint32_t));
+                    codes.insert(static_cast<int>(p & 0x3FFu));
+                }
+                return static_cast<int>(codes.size());
+            };
+            const int topRowCodes = countRowCodes(H / 4u);
+            const int bottomRowCodes = countRowCodes(3u * H / 4u);
+
+            std::ostringstream d;
+            d << "10-BIT TEST PATTERN active: PATCH/seam mode " << W << "x" << H
+              << " swapchainFormat=" << formatName(m_swapchainImageFormat) << " patches=" << patchCount
+              << " base10=" << base10 << " step=" << stepCode << "LSB patchWidthPx=" << patchPixW
+              << " => 10-bit shows " << patchCount << " distinct shades, 8-bit collapses to "
+              << distinct8.size() << ". BOTTOM=full " << (is10BitFormat ? "10-bit" : "8-bit")
+              << ", TOP=8-bit reference. Bottom row shows MORE seams than top => true 10-bit;"
+              << " top and bottom identical => 8-bit output. anim=" << (anim ? "on" : "off") << "."
+              << " BUFFER distinct codes presented this frame: topRow=" << topRowCodes
+              << " bottomRow=" << bottomRowCodes
+              << " (bottom>>top here proves RV emits 10-bit; equal-on-screen => downstream truncation).";
+            logInfo(d.str());
+            m_testPatternLogged = true;
+        }
+        else if (!m_testPatternLogged)
+        {
+            const int code8lo = static_cast<int>(base * 255.0f + 0.5f);
+            const int code8hi = static_cast<int>((base + span) * 255.0f + 0.5f);
+            const int code10lo = static_cast<int>(base * 1023.0f + 0.5f);
+            const int code10hi = static_cast<int>((base + span) * 1023.0f + 0.5f);
+            std::ostringstream d;
+            d << "10-BIT TEST PATTERN active: A/B gray gradient " << W << "x" << H
+              << " swapchainFormat=" << formatName(m_swapchainImageFormat) << " normalized=[" << base << ","
+              << (base + span) << "]"
+              << " 8bit-codes=[" << code8lo << ".." << code8hi << "] (" << (code8hi - code8lo + 1) << " levels)"
+              << " 10bit-codes=[" << code10lo << ".." << code10hi << "] (" << (code10hi - code10lo + 1) << " levels)."
+              << " TOP=8-bit reference, BOTTOM=full " << (is10BitFormat ? "10-bit" : "8-bit")
+              << " anim=" << (anim ? "on" : "off")
+              << ". True 10-bit => bottom band smoother than top; identical bands => 8-bit output.";
+            logInfo(d.str());
+            m_testPatternLogged = true;
+        }
 
         return true;
     }
