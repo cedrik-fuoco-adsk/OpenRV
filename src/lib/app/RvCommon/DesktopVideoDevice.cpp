@@ -36,7 +36,7 @@ namespace Rv
     using namespace TwkGLF;
     using namespace TwkApp;
 
-    DesktopVideoDevice::DesktopVideoDevice(VideoModule* m, const std::string& name, int screen, const QTGLVideoDevice* glViewShared)
+    DesktopVideoDevice::DesktopVideoDevice(VideoModule* m, const std::string& name, int screen, const TwkGLF::GLVideoDevice* glViewShared)
         : GLBindableVideoDevice(m, name, ImageOutput | NormalizedCoordinates)
         , m_viewDevice(0)
         , m_share(glViewShared)
@@ -157,10 +157,30 @@ namespace Rv
     {
         TWK_GLDEBUG;
 
-        QSurfaceFormat fmt = shareDevice()->widget()->format();
+        //
+        //  The share device is the controller's main view device. On the GL
+        //  main-view path it is a QTGLVideoDevice, from which we take the exact
+        //  surface format and the QOpenGLWidget to share GL context with. On the
+        //  Vulkan main-view path it is a QTVulkanVideoDevice, which has no
+        //  QOpenGLWidget; there we use a default surface format and no explicit
+        //  share widget. Cross-context texture visibility is still guaranteed
+        //  because the app enables Qt::AA_ShareOpenGLContexts (see main.cpp), so
+        //  the ScreenView's context joins the global share group either way.
+        //
+
+        QSurfaceFormat fmt = QSurfaceFormat::defaultFormat();
+        QOpenGLWidget* shareWidget = nullptr;
+
+        if (const QTGLVideoDevice* glShare = dynamic_cast<const QTGLVideoDevice*>(shareDevice()))
+        {
+            shareWidget = glShare->widget();
+            if (shareWidget)
+                fmt = shareWidget->format();
+        }
+
         fmt.setSwapInterval(m_vsync ? 1 : 0);
 
-        ScreenView* vw = new ScreenView(fmt, 0, shareDevice()->widget(), Qt::Window);
+        ScreenView* vw = new ScreenView(fmt, 0, shareWidget, Qt::Window);
         setViewWidget(vw);
 
         QTGLVideoDevice* vd = new QTGLVideoDevice(0, "local view", vw);
@@ -916,7 +936,7 @@ namespace Rv
     }
 #endif
 
-    std::vector<VideoDevice*> DesktopVideoDevice::createDesktopVideoDevices(TwkApp::VideoModule* module, const QTGLVideoDevice* shareDevice)
+    std::vector<VideoDevice*> DesktopVideoDevice::createDesktopVideoDevices(TwkApp::VideoModule* module, const TwkGLF::GLVideoDevice* shareDevice)
     {
         std::vector<VideoDevice*> devices;
 

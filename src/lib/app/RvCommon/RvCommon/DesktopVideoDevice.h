@@ -129,18 +129,25 @@ namespace Rv
         //
         //
 
-        DesktopVideoDevice(TwkApp::VideoModule*, const std::string& name, int qtscreen, const QTGLVideoDevice* glViewShared);
+        DesktopVideoDevice(TwkApp::VideoModule*, const std::string& name, int qtscreen, const TwkGLF::GLVideoDevice* glViewShared);
 
         virtual ~DesktopVideoDevice();
 
         virtual void redraw() const;
         virtual void redrawImmediately() const;
 
-        const QTGLVideoDevice* shareDevice() const { return m_share; }
+        //
+        //  The share device is the controller's main view device. It may be a
+        //  QTGLVideoDevice (GL main view) or a QTVulkanVideoDevice (10-bit
+        //  Vulkan main view), so it is typed as their common base
+        //  TwkGLF::GLVideoDevice rather than QTGLVideoDevice.
+        //
+
+        const TwkGLF::GLVideoDevice* shareDevice() const { return m_share; }
 
         void setViewDevice(TwkGLF::GLVideoDevice* d) { m_viewDevice = d; }
 
-        void setShareDevice(QTGLVideoDevice* d) { m_share = d; }
+        void setShareDevice(TwkGLF::GLVideoDevice* d) { m_share = d; }
 
         //
         //  These can differ from the usual output versions in the case of
@@ -232,7 +239,7 @@ namespace Rv
         bool useFullScreen() const;
         QRect screenGeometry() const;
 
-        static std::vector<VideoDevice*> createDesktopVideoDevices(TwkApp::VideoModule* module, const QTGLVideoDevice* shareDevice);
+        static std::vector<VideoDevice*> createDesktopVideoDevices(TwkApp::VideoModule* module, const TwkGLF::GLVideoDevice* shareDevice);
 
     protected:
         void addDefaultDataFormats(size_t bits = 8);
@@ -252,7 +259,7 @@ namespace Rv
 #endif
 
     protected:
-        const QTGLVideoDevice* m_share;
+        const TwkGLF::GLVideoDevice* m_share;
         const TwkGLF::GLVideoDevice* m_viewDevice;
         QOpenGLWidget* m_view;
         DesktopStereoMode m_stereoMode;

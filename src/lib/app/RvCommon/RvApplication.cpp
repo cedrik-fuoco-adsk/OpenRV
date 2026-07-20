@@ -866,11 +866,13 @@ namespace Rv
 
             try
             {
-                // With a non-OpenGL presentation backend view() is null — pass
-                // nullptr as the GL share device.  DesktopVideoDevice can still
-                // be created; it only needs the share device when open() is
-                // called later.
-                QTGLVideoDevice* shareDevice = doc->view() ? doc->view()->videoDevice() : nullptr;
+                // Resolve the controller's main view device through the
+                // backend-neutral accessor. viewVideoDevice() returns the GL
+                // device (QTGLVideoDevice) on the OpenGL path and the Vulkan
+                // device (QTVulkanVideoDevice) on the 10-bit Vulkan path; using
+                // view() here would be null on the Vulkan path and leave the
+                // presentation device with no share device.
+                TwkGLF::GLVideoDevice* shareDevice = doc->viewVideoDevice();
                 addVideoModule(m_desktopModule = new DesktopVideoModule(0, shareDevice));
             }
             catch (...)

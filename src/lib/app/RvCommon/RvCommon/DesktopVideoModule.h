@@ -11,6 +11,11 @@
 #include <iostream>
 #include <TwkApp/VideoModule.h>
 
+namespace TwkGLF
+{
+    class GLVideoDevice;
+}
+
 namespace Rv
 {
 
@@ -21,12 +26,15 @@ namespace Rv
     //  platform and availability.
     //
 
-    class QTGLVideoDevice;
-
     class DesktopVideoModule : public TwkApp::VideoModule
     {
     public:
-        DesktopVideoModule(NativeDisplayPtr np, QTGLVideoDevice* shareDevice);
+        //
+        //  shareDevice is the controller's main view device and may be a GL
+        //  (QTGLVideoDevice) or Vulkan (QTVulkanVideoDevice) device, so it is
+        //  typed as their common base TwkGLF::GLVideoDevice.
+        //
+        DesktopVideoModule(NativeDisplayPtr np, TwkGLF::GLVideoDevice* shareDevice);
         virtual ~DesktopVideoModule();
 
         virtual std::string name() const;

@@ -31,7 +31,7 @@ namespace Rv
 
     static bool useQtOnDarwinArm() { return true; }
 
-    DesktopVideoModule::DesktopVideoModule(NativeDisplayPtr np, QTGLVideoDevice* shareDevice)
+    DesktopVideoModule::DesktopVideoModule(NativeDisplayPtr np, TwkGLF::GLVideoDevice* shareDevice)
         : VideoModule()
     {
         m_devices = DesktopVideoDevice::createDesktopVideoDevices(this, shareDevice);

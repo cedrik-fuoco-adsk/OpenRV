@@ -1834,13 +1834,20 @@ namespace Rv
 
         if (session)
         {
+            // Always present the main (control) view's own swapchain. Unlike the
+            // GL path, where QOpenGLWidget always composites the control widget
+            // after paintGL, the Vulkan main view is only shown by an explicit
+            // present, so it must NOT be skipped when a separate output
+            // (presentation) device is active. Skipping it leaves the main window
+            // showing a stale frame (and, because the window is translucent, the
+            // desktop shows through) once presentation mode is on.
+            m_videoDevice->syncBuffers();
+
+            // In presentation mode the output device is a distinct fullscreen
+            // window that must also be presented this frame.
             if (session->outputVideoDevice() && session->outputVideoDevice() != videoDevice())
             {
                 session->outputVideoDevice()->syncBuffers();
-            }
-            else
-            {
-                m_videoDevice->syncBuffers();
             }
         }
 
@@ -1888,13 +1895,20 @@ namespace Rv
             return;
         }
 
-        if (m_doc && m_doc->session() && m_doc->session()->outputVideoDevice())
-        {
-            m_doc->session()->outputVideoDevice()->syncBuffers();
-        }
-        else if (m_videoDevice)
+        // Always present the main (control) view's own swapchain (see render():
+        // the Vulkan main view only shows via an explicit present, so it must
+        // not be skipped in presentation mode).
+        if (m_videoDevice)
         {
             m_videoDevice->syncBuffers();
+        }
+
+        // In presentation mode also present the distinct output (presentation)
+        // device.
+        if (m_doc && m_doc->session() && m_doc->session()->outputVideoDevice()
+            && m_doc->session()->outputVideoDevice() != m_videoDevice)
+        {
+            m_doc->session()->outputVideoDevice()->syncBuffers();
         }
     }
 
