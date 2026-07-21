@@ -108,7 +108,16 @@ namespace Rv
         setAttribute(Qt::WA_NoSystemBackground);
         setAttribute(Qt::WA_OpaquePaintEvent);
         setAttribute(Qt::WA_PaintOnScreen);
-        setAttribute(Qt::WA_TranslucentBackground);
+        // The main view is a CHILD widget, so its translucent (ARGB) visual is
+        // resolved against the parent document window. A presentation view is a
+        // TOP-LEVEL window; asking X for a translucent ARGB visual there makes it
+        // fall back to the screen root_visual ("Falling back to using screens
+        // root_visual") and can break Vulkan surface creation. A fullscreen
+        // presentation output is opaque, so it must not request translucency.
+        if (!m_presentationMode)
+        {
+            setAttribute(Qt::WA_TranslucentBackground);
+        }
         setAutoFillBackground(false);
 
         // Wait to configure the QWindow until it's created
@@ -116,13 +125,23 @@ namespace Rv
         {
             w->setSurfaceType(QSurface::VulkanSurface);
 
-            // Set 10-bit format
-            QSurfaceFormat fmt;
-            fmt.setRedBufferSize(10);
-            fmt.setGreenBufferSize(10);
-            fmt.setBlueBufferSize(10);
-            fmt.setAlphaBufferSize(2);
-            w->setFormat(fmt);
+            // Set 10-bit format.
+            //
+            // For a Vulkan surface this is only a hint: the swapchain format is
+            // chosen from vkGetPhysicalDeviceSurfaceFormatsKHR, independent of the
+            // X visual. On a top-level presentation window this hint makes X look
+            // for a 30-bit visual it does not have (Mesa GLX is 8-bit) and fall
+            // back to the screen root_visual with a warning, so skip it there; the
+            // presentation swapchain is still 10-bit.
+            if (!m_presentationMode)
+            {
+                QSurfaceFormat fmt;
+                fmt.setRedBufferSize(10);
+                fmt.setGreenBufferSize(10);
+                fmt.setBlueBufferSize(10);
+                fmt.setAlphaBufferSize(2);
+                w->setFormat(fmt);
+            }
         }
 
         ostringstream str;
@@ -191,12 +210,19 @@ namespace Rv
         if (QWindow* w = windowHandle())
         {
             w->setSurfaceType(QSurface::VulkanSurface);
-            QSurfaceFormat fmt;
-            fmt.setRedBufferSize(10);
-            fmt.setGreenBufferSize(10);
-            fmt.setBlueBufferSize(10);
-            fmt.setAlphaBufferSize(2);
-            w->setFormat(fmt);
+
+            // See the constructor: the 10-bit format is a hint the Vulkan
+            // swapchain does not need, and on a top-level presentation window it
+            // triggers the X root_visual fallback, so skip it in presentation mode.
+            if (!m_presentationMode)
+            {
+                QSurfaceFormat fmt;
+                fmt.setRedBufferSize(10);
+                fmt.setGreenBufferSize(10);
+                fmt.setBlueBufferSize(10);
+                fmt.setAlphaBufferSize(2);
+                w->setFormat(fmt);
+            }
         }
 
         if (!initVulkan())

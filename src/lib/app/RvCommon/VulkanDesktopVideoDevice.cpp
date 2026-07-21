@@ -50,6 +50,14 @@ namespace Rv
             m_vulkanView->setWindowState(Qt::WindowNoState);
         }
 
+        m_vulkanView->setGeometry(g);
+
+        //  Show the window: this is what makes it visible on the target screen
+        //  AND triggers VulkanView::showEvent() -> initialize() -> initVulkan()
+        //  (surface + swapchain). Without it the presentation surface never
+        //  initializes Vulkan and never presents.
+        m_vulkanView->show();
+
         //  Prime the offscreen GL context + FBO so the inherited transfer()'s
         //  fboID() guard passes on the first frame (QTVulkanVideoDevice::fboID()
         //  reports 0 until its context/FBO has been created).
