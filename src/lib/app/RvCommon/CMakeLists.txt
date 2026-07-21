@@ -94,8 +94,10 @@ IF(RV_TARGET_LINUX
     VulkanBuildProbe.cpp
     VulkanView.cpp
     QTVulkanVideoDevice.cpp
+    VulkanDesktopVideoDevice.cpp
     RvCommon/VulkanView.h
     RvCommon/QTVulkanVideoDevice.h
+    RvCommon/VulkanDesktopVideoDevice.h
   )
 ENDIF()
 

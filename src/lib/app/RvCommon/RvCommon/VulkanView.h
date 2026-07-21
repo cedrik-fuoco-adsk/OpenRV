@@ -36,10 +36,16 @@ namespace Rv
     public:
         typedef TwkUtil::Timer Timer;
 
-        explicit VulkanView(RvDocument* doc, QWidget* parent = nullptr, bool noResize = true);
+        //  presentationMode constructs a passive second-display output surface:
+        //  it is driven (rendered to and presented) by a VulkanDesktopVideoDevice
+        //  rather than by the main render loop, so it must be given a null doc,
+        //  never drive the session, and never trigger the main-window GL fallback.
+        explicit VulkanView(RvDocument* doc, QWidget* parent = nullptr, bool noResize = true, bool presentationMode = false);
         ~VulkanView();
 
         QTVulkanVideoDevice* videoDevice() const { return m_videoDevice; }
+
+        bool isPresentationMode() const { return m_presentationMode; }
 
         void setEventWidget(QWidget* widget);
 
@@ -162,6 +168,7 @@ namespace Rv
 
         RvDocument* m_doc;
         QTVulkanVideoDevice* m_videoDevice;
+        bool m_presentationMode;
 
         bool m_initialized;
         bool m_firstPaintCompleted;

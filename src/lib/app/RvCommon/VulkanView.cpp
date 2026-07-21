@@ -87,10 +87,11 @@ namespace Rv
     // VulkanView implementation
     //--------------------------------------------------------------------------
 
-    VulkanView::VulkanView(RvDocument* doc, QWidget* parent, bool noResize)
+    VulkanView::VulkanView(RvDocument* doc, QWidget* parent, bool noResize, bool presentationMode)
         : QWidget(parent)
         , m_doc(doc)
         , m_videoDevice(nullptr)
+        , m_presentationMode(presentationMode)
         , m_initialized(false)
         , m_firstPaintCompleted(false)
         , m_postFirstNonEmptyRender(noResize)
@@ -125,7 +126,17 @@ namespace Rv
         }
 
         ostringstream str;
-        str << UI_APPLICATION_NAME " Main Window (Vulkan)" << "/" << m_doc;
+        if (m_presentationMode)
+        {
+            // A presentation view can exist once per screen and carries a null
+            // doc, so key the device name on the view pointer (not the doc) to
+            // keep it unique.
+            str << UI_APPLICATION_NAME " Presentation (Vulkan)" << "/" << static_cast<const void*>(this);
+        }
+        else
+        {
+            str << UI_APPLICATION_NAME " Main Window (Vulkan)" << "/" << m_doc;
+        }
         m_videoDevice = new QTVulkanVideoDevice(nullptr, str.str(), this, nullptr);
 
         m_activityTimer.start();
@@ -1786,6 +1797,16 @@ namespace Rv
         m_updatePending = false;
 
         if (m_stopProcessingEvents)
+        {
+            return;
+        }
+
+        // A presentation-mode view is a passive output surface: it is rendered
+        // into and presented by its owning VulkanDesktopVideoDevice (via
+        // transfer()/syncBuffers() driven by the main render loop), so it must
+        // never drive the session itself. Its own swapchain is presented from
+        // paintEvent() on expose and from the device's syncBuffers().
+        if (m_presentationMode)
         {
             return;
         }

@@ -441,6 +441,8 @@ namespace Rv
         return m_fbo;
     }
 
+    GLuint QTVulkanVideoDevice::fboID() const { return m_fbo ? m_fbo->fboID() : 0; }
+
     std::string QTVulkanVideoDevice::hardwareIdentification() const { return "vulkan-hybrid"; }
 
     void QTVulkanVideoDevice::cleanupSharedGLObjects(uint32_t slot) const
