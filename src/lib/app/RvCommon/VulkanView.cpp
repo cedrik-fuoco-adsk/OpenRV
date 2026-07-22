@@ -515,6 +515,7 @@ namespace Rv
             return;
         }
         m_glFallbackRequested = true;
+        cout << "WARNING: VulkanView: Vulkan 10-bit presentation failed at runtime; falling back to OpenGL." << endl;
         QTimer::singleShot(0, m_doc, [doc = m_doc]() { doc->fallbackVulkanToGLView(); });
     }
 

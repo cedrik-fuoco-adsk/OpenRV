@@ -884,6 +884,11 @@ namespace Rv
 
 #if defined(PLATFORM_LINUX) || defined(PLATFORM_WINDOWS)
     // Hot-swap VulkanView -> GLView and rebind the live session to the GL device.
+    // Reached both when Vulkan presentation fails at runtime (see
+    // VulkanView::requestGLFallback, which logs the failure) and when the user
+    // switches the display output away from 10-bit. The new GLView is built from
+    // the current display-depth options, so callers persist the desired depth
+    // before invoking this.
     void RvDocument::fallbackVulkanToGLView()
     {
         if (!m_vulkanView || isClosing())
@@ -891,7 +896,7 @@ namespace Rv
             return;
         }
 
-        cout << "INFO: Vulkan 10-bit presentation failed at runtime; falling back to OpenGL." << endl;
+        cout << "INFO: RvDocument: switching main view from Vulkan to OpenGL." << endl;
 
         VulkanView* oldVulkanView = m_vulkanView;
         m_vulkanView = nullptr;
@@ -1155,8 +1160,108 @@ namespace Rv
     void RvDocument::setDisplayOutput(DisplayOutputType type)
     {
 #if defined(PLATFORM_LINUX) || defined(PLATFORM_WINDOWS)
-        if (!m_glView)
+        //
+        //  10-bit output is delivered by the Vulkan backend, which is chosen once
+        //  at window construction from the saved display-depth preference (see the
+        //  RvDocument constructor). We must NOT rebuild the OpenGL context at
+        //  10-bit here: OpenGL cannot present 10-bit on the affected hardware
+        //  (Mesa GLX, Windows WGL negotiation), so the rebuild fails validity and
+        //  used to pop a misleading "Display Configuration is Invalid" dialog that
+        //  also zeroed the preference. Instead, persist the 10-bit intent and tell
+        //  the user when/whether it applies. The GL rebuild path is never reached
+        //  for a 10-bit request on these platforms.
+        //
+        if (type == OpenGL1010102)
+        {
+            //  Persist the intent so the next launch / new window selects the
+            //  Vulkan backend. Never reset or zero the preference here.
+            Rv::Options& opts = Options::sharedOptions();
+            opts.dispRedBits = 10;
+            opts.dispGreenBits = 10;
+            opts.dispBlueBits = 10;
+            opts.dispAlphaBits = 2;
+
+            {
+                RV_QSETTINGS;
+                settings.beginGroup("Display");
+                settings.setValue("dispRedBits", 10);
+                settings.setValue("dispGreenBits", 10);
+                settings.setValue("dispBlueBits", 10);
+                settings.setValue("dispAlphaBits", 2);
+                settings.endGroup();
+            }
+
+            //  Already on the Vulkan path? The running view is already 10-bit, so
+            //  there is nothing to apply and nothing to tell the user.
+            if (!m_glView)
+                return;
+
+            QMessageBox box(this);
+            box.setWindowModality(Qt::WindowModal);
+#ifdef PLATFORM_LINUX
+            // Show the RV icon so the source of the dialog is obvious.
+            box.setIconPixmap(QPixmap(qApp->applicationDirPath() + QString(RV_ICON_PATH_SUFFIX)).scaledToHeight(64));
+#endif
+
+            if (VulkanView::supports10BitPresentation())
+            {
+#ifndef PLATFORM_LINUX
+                box.setIcon(QMessageBox::Information);
+#endif
+                box.setWindowTitle(tr(UI_APPLICATION_NAME ": 10-bit Display Output"));
+                box.setText(tr("10-bit display output will apply after restart"));
+                box.setInformativeText(
+                    tr(UI_APPLICATION_NAME " sets up 10-bit output when a window opens and does not change itwhile "
+                       "running. Your preference has been saved. Restart " UI_APPLICATION_NAME " or open a new window "
+                       "to use 10-bit output."));
+            }
+            else
+            {
+#ifndef PLATFORM_LINUX
+                box.setIcon(QMessageBox::Critical);
+#endif
+                box.setWindowTitle(tr(UI_APPLICATION_NAME ": 10-bit Display Output Unavailable"));
+                box.setText(tr("This display cannot present 10-bit output"));
+                box.setInformativeText(
+                    tr("This graphics hardware or driver does not provide a 10-bit presentation surface. "
+                       UI_APPLICATION_NAME " cannot output 10-bit on this display and will continue in 8-bit."));
+            }
+
+            box.exec();
             return;
+        }
+
+        //
+        //  Switching away from 10-bit while the Vulkan backend is live (m_glView
+        //  is null). Persist the new depth and hot-swap Vulkan -> OpenGL so the
+        //  change applies immediately. Vulkan -> GL is always available (it is the
+        //  same path used when Vulkan presentation fails at runtime), so unlike
+        //  the 10-bit request above this does not need a restart.
+        //
+        if (!m_glView)
+        {
+            const int bits = (type == OpenGL8888) ? 8 : 0;
+            const int alpha = (type == OpenGL8888) ? 8 : 0;
+
+            Rv::Options& opts = Options::sharedOptions();
+            opts.dispRedBits = bits;
+            opts.dispGreenBits = bits;
+            opts.dispBlueBits = bits;
+            opts.dispAlphaBits = alpha;
+
+            {
+                RV_QSETTINGS;
+                settings.beginGroup("Display");
+                settings.setValue("dispRedBits", bits);
+                settings.setValue("dispGreenBits", bits);
+                settings.setValue("dispBlueBits", bits);
+                settings.setValue("dispAlphaBits", alpha);
+                settings.endGroup();
+            }
+
+            fallbackVulkanToGLView();
+            return;
+        }
 #endif
         const bool vsync = m_glView->format().swapInterval() == 1;
         const bool stereo = m_glView->format().stereo();
