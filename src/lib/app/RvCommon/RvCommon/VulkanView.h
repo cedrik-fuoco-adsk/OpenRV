@@ -146,6 +146,14 @@ namespace Rv
         //  Called once when the widget is first shown.
         void initialize();
 
+        //  Call initialize() as soon as the native window is exposed, deferring to
+        //  a later event-loop turn while it is not. Creating the Vulkan surface
+        //  before the window is exposed (as happens on a mid-session GL->Vulkan
+        //  promotion) makes surfaceForWindow() return a garbage handle that crashes
+        //  the surface query. At startup the window is already exposed, so this
+        //  initializes immediately.
+        void initializeWhenExposed();
+
         //  Called each time a new frame should be rendered.
         void render();
 

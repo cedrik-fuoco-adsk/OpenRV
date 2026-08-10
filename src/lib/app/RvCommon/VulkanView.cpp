@@ -142,6 +142,26 @@ namespace Rv
                 fmt.setAlphaBufferSize(2);
                 w->setFormat(fmt);
             }
+
+            // If the platform (X) window is already realized here, it was created
+            // as a non-Vulkan surface: this happens when a native child is
+            // constructed into an already-visible parent (a mid-session GL->Vulkan
+            // promotion). setSurfaceType() above does not change an existing
+            // platform window, so surfaceForWindow() later returns a garbage handle
+            // (observed as 0xe0) that segfaults the surface query. Drop and recreate
+            // the platform window now that the surface type is VulkanSurface. At
+            // startup windowHandle()/handle() are null here (creation deferred until
+            // the parent is shown), so this only affects the promotion case.
+            if (IPCore::ImageRenderer::debugGpu())
+            {
+                cout << "INFO: VulkanView ctor: platformWindow already realized=" << (w->handle() ? 1 : 0)
+                     << " presentationMode=" << (m_presentationMode ? 1 : 0) << endl;
+            }
+            if (w->handle())
+            {
+                w->destroy();
+                w->create();
+            }
         }
 
         ostringstream str;
@@ -240,125 +260,172 @@ namespace Rv
         }
     }
 
+    void VulkanView::initializeWhenExposed()
+    {
+        if (m_initialized || m_stopProcessingEvents)
+        {
+            return;
+        }
+
+        // The Vulkan surface can only be created once the native window is
+        // exposed/mapped. On a mid-session GL->Vulkan promotion the reparented
+        // child is not yet exposed when showEvent fires, and surfaceForWindow()
+        // then returns a garbage VkSurfaceKHR (observed as 0xe0) that segfaults the
+        // surface query. Initialize now if exposed; otherwise retry next turn.
+        QWindow* w = windowHandle();
+        if (w && w->isExposed())
+        {
+            initialize();
+            return;
+        }
+
+        // Not exposed yet. Retry on a later event-loop turn while the widget is
+        // still headed for the screen; if it was hidden again or the document is
+        // closing, stop (a later showEvent re-arms this). singleShot with `this`
+        // as context is auto-cancelled if the view is destroyed first.
+        if (isVisible() && !(m_doc && m_doc->isClosing()))
+        {
+            QTimer::singleShot(16, this, [this]() { initializeWhenExposed(); });
+        }
+    }
+
+    // One process-lifetime QVulkanInstance shared by the 10-bit probe
+    // (supports10BitPresentation) and every VulkanView (initVulkan). Created
+    // lazily and never destroyed. Tearing a VkInstance down and then creating or
+    // using another shortly after corrupts RADV's shared X11/xcb WSI state and
+    // segfaults a subsequent vkGetPhysicalDeviceSurfaceSupportKHR (seen when a
+    // GLView is promoted to Vulkan right after the probe's throwaway instance was
+    // destroyed). Keeping a single instance alive for the whole process removes
+    // that teardown entirely; initVulkan already relied on a never-destroyed
+    // static instance, so this only extends the same lifetime to the probe.
+    static QVulkanInstance* sharedVulkanInstance()
+    {
+        static QVulkanInstance* instance = []() -> QVulkanInstance*
+        {
+            auto* inst = new QVulkanInstance();
+            if (!inst->create())
+            {
+                cerr << "ERROR: VulkanView: shared QVulkanInstance create failed" << endl;
+                delete inst;
+                return nullptr;
+            }
+            return inst;
+        }();
+        return instance;
+    }
+
     bool VulkanView::supports10BitPresentation()
     {
-        QVulkanInstance qtVkInst;
-        if (!qtVkInst.create())
+        // Memoized: 10-bit presentation support is a fixed hardware/driver
+        // property, so probe at most once per process. The probe now uses the
+        // shared, never-destroyed VkInstance and a leaked probe window (see
+        // sharedVulkanInstance), so it creates and tears down nothing that could
+        // corrupt RADV's WSI state ahead of a later VulkanView init; memoization is
+        // therefore just an optimization to avoid re-running the device scan.
+        static const bool cached = []() -> bool
         {
-            cerr << "ERROR: VulkanView: supports10BitPresentation: QVulkanInstance create failed" << endl;
-            return false;
-        }
-
-        VkInstance instance = qtVkInst.vkInstance();
-        if (instance == VK_NULL_HANDLE)
-        {
-            return false;
-        }
-
-        QWindow dummyWindow;
-        dummyWindow.setSurfaceType(QSurface::VulkanSurface);
-        dummyWindow.create();
-        dummyWindow.setVulkanInstance(&qtVkInst);
-
-        VkSurfaceKHR dummySurface = qtVkInst.surfaceForWindow(&dummyWindow);
-        if (!dummySurface)
-        {
-            cerr << "ERROR: VulkanView: supports10BitPresentation: failed to create dummy surface" << endl;
-            return false;
-        }
-
-        uint32_t deviceCount = 0;
-        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-        if (deviceCount == 0)
-        {
-            cerr << "ERROR: VulkanView: supports10BitPresentation: vkEnumeratePhysicalDevices returned 0 devices" << endl;
-            return false;
-        }
-        std::vector<VkPhysicalDevice> devices(deviceCount);
-        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-
-        if (ImageRenderer::debugGpu())
-        {
-            cout << "INFO: VulkanView: supports10BitPresentation: probing " << deviceCount << " physical device(s)" << endl;
-        }
-
-        bool any10bit = false;
-        for (uint32_t di = 0; di < devices.size(); ++di)
-        {
-            VkPhysicalDevice dev = devices[di];
-
-            uint32_t formatCount = 0;
-            if (vkGetPhysicalDeviceSurfaceFormatsKHR(dev, dummySurface, &formatCount, nullptr) != VK_SUCCESS || formatCount == 0)
+            QVulkanInstance* qtVkInst = sharedVulkanInstance();
+            if (!qtVkInst)
             {
-                continue;
+                return false;
             }
-            std::vector<VkSurfaceFormatKHR> formats(formatCount);
-            vkGetPhysicalDeviceSurfaceFormatsKHR(dev, dummySurface, &formatCount, formats.data());
 
-            bool has10bit = false;
-            for (const auto& fmt : formats)
+            VkInstance instance = qtVkInst->vkInstance();
+            if (instance == VK_NULL_HANDLE)
             {
-                if (isTenBitFormat(fmt.format))
+                return false;
+            }
+
+            // Leak the probe window (process-lifetime, never shown): destroying its
+            // Vulkan surface right before a real VulkanView init is part of the same
+            // WSI-teardown hazard as destroying the instance, so it is never torn
+            // down.
+            static QWindow* dummyWindow = []() -> QWindow*
+            {
+                auto* w = new QWindow();
+                w->setSurfaceType(QSurface::VulkanSurface);
+                w->create();
+                return w;
+            }();
+            dummyWindow->setVulkanInstance(qtVkInst);
+
+            VkSurfaceKHR dummySurface = qtVkInst->surfaceForWindow(dummyWindow);
+            if (!dummySurface)
+            {
+                cerr << "ERROR: VulkanView: supports10BitPresentation: failed to create dummy surface" << endl;
+                return false;
+            }
+
+            uint32_t deviceCount = 0;
+            vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+            if (deviceCount == 0)
+            {
+                cerr << "ERROR: VulkanView: supports10BitPresentation: vkEnumeratePhysicalDevices returned 0 devices" << endl;
+                return false;
+            }
+            std::vector<VkPhysicalDevice> devices(deviceCount);
+            vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+            if (ImageRenderer::debugGpu())
+            {
+                cout << "INFO: VulkanView: supports10BitPresentation: probing " << deviceCount << " physical device(s)" << endl;
+            }
+
+            bool any10bit = false;
+            for (uint32_t di = 0; di < devices.size(); ++di)
+            {
+                VkPhysicalDevice dev = devices[di];
+
+                uint32_t formatCount = 0;
+                if (vkGetPhysicalDeviceSurfaceFormatsKHR(dev, dummySurface, &formatCount, nullptr) != VK_SUCCESS || formatCount == 0)
                 {
-                    has10bit = true;
-                    any10bit = true;
-                    break;
+                    continue;
+                }
+                std::vector<VkSurfaceFormatKHR> formats(formatCount);
+                vkGetPhysicalDeviceSurfaceFormatsKHR(dev, dummySurface, &formatCount, formats.data());
+
+                bool has10bit = false;
+                for (const auto& fmt : formats)
+                {
+                    if (isTenBitFormat(fmt.format))
+                    {
+                        has10bit = true;
+                        any10bit = true;
+                        break;
+                    }
+                }
+
+                VkPhysicalDeviceProperties props = {};
+                vkGetPhysicalDeviceProperties(dev, &props);
+                if (ImageRenderer::debugGpu())
+                {
+                    cout << "INFO: VulkanView:   device[" << di << "] '" << props.deviceName
+                         << "': 10-bit surface format=" << (has10bit ? "YES" : "NO") << endl;
                 }
             }
 
-            VkPhysicalDeviceProperties props = {};
-            vkGetPhysicalDeviceProperties(dev, &props);
+            // The dummy window, its surface, and the shared instance are all kept
+            // alive for the process lifetime (see sharedVulkanInstance and the
+            // leaked dummyWindow above), so nothing is torn down here.
             if (ImageRenderer::debugGpu())
             {
-                cout << "INFO: VulkanView:   device[" << di << "] '" << props.deviceName
-                     << "': 10-bit surface format=" << (has10bit ? "YES" : "NO") << endl;
+                cout << "INFO: VulkanView: supports10BitPresentation: returning " << (any10bit ? "true" : "false") << endl;
             }
-        }
-
-        // The surface returned by surfaceForWindow() is owned by the platform
-        // integration and is released when dummyWindow is destroyed on return;
-        // QVulkanInstance has no destroySurface() in this Qt version.
-        if (ImageRenderer::debugGpu())
-        {
-            cout << "INFO: VulkanView: supports10BitPresentation: returning " << (any10bit ? "true" : "false") << endl;
-        }
-        return any10bit;
+            return any10bit;
+        }();
+        return cached;
     }
 
     bool VulkanView::initVulkan()
     {
-        // Create Instance
-        VkApplicationInfo appInfo = {};
-        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "RV VulkanView";
-        appInfo.apiVersion = VK_API_VERSION_1_1;
-
-        // Need surface extensions
-        std::vector<const char*> instanceExtensions = {
-            VK_KHR_SURFACE_EXTENSION_NAME,
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-            VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-            VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
-            VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
-            VK_KHR_XCB_SURFACE_EXTENSION_NAME,
-#endif
-        };
-
-        // Try to get Qt's extensions
-        static QVulkanInstance* qtVkInst = nullptr;
+        // Reuse the one process-lifetime instance (shared with the 10-bit probe).
+        // It is never destroyed: see sharedVulkanInstance for why tearing a
+        // VkInstance down near another init crashes RADV's WSI.
+        QVulkanInstance* qtVkInst = sharedVulkanInstance();
         if (!qtVkInst)
         {
-            qtVkInst = new QVulkanInstance();
-            if (!qtVkInst->create())
-            {
-                cerr << "ERROR: VulkanView: QVulkanInstance create failed" << endl;
-                delete qtVkInst;
-                qtVkInst = nullptr;
-                return false;
-            }
+            cerr << "ERROR: VulkanView: shared QVulkanInstance unavailable" << endl;
+            return false;
         }
 
         m_vkInstance = qtVkInst->vkInstance();
@@ -377,6 +444,18 @@ namespace Rv
         {
             cerr << "ERROR: VulkanView: Failed to create Vulkan surface" << endl;
             return false;
+        }
+
+        // DIAG (promotion crash): the recurring segfault is the surface query below
+        // (vkGetPhysicalDeviceSurfaceSupportKHR) with a non-null but invalid
+        // m_vkSurface, only on a mid-session GL->Vulkan promotion. Capture the
+        // surface handle and the window's realization state here so a recurrence
+        // shows whether the window was exposed/created when the surface was made.
+        if (ImageRenderer::debugGpu())
+        {
+            cout << "INFO: VulkanView::initVulkan: surface=" << reinterpret_cast<void*>(m_vkSurface)
+                 << " winId=" << static_cast<unsigned long long>(w->winId()) << " exposed=" << (w->isExposed() ? 1 : 0)
+                 << " presentationMode=" << (m_presentationMode ? 1 : 0) << endl;
         }
 
         // Pick Physical Device
@@ -1828,6 +1907,15 @@ namespace Rv
             return;
         }
 
+        // Vulkan is not ready until the window is exposed and initialize() has run
+        // (see initializeWhenExposed). Skip presenting; another render is requested
+        // once initialized. Guards the window between an optimistic promotion commit
+        // and the deferred surface/swapchain creation.
+        if (!m_initialized)
+        {
+            return;
+        }
+
         // A presentation-mode view is a passive output surface: it is rendered
         // into and presented by its owning VulkanDesktopVideoDevice (via
         // transfer()/syncBuffers() driven by the main render loop), so it must
@@ -1915,7 +2003,7 @@ namespace Rv
     void VulkanView::showEvent(QShowEvent* event)
     {
         if (!m_initialized)
-            initialize();
+            initializeWhenExposed();
         requestUpdate();
         QWidget::showEvent(event);
     }
@@ -1943,6 +2031,12 @@ namespace Rv
             return;
         }
 
+        // Not ready until the surface/swapchain are created on expose.
+        if (!m_initialized)
+        {
+            return;
+        }
+
         // Always present the main (control) view's own swapchain (see render():
         // the Vulkan main view only shows via an explicit present, so it must
         // not be skipped in presentation mode).
@@ -1953,10 +2047,31 @@ namespace Rv
 
         // In presentation mode also present the distinct output (presentation)
         // device.
-        if (m_doc && m_doc->session() && m_doc->session()->outputVideoDevice()
-            && m_doc->session()->outputVideoDevice() != m_videoDevice)
+        auto* outDev = (m_doc && m_doc->session()) ? m_doc->session()->outputVideoDevice() : nullptr;
+
+        // DIAG (issue 2): the presentation output is only driven from here when the
+        // session's outputVideoDevice is a device distinct from the main view. A
+        // null output (e.g. left null after a promotion rebind) or one equal to the
+        // main view means the external presentation is NOT driven -> black. Logged
+        // only on change to avoid per-frame spam.
+        if (IPCore::ImageRenderer::debugGpu())
         {
-            m_doc->session()->outputVideoDevice()->syncBuffers();
+            static const void* lastLogged = reinterpret_cast<const void*>(-1);
+            if (static_cast<const void*>(outDev) != lastLogged)
+            {
+                lastLogged = static_cast<const void*>(outDev);
+                if (!outDev)
+                    cout << "INFO: VulkanView::paintEvent: session outputVideoDevice == null (presentation not driven)" << endl;
+                else if (outDev == m_videoDevice)
+                    cout << "INFO: VulkanView::paintEvent: outputVideoDevice == main view (no separate presentation output)" << endl;
+                else
+                    cout << "INFO: VulkanView::paintEvent: driving presentation output '" << outDev->name() << "'" << endl;
+            }
+        }
+
+        if (outDev && outDev != m_videoDevice)
+        {
+            outDev->syncBuffers();
         }
     }
 

@@ -29,6 +29,7 @@
 #if defined(PLATFORM_LINUX) || defined(PLATFORM_WINDOWS)
 #include <RvCommon/VulkanDesktopVideoDevice.h>
 #include <RvCommon/VulkanView.h>
+#include <IPCore/ImageRenderer.h>
 #endif
 
 #include <QOpenGLContext>
@@ -120,7 +121,15 @@ namespace Rv
         // later.
         GLint svFboId = m_viewDevice->fboID();
         if (svFboId == 0)
+        {
+            // DIAG (add-gl-to-vulkan-live-promotion, issue 2): a black presentation
+            // output most often means this early-return fires every frame because
+            // the view device's FBO was never created (view not painted / primed).
+            if (IPCore::ImageRenderer::debugGpu())
+                cout << "INFO: DesktopVideoDevice::transfer[" << name() << " screen " << qtScreen()
+                     << "]: viewDevice fboID==0; skipping composite (view not yet painted)" << endl;
             return;
+        }
 
         // Switch to the ScreenView's OpenGL context.
         m_viewDevice->makeCurrent(); // calls screenview's makeCurrent, sets the
@@ -152,6 +161,13 @@ namespace Rv
 
         // Copy the FBO (first time = black) into the FBO of the QOpenGLWidget.
         svSourceFbo->copyTo(svDestFbo);
+
+        // DIAG (issue 2): confirms a frame was actually composited into this
+        // device's FBO. If this prints for the external device but it is still
+        // black, the fault is downstream (present), not the composite feed.
+        if (IPCore::ImageRenderer::debugGpu())
+            cout << "INFO: DesktopVideoDevice::transfer[" << name() << " screen " << qtScreen() << "]: composited src "
+                 << sourceFbo->width() << "x" << sourceFbo->height() << " -> dest fbo " << svFboId << endl;
 
         // Note: do not delete svDestFBO because it's an internal data member of
         // m_viewDevice
@@ -943,7 +959,8 @@ namespace Rv
     }
 #endif
 
-    std::vector<VideoDevice*> DesktopVideoDevice::createDesktopVideoDevices(TwkApp::VideoModule* module, const TwkGLF::GLVideoDevice* shareDevice)
+    std::vector<VideoDevice*> DesktopVideoDevice::createDesktopVideoDevices(TwkApp::VideoModule* module,
+                                                                            const TwkGLF::GLVideoDevice* shareDevice)
     {
         std::vector<VideoDevice*> devices;
 
@@ -958,8 +975,7 @@ namespace Rv
         //  here (supports10BitPresentation() spins up a throwaway instance).
         //
         Options& opts = Options::sharedOptions();
-        const bool want10bit =
-            (opts.dispRedBits == 10 && opts.dispGreenBits == 10 && opts.dispBlueBits == 10 && opts.dispAlphaBits == 2);
+        const bool want10bit = (opts.dispRedBits == 10 && opts.dispGreenBits == 10 && opts.dispBlueBits == 10 && opts.dispAlphaBits == 2);
         const bool useVulkan = want10bit && VulkanView::supports10BitPresentation();
 #endif
 

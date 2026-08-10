@@ -7,8 +7,10 @@
 #include <RvCommon/VulkanView.h>
 #include <RvCommon/QTVulkanVideoDevice.h>
 #include <RvCommon/QTTranslator.h>
+#include <IPCore/ImageRenderer.h>
 
 #include <QScreen>
+#include <QGuiApplication>
 
 namespace Rv
 {
@@ -58,6 +60,27 @@ namespace Rv
         //  initializes Vulkan and never presents.
         m_vulkanView->show();
 
+        // DIAG (issue 2): a black presentation that still composites+presents (see
+        // the transfer/syncBuffers logs) points at window placement, not the feed.
+        // Log intended vs actual screen, geometry, visibility and window state so we
+        // can tell whether it landed on the main window's screen or was never
+        // mapped/fullscreen/raised as expected. One-shot (open() is per enable).
+        if (IPCore::ImageRenderer::debugGpu())
+        {
+            const QList<QScreen*> screens = QGuiApplication::screens();
+            const int idx = qtScreen();
+            const QString wantName = (idx >= 0 && idx < screens.size()) ? screens[idx]->name() : QString("<invalid>");
+            const QRect wantGeom = (idx >= 0 && idx < screens.size()) ? screens[idx]->geometry() : QRect();
+            QScreen* actual = m_vulkanView->screen();
+            cout << "INFO: VulkanDesktopVideoDevice::open: intended screen " << idx << " '" << wantName.toStdString() << "' geom "
+                 << wantGeom.x() << "," << wantGeom.y() << " " << wantGeom.width() << "x" << wantGeom.height() << "; computed geom "
+                 << g.x() << "," << g.y() << " " << g.width() << "x" << g.height() << "; fullscreen=" << (useFullScreen() ? 1 : 0) << endl;
+            cout << "INFO: VulkanDesktopVideoDevice::open: actual placed screen '"
+                 << (actual ? actual->name().toStdString() : std::string("<null>")) << "' geom " << m_vulkanView->geometry().x() << ","
+                 << m_vulkanView->geometry().y() << " " << m_vulkanView->geometry().width() << "x" << m_vulkanView->geometry().height()
+                 << " visible=" << (m_vulkanView->isVisible() ? 1 : 0) << " windowState=" << int(m_vulkanView->windowState()) << endl;
+        }
+
         //  Prime the offscreen GL context + FBO so the inherited transfer()'s
         //  fboID() guard passes on the first frame (QTVulkanVideoDevice::fboID()
         //  reports 0 until its context/FBO has been created).
@@ -90,7 +113,7 @@ namespace Rv
             m_viewDevice->makeCurrent();
         }
     }
-    
+
     void VulkanDesktopVideoDevice::redraw() const
     {
         //  Vulkan has no QOpenGLWidget auto-composite, so the frame already
@@ -106,7 +129,20 @@ namespace Rv
     {
         if (m_viewDevice && m_vulkanView && m_vulkanView->isVisible())
         {
+            // DIAG (issue 2): the present actually ran. If the external output is
+            // black while this prints, the composite feed (transfer) or the shared
+            // image is the problem, not the present.
+            if (IPCore::ImageRenderer::debugGpu())
+                cout << "INFO: VulkanDesktopVideoDevice::syncBuffers[screen " << qtScreen() << "]: presenting" << endl;
             m_viewDevice->syncBuffers();
+        }
+        else if (IPCore::ImageRenderer::debugGpu())
+        {
+            // DIAG (issue 2): present skipped. Shows which guard failed (a black
+            // external output whose view never became visible lands here).
+            cout << "INFO: VulkanDesktopVideoDevice::syncBuffers[screen " << qtScreen()
+                 << "]: SKIPPED present (viewDevice=" << (m_viewDevice ? 1 : 0) << " vulkanView=" << (m_vulkanView ? 1 : 0)
+                 << " visible=" << (m_vulkanView && m_vulkanView->isVisible() ? 1 : 0) << ")" << endl;
         }
     }
 

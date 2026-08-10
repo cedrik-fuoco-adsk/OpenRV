@@ -99,6 +99,13 @@ namespace Rv
 
         // Replace a live VulkanView with GLView after a runtime Vulkan failure.
         void fallbackVulkanToGLView();
+
+        // Promote a live GLView to a VulkanView so a 10-bit request applies
+        // immediately (the forward mirror of fallbackVulkanToGLView). Uses
+        // build-and-verify ordering: the GLView is kept until the VulkanView is
+        // confirmed initialized, so a Vulkan init failure leaves the working
+        // OpenGL view in place.
+        void swapGLViewToVulkan();
 #endif
 
         const QAction* lastPopupAction() const { return m_lastPopupAction; }

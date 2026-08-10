@@ -973,6 +973,106 @@ namespace Rv
         newGLView->videoDevice()->makeCurrent();
         newGLView->update();
     }
+
+    // Hot-swap GLView -> VulkanView and rebind the live session to the Vulkan
+    // device. The forward mirror of fallbackVulkanToGLView, reached when the user
+    // selects 10-bit while the main window is running on the OpenGL GLView and
+    // Vulkan reports 10-bit presentation support. The caller persists the desired
+    // 10-bit depth before invoking this (so a later Vulkan->GL fallback rebuilds
+    // GL at the right depth). Unlike the reverse direction, Vulkan creation can
+    // fail, so this uses build-and-verify ordering: the working GLView is kept
+    // until the VulkanView confirms it initialized, and on failure the swap is
+    // abandoned with the GLView left in place.
+    void RvDocument::swapGLViewToVulkan()
+    {
+        if (!m_glView || isClosing())
+        {
+            return;
+        }
+
+        cout << "INFO: RvDocument: switching main view from OpenGL to Vulkan." << endl;
+
+        GLView* oldGLView = m_glView;
+        Qt::KeyboardModifiers cur = oldGLView->videoDevice()->translator().currentModifiers();
+
+        VulkanView* newVulkanView = new VulkanView(this, m_centralWidget, !m_startupResize);
+        newVulkanView->setContentSize(oldGLView->sizeHint().width(), oldGLView->sizeHint().height());
+        newVulkanView->setMinimumSize(QSize(oldGLView->minimumSizeHint().width(), oldGLView->minimumSizeHint().height()));
+        newVulkanView->setFocusPolicy(Qt::StrongFocus);
+        newVulkanView->setMouseTracking(true);
+        newVulkanView->setAcceptDrops(true);
+        newVulkanView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        newVulkanView->setEventWidget(newVulkanView);
+
+        m_stackedLayout->addWidget(newVulkanView);
+        oldGLView->stopProcessingEvents();
+
+        // Optimistic commit. VulkanView creates its Vulkan surface + swapchain only
+        // once its native window is exposed (VulkanView::initializeWhenExposed):
+        // creating it before exposure makes surfaceForWindow() return a garbage
+        // handle (observed as 0xe0) that segfaults the surface query. Because init
+        // is therefore asynchronous we cannot verify it synchronously here, so we
+        // commit to Vulkan now and rely on the existing backstop: if init later
+        // fails, VulkanView::initialize() calls requestGLFallback() ->
+        // fallbackVulkanToGLView(), which rebuilds a GLView. That backstop is guarded
+        // on m_vulkanView, so assign it now. Until the surface exists,
+        // VulkanView::render()/paintEvent() no-op, so nothing presents to an
+        // uninitialized swapchain (worst case a brief blank frame during the swap,
+        // the accepted transient).
+        m_vulkanView = newVulkanView;
+        m_viewWidget = newVulkanView;
+        // On the Vulkan path m_glView must be null: backend-neutral code across
+        // RvDocument keys the active backend on (!m_glView).
+        m_glView = nullptr;
+
+        // show() arms initializeWhenExposed() via showEvent; the surface/swapchain
+        // are created on the first expose.
+        newVulkanView->show();
+
+        m_stackedLayout->removeWidget(oldGLView);
+        oldGLView->hide();
+
+        m_viewWidget->setFocus(Qt::OtherFocusReason);
+
+        m_topViewToolBar->setDevice(m_vulkanView->videoDevice());
+
+        if (m_session)
+        {
+            const bool same = m_session->outputVideoDevice() == m_session->controlVideoDevice();
+            m_session->setEventVideoDevice(0);
+            m_session->setOutputVideoDevice(0);
+            m_session->setControlVideoDevice(m_vulkanView->videoDevice());
+            if (same)
+            {
+                m_session->setOutputVideoDevice(m_vulkanView->videoDevice());
+            }
+
+            m_vulkanView->videoDevice()->sendEvent(TwkApp::RenderContextChangeEvent("vulkan-context-changed", m_vulkanView->videoDevice()));
+        }
+
+        if (DesktopVideoModule* m = RvApp()->desktopVideoModule())
+        {
+            const TwkApp::VideoModule::VideoDevices& devices = m->devices();
+
+            for (size_t i = 0; i < devices.size(); i++)
+            {
+                if (DesktopVideoDevice* d = dynamic_cast<DesktopVideoDevice*>(devices[i]))
+                {
+                    d->setShareDevice(m_vulkanView->videoDevice());
+                }
+            }
+        }
+
+        m_vulkanView->videoDevice()->translator().setCurrentModifiers(cur);
+
+        // Lazy-delete the old GLView a little later (mirrors rebuildGLView):
+        // deleting it inline while the swap is still settling can dump core.
+        m_oldGLView = oldGLView;
+        QTimer::singleShot(100, this, SLOT(lazyDeleteGLView()));
+
+        m_vulkanView->videoDevice()->makeCurrent();
+        m_vulkanView->update();
+    }
 #endif
 
     void RvDocument::resetSizePolicy()
@@ -1192,40 +1292,35 @@ namespace Rv
             }
 
             //  Already on the Vulkan path? The running view is already 10-bit, so
-            //  there is nothing to apply and nothing to tell the user.
+            //  there is nothing to apply.
             if (!m_glView)
                 return;
 
+            //  Vulkan can present 10-bit: promote the live GLView to a VulkanView
+            //  in place. The preference is already persisted above, so a later
+            //  Vulkan->GL fallback rebuilds GL at the right depth. No restart, no
+            //  notice.
+            if (VulkanView::supports10BitPresentation())
+            {
+                swapGLViewToVulkan();
+                return;
+            }
+
+            //  Honest error: this hardware/driver cannot present 10-bit. Do not
+            //  attempt promotion; the view stays on 8-bit OpenGL.
             QMessageBox box(this);
             box.setWindowModality(Qt::WindowModal);
 #ifdef PLATFORM_LINUX
             // Show the RV icon so the source of the dialog is obvious.
             box.setIconPixmap(QPixmap(qApp->applicationDirPath() + QString(RV_ICON_PATH_SUFFIX)).scaledToHeight(64));
+#else
+            box.setIcon(QMessageBox::Critical);
 #endif
-
-            if (VulkanView::supports10BitPresentation())
-            {
-#ifndef PLATFORM_LINUX
-                box.setIcon(QMessageBox::Information);
-#endif
-                box.setWindowTitle(tr(UI_APPLICATION_NAME ": 10-bit Display Output"));
-                box.setText(tr("10-bit display output will apply after restart"));
-                box.setInformativeText(
-                    tr(UI_APPLICATION_NAME " sets up 10-bit output when a window opens and does not change itwhile "
-                       "running. Your preference has been saved. Restart " UI_APPLICATION_NAME " or open a new window "
-                       "to use 10-bit output."));
-            }
-            else
-            {
-#ifndef PLATFORM_LINUX
-                box.setIcon(QMessageBox::Critical);
-#endif
-                box.setWindowTitle(tr(UI_APPLICATION_NAME ": 10-bit Display Output Unavailable"));
-                box.setText(tr("This display cannot present 10-bit output"));
-                box.setInformativeText(
-                    tr("This graphics hardware or driver does not provide a 10-bit presentation surface. "
-                       UI_APPLICATION_NAME " cannot output 10-bit on this display and will continue in 8-bit."));
-            }
+            box.setWindowTitle(tr(UI_APPLICATION_NAME ": 10-bit Display Output Unavailable"));
+            box.setText(tr("This display cannot present 10-bit output"));
+            box.setInformativeText(
+                tr("This graphics hardware or driver does not provide a 10-bit presentation surface. " UI_APPLICATION_NAME
+                   " cannot output 10-bit on this display and will continue in 8-bit."));
 
             box.exec();
             return;
