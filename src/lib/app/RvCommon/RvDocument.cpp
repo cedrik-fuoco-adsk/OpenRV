@@ -955,18 +955,11 @@ namespace Rv
             m_glView->videoDevice()->sendEvent(TwkApp::RenderContextChangeEvent("gl-context-changed", m_glView->videoDevice()));
         }
 
-        if (DesktopVideoModule* m = RvApp()->desktopVideoModule())
-        {
-            const TwkApp::VideoModule::VideoDevices& devices = m->devices();
-
-            for (size_t i = 0; i < devices.size(); i++)
-            {
-                if (DesktopVideoDevice* d = dynamic_cast<DesktopVideoDevice*>(devices[i]))
-                {
-                    d->setShareDevice(m_glView->videoDevice());
-                }
-            }
-        }
+        // Rebuild the desktop presentation devices for the GL backend, re-bind
+        // the share device, and re-open the presentation output on the selected
+        // screen, so the second display follows the main view back to OpenGL
+        // instead of being left mismatched (black).
+        RvApp()->rebuildDesktopVideoDevices(m_glView->videoDevice());
 
         delete oldVulkanView;
 
@@ -1050,18 +1043,12 @@ namespace Rv
             m_vulkanView->videoDevice()->sendEvent(TwkApp::RenderContextChangeEvent("vulkan-context-changed", m_vulkanView->videoDevice()));
         }
 
-        if (DesktopVideoModule* m = RvApp()->desktopVideoModule())
-        {
-            const TwkApp::VideoModule::VideoDevices& devices = m->devices();
-
-            for (size_t i = 0; i < devices.size(); i++)
-            {
-                if (DesktopVideoDevice* d = dynamic_cast<DesktopVideoDevice*>(devices[i]))
-                {
-                    d->setShareDevice(m_vulkanView->videoDevice());
-                }
-            }
-        }
+        // Rebuild the desktop presentation devices for the Vulkan backend BEFORE
+        // any further rebinding, re-bind the share device on the rebuilt devices,
+        // and re-open the presentation output on the selected screen. This brings
+        // the second display into agreement with the promoted Vulkan main view so
+        // it shows the rendered frame rather than black.
+        RvApp()->rebuildDesktopVideoDevices(m_vulkanView->videoDevice());
 
         m_vulkanView->videoDevice()->translator().setCurrentModifiers(cur);
 
@@ -1171,18 +1158,12 @@ namespace Rv
         if (resetGLPrefs)
             resetGLStateAndPrefs();
 
-        if (DesktopVideoModule* m = RvApp()->desktopVideoModule())
-        {
-            const TwkApp::VideoModule::VideoDevices& devices = m->devices();
-
-            for (size_t i = 0; i < devices.size(); i++)
-            {
-                if (DesktopVideoDevice* d = dynamic_cast<DesktopVideoDevice*>(devices[i]))
-                {
-                    d->setShareDevice(m_glView->videoDevice());
-                }
-            }
-        }
+        // Rebuild the desktop presentation devices against the current display
+        // depth, re-bind the share device, and re-open the presentation output on
+        // the selected screen. On an 8-bit depth change the backend does not
+        // cross the Vulkan threshold so the rebuild is a no-op, but the share
+        // device and presentation output are still re-bound to the new GLView.
+        RvApp()->rebuildDesktopVideoDevices(m_glView->videoDevice());
 
         m_glView->videoDevice()->translator().setCurrentModifiers(cur);
         m_oldGLView = oldGLView;

@@ -9,6 +9,9 @@
 #include <RvCommon/DesktopVideoDevice.h>
 #include <RvCommon/GLView.h>
 #include <IPCore/ImageRenderer.h>
+#if defined(PLATFORM_LINUX) || defined(PLATFORM_WINDOWS)
+#include <RvCommon/VulkanDesktopVideoDevice.h>
+#endif
 #include <stl_ext/string_algo.h>
 #include <QtGui/QtGui>
 #include <map>
@@ -38,6 +41,58 @@ namespace Rv
     }
 
     DesktopVideoModule::~DesktopVideoModule() {}
+
+    bool DesktopVideoModule::rebuildDevices(const TwkGLF::GLVideoDevice* shareDevice)
+    {
+        //
+        //  Decide the target backend once (memoized probe) and compare it to the
+        //  backend the current devices were built with. On non-Vulkan platforms
+        //  both are false, so this is always a no-op.
+        //
+        const bool targetVulkan = DesktopVideoDevice::shouldUseVulkanPresentation();
+
+        bool currentVulkan = false;
+#if defined(PLATFORM_LINUX) || defined(PLATFORM_WINDOWS)
+        for (size_t i = 0; i < m_devices.size(); ++i)
+        {
+            if (dynamic_cast<VulkanDesktopVideoDevice*>(m_devices[i]))
+            {
+                currentVulkan = true;
+                break;
+            }
+        }
+#endif
+
+        //
+        //  Backend unchanged: leave the devices in place to avoid a needless
+        //  teardown / transient on the second display. The caller still re-binds
+        //  the share device on the existing devices.
+        //
+        if (!m_devices.empty() && currentVulkan == targetVulkan)
+        {
+            return false;
+        }
+
+        //
+        //  Backend changed (or first build after an empty list): release the old
+        //  devices cleanly. close() frees the Vulkan swapchain / GL ScreenView
+        //  before the device is destroyed, mirroring the normal exit path, so no
+        //  swapchain/interop resources leak.
+        //
+        for (size_t i = 0; i < m_devices.size(); ++i)
+        {
+            if (m_devices[i]->isOpen())
+            {
+                m_devices[i]->close();
+            }
+            delete m_devices[i];
+        }
+        m_devices.clear();
+
+        m_devices = DesktopVideoDevice::createDesktopVideoDevices(this, shareDevice);
+
+        return true;
+    }
 
     string DesktopVideoModule::name() const { return "Desktop"; }
 

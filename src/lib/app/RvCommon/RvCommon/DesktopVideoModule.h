@@ -37,6 +37,29 @@ namespace Rv
         DesktopVideoModule(NativeDisplayPtr np, TwkGLF::GLVideoDevice* shareDevice);
         virtual ~DesktopVideoModule();
 
+        //
+        //  Re-evaluate the presentation backend (GL ScreenView vs Vulkan
+        //  swapchain) against the current display-depth preference and rebuild
+        //  the per-screen devices to match, using shareDevice (the controller's
+        //  current main-view device) as the new share device. This is the
+        //  post-startup analogue of the constructor's one-time
+        //  createDesktopVideoDevices call, needed because the backend decision is
+        //  no longer frozen at launch.
+        //
+        //  A cleanly open device is closed (releasing its Vulkan swapchain / GL
+        //  ScreenView) before its old device is destroyed. To avoid a needless
+        //  teardown / transient on the second display, this is a no-op when the
+        //  effective backend has not changed; it then returns false and leaves
+        //  m_devices untouched (the caller still re-binds the share device).
+        //  Returns true when the devices were actually rebuilt.
+        //
+        //  Note: this does not touch the session's output video device. The
+        //  caller (RvApplication::rebuildDesktopVideoDevices) owns re-binding the
+        //  share device and re-opening the presentation output, because the old
+        //  devices this destroys may be referenced as the session output.
+        //
+        bool rebuildDevices(const TwkGLF::GLVideoDevice* shareDevice);
+
         virtual std::string name() const;
         virtual void open();
         virtual void close();

@@ -241,6 +241,19 @@ namespace Rv
 
         static std::vector<VideoDevice*> createDesktopVideoDevices(TwkApp::VideoModule* module, const TwkGLF::GLVideoDevice* shareDevice);
 
+        //
+        //  Effective presentation-backend decision, shared by
+        //  createDesktopVideoDevices (initial build) and
+        //  DesktopVideoModule::rebuildDevices (live re-evaluation) so both agree
+        //  on the single GL-vs-Vulkan rule. Returns true when the second-display
+        //  output should be delivered through a Vulkan swapchain (10-bit request
+        //  that this machine's Vulkan can actually present), false for the OpenGL
+        //  ScreenView path. Always false on macOS. The underlying
+        //  VulkanView::supports10BitPresentation() probe is memoized, so this is
+        //  cheap to call on every rebuild request.
+        //
+        static bool shouldUseVulkanPresentation();
+
     protected:
         void addDefaultDataFormats(size_t bits = 8);
         void sortVideoFormatsByWidth();

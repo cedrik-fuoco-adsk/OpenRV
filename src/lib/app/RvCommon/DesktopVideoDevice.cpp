@@ -959,11 +959,8 @@ namespace Rv
     }
 #endif
 
-    std::vector<VideoDevice*> DesktopVideoDevice::createDesktopVideoDevices(TwkApp::VideoModule* module,
-                                                                            const TwkGLF::GLVideoDevice* shareDevice)
+    bool DesktopVideoDevice::shouldUseVulkanPresentation()
     {
-        std::vector<VideoDevice*> devices;
-
 #if defined(PLATFORM_LINUX) || defined(PLATFORM_WINDOWS)
         //
         //  Presentation output backend selection (matches the main view's
@@ -971,12 +968,25 @@ namespace Rv
         //  this machine's Vulkan can actually present routes the second-display
         //  output through a Vulkan swapchain (VulkanDesktopVideoDevice) for true
         //  10-bit, avoiding the 8-bit truncation of the OpenGL ScreenView path.
-        //  Everything else stays on the OpenGL DesktopVideoDevice. Probed once
-        //  here (supports10BitPresentation() spins up a throwaway instance).
+        //  Everything else stays on the OpenGL DesktopVideoDevice.
+        //  supports10BitPresentation() is memoized, so this is cheap to re-call
+        //  whenever the display output format or the main-view backend changes.
         //
         Options& opts = Options::sharedOptions();
         const bool want10bit = (opts.dispRedBits == 10 && opts.dispGreenBits == 10 && opts.dispBlueBits == 10 && opts.dispAlphaBits == 2);
-        const bool useVulkan = want10bit && VulkanView::supports10BitPresentation();
+        return want10bit && VulkanView::supports10BitPresentation();
+#else
+        return false;
+#endif
+    }
+
+    std::vector<VideoDevice*> DesktopVideoDevice::createDesktopVideoDevices(TwkApp::VideoModule* module,
+                                                                            const TwkGLF::GLVideoDevice* shareDevice)
+    {
+        std::vector<VideoDevice*> devices;
+
+#if defined(PLATFORM_LINUX) || defined(PLATFORM_WINDOWS)
+        const bool useVulkan = shouldUseVulkanPresentation();
 #endif
 
         const auto screens = QGuiApplication::screens();

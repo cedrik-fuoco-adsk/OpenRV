@@ -28,6 +28,11 @@ namespace TwkApp
     class VideoModule;
 }
 
+namespace TwkGLF
+{
+    class GLVideoDevice;
+}
+
 namespace Rv
 {
     class RvDocument;
@@ -125,6 +130,19 @@ namespace Rv
 
         void setPresentationMode(bool);
         bool isInPresentationMode();
+
+        //
+        //  Re-evaluate and rebuild the desktop presentation devices so their
+        //  backend/bit depth follow the current display-depth preference and the
+        //  main view's live backend, then re-bind the share device and (if
+        //  presentation mode is on) re-open the presentation output on the
+        //  selected screen. Invoked from the RvDocument backend-transition points
+        //  (setDisplayOutput / swapGLViewToVulkan / fallbackVulkanToGLView) with
+        //  the controller's new main-view device as shareDevice. Fixes the frozen
+        //  presentation bit depth and the black second display on a backend
+        //  mismatch.
+        //
+        void rebuildDesktopVideoDevices(TwkGLF::GLVideoDevice* shareDevice);
 
         DesktopVideoModule* desktopVideoModule() const { return m_desktopModule; }
 
