@@ -7,11 +7,13 @@
 
 #include <TwkGLF/GLVideoDevice.h>
 #include <RvCommon/QTTranslator.h>
-#include <RvCommon/VulkanView.h>
+#include <RvCommon/VulkanWindow.h>
 #include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include <QtCore/QPointer>
 
 QT_BEGIN_NAMESPACE
 class QOpenGLContext;
@@ -21,22 +23,28 @@ QT_END_NAMESPACE
 
 namespace Rv
 {
-    class VulkanView;
+    class VulkanWindow;
 
     //
     //  QTVulkanVideoDevice
     //
-    //  Wraps a VulkanView as a TwkGLF::GLVideoDevice so that ImageRenderer's
+    //  Wraps a VulkanWindow as a TwkGLF::GLVideoDevice so that ImageRenderer's
     //  existing GL rendering pipeline (renderMain, shader cache, etc.) can run
     //  unchanged on the Vulkan presentation path.
     //
     class QTVulkanVideoDevice : public TwkGLF::GLVideoDevice
     {
     public:
-        QTVulkanVideoDevice(TwkApp::VideoModule* module, const std::string& name, VulkanView* view, QWidget* eventWidget);
+        //
+        //  The presentation surface is a QWindow (embedded in the widget tree
+        //  via createWindowContainer); eventWidget is the container QWidget the
+        //  QTTranslator uses for coordinate mapping (height/mapToGlobal) and
+        //  mouse grab.
+        //
+        QTVulkanVideoDevice(TwkApp::VideoModule* module, const std::string& name, VulkanWindow* window, QWidget* eventWidget);
         virtual ~QTVulkanVideoDevice();
 
-        VulkanView* vulkanView() const { return m_view; }
+        VulkanWindow* vulkanWindow() const { return m_window; }
 
         QWidget* eventWidget() const { return m_eventWidget; }
 
@@ -77,11 +85,18 @@ namespace Rv
         std::string hardwareIdentification() const override;
 
     private:
-        // Ensure the QOpenGLContext + FBO exist and match the current view size.
+        // Ensure the QOpenGLContext + FBO exist and match the current window size.
         // Makes the GL context current and binds the FBO on return.
         void ensureGLContext() const;
 
-        VulkanView* m_view;
+        //
+        //  Guarded: the window is embedded via QWidget::createWindowContainer(),
+        //  which owns it, so Qt can delete it independently of this device (and
+        //  of the VulkanView that created both). A QPointer makes the
+        //  `if (m_window)` checks below actual liveness checks instead of null
+        //  checks.
+        //
+        QPointer<VulkanWindow> m_window;
         QWidget* m_eventWidget;
         QTTranslator* m_translator;
         float m_devicePixelRatio{1.0f};
@@ -98,16 +113,16 @@ namespace Rv
         mutable int m_fboWidth{0};
         mutable int m_fboHeight{0};
 
-        // GPU Interop GL objects, ringed per in-flight slot to match VulkanView's
+        // GPU Interop GL objects, ringed per in-flight slot to match VulkanWindow's
         // per-slot Vulkan shared image/semaphores. Indexed by the Vulkan slot for
-        // the frame being rendered (VulkanView::currentFrame()).
-        mutable std::array<GLuint, VulkanView::FRAMES_IN_FLIGHT> m_glMemoryObject{};
-        mutable std::array<GLuint, VulkanView::FRAMES_IN_FLIGHT> m_glSharedTexture{};
-        mutable std::array<GLuint, VulkanView::FRAMES_IN_FLIGHT> m_glReadySemaphore{};
-        mutable std::array<GLuint, VulkanView::FRAMES_IN_FLIGHT> m_vkReadySemaphore{};
-        mutable std::array<GLuint, VulkanView::FRAMES_IN_FLIGHT> m_drawFbo{};
-        mutable std::array<int, VulkanView::FRAMES_IN_FLIGHT> m_sharedWidth{};
-        mutable std::array<int, VulkanView::FRAMES_IN_FLIGHT> m_sharedHeight{};
+        // the frame being rendered (VulkanWindow::currentFrame()).
+        mutable std::array<GLuint, VulkanWindow::FRAMES_IN_FLIGHT> m_glMemoryObject{};
+        mutable std::array<GLuint, VulkanWindow::FRAMES_IN_FLIGHT> m_glSharedTexture{};
+        mutable std::array<GLuint, VulkanWindow::FRAMES_IN_FLIGHT> m_glReadySemaphore{};
+        mutable std::array<GLuint, VulkanWindow::FRAMES_IN_FLIGHT> m_vkReadySemaphore{};
+        mutable std::array<GLuint, VulkanWindow::FRAMES_IN_FLIGHT> m_drawFbo{};
+        mutable std::array<int, VulkanWindow::FRAMES_IN_FLIGHT> m_sharedWidth{};
+        mutable std::array<int, VulkanWindow::FRAMES_IN_FLIGHT> m_sharedHeight{};
 
         void cleanupSharedGLObjects(uint32_t slot) const;
 

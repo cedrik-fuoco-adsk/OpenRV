@@ -94,8 +94,10 @@ IF(RV_TARGET_LINUX
     _sources
     VulkanBuildProbe.cpp
     VulkanView.cpp
+    VulkanWindow.cpp
     QTVulkanVideoDevice.cpp
     RvCommon/VulkanView.h
+    RvCommon/VulkanWindow.h
     RvCommon/QTVulkanVideoDevice.h
   )
 ENDIF()
@@ -172,7 +174,7 @@ IF(NOT
    (RV_TARGET_LINUX
     OR RV_TARGET_WINDOWS)
 )
-  LIST(REMOVE_ITEM _files_to_moc "RvCommon/VulkanView.h" "RvCommon/QTVulkanVideoDevice.h")
+  LIST(REMOVE_ITEM _files_to_moc "RvCommon/VulkanView.h" "RvCommon/VulkanWindow.h" "RvCommon/QTVulkanVideoDevice.h")
 ENDIF()
 
 FOREACH(

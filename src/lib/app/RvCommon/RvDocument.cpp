@@ -257,7 +257,6 @@ namespace Rv
             m_vulkanView->setAcceptDrops(true);
             m_vulkanView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
             m_vulkanView->resize(m_vulkanView->sizeHint());
-            m_vulkanView->setEventWidget(m_vulkanView);
             m_viewWidget = m_vulkanView;
 
             m_vulkanView->videoDevice()->makeCurrent();
@@ -431,7 +430,7 @@ namespace Rv
         //  make the viewport context current first.
         //
         //  Deliberately NOT driven from a view callback (GLWindow::initializeGL,
-        //  VulkanView::initialize): loading packages creates web panels, and
+        //  VulkanWindow::initialize): loading packages creates web panels, and
         //  adding a QWebEngineView makes Qt tear down the main window's native
         //  subtree -- destroying the viewport while that callback is still on
         //  the stack.
