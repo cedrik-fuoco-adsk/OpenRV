@@ -478,7 +478,9 @@ namespace Rv
     {
         //  No context means nothing was ever imported.
         if (!m_glContext || !m_offscreenSurface)
+        {
             return;
+        }
 
         m_glContext->makeCurrent(m_offscreenSurface);
         for (uint32_t i = 0; i < VulkanWindow::FRAMES_IN_FLIGHT; ++i)
