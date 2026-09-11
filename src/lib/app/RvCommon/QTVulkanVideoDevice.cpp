@@ -592,15 +592,15 @@ namespace Rv
         const VulkanWindow::SharedImageInfo* sharedInfo = glInteropAvailable ? m_window->getSharedImageInfo(w, h) : nullptr;
 #endif
 
-        static bool firstFrameLogged = false;
-        if (!firstFrameLogged)
+        const int presentPath = sharedInfo ? 1 : 0;
+        if (m_loggedPresentPath != presentPath)
         {
-            firstFrameLogged = true;
             if (ImageRenderer::debugGpu())
             {
+                m_loggedPresentPath = presentPath;
                 const VkFormat scFmt = m_window ? m_window->swapchainFormat() : VK_FORMAT_UNDEFINED;
-                cout << "INFO: QTVulkanVideoDevice: syncBuffers: first frame path = " << (sharedInfo ? "GPU-interop" : "CPU-fallback")
-                     << "  swapchainFormat=" << scFmt
+                cout << "INFO: QTVulkanVideoDevice: syncBuffers: '" << name() << "' " << w << "x" << h
+                     << " present path = " << (sharedInfo ? "GPU-interop" : "CPU-fallback") << "  swapchainFormat=" << scFmt
                      << (scFmt == VK_FORMAT_A2B10G10R10_UNORM_PACK32   ? " (A2B10G10R10 / 10-bit)"
                          : scFmt == VK_FORMAT_A2R10G10B10_UNORM_PACK32 ? " (A2R10G10B10 / 10-bit)"
                          : scFmt == VK_FORMAT_UNDEFINED                ? " (UNDEFINED -- swapchain not created yet)"
