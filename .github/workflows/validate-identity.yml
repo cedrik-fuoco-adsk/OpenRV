@@ -1,0 +1,447 @@
+name: Validate build identity
+
+# Fast validation of the build-identity layer: the identity computation, the artifact probe and the build manifest.
+#
+# This exists separately from ci.yml because ci.yml's build matrix only exercises the layer during configure, inside the platform build action -- slow to reach and
+# slow to see. This workflow validates it on every supported platform in minutes, and is cheap enough to run on every pull request that touches it.
+#
+# It is not gated on the repository owner: it needs no secrets, and fast feedback is equally useful on a fork.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/build/build_identity.py'
+      - 'src/build/probe_artifact.py'
+      - 'src/build/build_manifest.py'
+      - 'src/build/test_build_identity.py'
+      - 'src/build/test_probe_artifact.py'
+      - 'src/build/test_build_manifest.py'
+      - 'src/build/compare_conan_generators.py'
+      - 'src/build/conan_bookkeeping_probe.py'
+      - 'src/build/test_compare_conan_generators.py'
+      - 'cmake/macros/rv_build_identity.cmake'
+      - 'cmake/macros/rv_probe_artifact.cmake'
+      - 'cmake/macros/rv_build_manifest.cmake'
+      - 'cmake/defaults/rv_options.cmake'
+      # The conan generator comparison guards its argument seam against this file, so a
+      # change here must re-run the check.
+      - '.github/workflows/conan.yml'
+      - '.github/workflows/validate-identity.yml'
+  push:
+    branches:
+      - main
+      # Fork validation: temporary, lets a push to this branch run the fast validation on a fork without moving its default branch. Remove before upstreaming.
+      - ci/phase0-build-identity-manifest
+
+jobs:
+  # Fast, platform-specific validation of the build-identity layer.
+  #
+  # The full build matrix only exercises this layer during configure, inside the platform build action, so a problem there is slow to reach and slow to see. This job
+  # runs the layer's own checks and configures a small harness against the platform's real compiler, so the identity, the artifact probe and the manifest are all
+  # validated on every supported platform in minutes.
+  #
+  # It asserts rather than just reports: a platform whose identity silently degrades to incomplete, or whose probe silently records nothing, fails here.
+  validate-identity:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
+        with:
+          python-version: '3.11'
+
+      # Split into one step per suite so a failure is attributable from the job's step list alone, without needing the log.
+      - name: Check the build identity
+        run: python3 src/build/test_build_identity.py
+
+      - name: Check the artifact probe
+        run: python3 src/build/test_probe_artifact.py
+
+      - name: Check the build manifest
+        run: python3 src/build/test_build_manifest.py
+
+      - name: Check the Conan generator comparison
+        run: python3 src/build/test_compare_conan_generators.py
+
+      # The runtime resolution is CMake string logic, which the Python checks cannot reach, and what
+      # it produces decides whether two builds may share artifacts. Forcing MSVC on means the
+      # Windows-only branch is checked on every platform rather than only where the matrix is slow.
+      - name: Check the C runtime resolution
+        run: cmake -P cmake/macros/test_rv_build_identity_crt.cmake
+
+      # The identity and package bookkeeping lives in Conan's generate() step, which the full
+      # Conan matrix only reaches after an hour of dependency installation -- and a wrong Conan
+      # API call there breaks conan install on every platform. This runs the same code path
+      # against real Conan with one small dependency, in about a minute.
+      #
+      # Linux only: it needs a working compiler for the one dependency, and the heavy Conan
+      # matrix already covers all three platforms.
+      - name: Check the Conan generate step against real Conan
+        id: conan_probe
+        if: runner.os == 'Linux'
+        env:
+          CONAN_HOME: ${{ runner.temp }}/conan-home
+          # The recipe refuses to run without an existing Qt root; the probe does not need a real one.
+          QT_HOME: ${{ runner.temp }}/conan-probe-qt
+        run: |
+          set -euo pipefail
+          mkdir -p "$QT_HOME/lib/cmake"
+
+          python3 -m pip install --quiet 'conan>=2' ninja
+          conan profile detect --force
+          conan export openrvcore-conanfile.py
+
+          # The base class resolves its helper scripts relative to the recipe folder, so the
+          # probe has to sit at the repository root to behave like the real consumer recipe.
+          cp src/build/conan_bookkeeping_probe.py _probe_conanfile.py
+          OUT="$RUNNER_TEMP/conan-probe"
+          rm -rf "$OUT"
+          conan install _probe_conanfile.py -pr:a default --build=zlib/1.3.2 -of "$OUT"
+          rm -f _probe_conanfile.py CMakeUserPresets.json
+
+          # Where Conan puts its documents depends on the generator: a single-config generator
+          # appends the build type (build/Release), a multi-config one does not (build). Discover
+          # it rather than assume, and hand the directory to the steps that need it.
+          IDENTITY_DOC=$(find "$OUT" -name conan-identity.json -print -quit)
+          if [ -z "$IDENTITY_DOC" ]; then
+            echo "::error::Conan did not write conan-identity.json anywhere under $OUT"
+            exit 1
+          fi
+          DOCUMENTS_DIR=$(dirname "$IDENTITY_DOC")
+          echo "documents=$DOCUMENTS_DIR" >> "$GITHUB_OUTPUT"
+          echo "Conan wrote its documents to $DOCUMENTS_DIR"
+
+          python3 - "$DOCUMENTS_DIR" <<'PY'
+          import json
+          import os
+          import sys
+
+          base = sys.argv[1]
+          failures = []
+
+          identity_path = os.path.join(base, "conan-identity.json")
+          packages_path = os.path.join(base, "conan-packages.json")
+          for path in (identity_path, packages_path):
+              if not os.path.isfile(path):
+                  failures.append(f"{os.path.basename(path)} was not written")
+
+          if os.path.isfile(identity_path):
+              identity = json.load(open(identity_path, encoding="utf-8"))
+              if identity.get("partial") != "true":
+                  failures.append(f"the profile identity should be marked partial: {identity}")
+              for field in ("target_os", "target_arch", "compiler_id", "compiler_version", "build_config"):
+                  if not identity.get(field):
+                      failures.append(f"the profile identity is missing {field}: {identity}")
+              # A profile cannot know either of these, and must not invent them.
+              for guessed in ("python_abi", "qt_version"):
+                  if guessed in identity:
+                      failures.append(f"the profile identity must not guess {guessed}: {identity}")
+              # This is a Linux profile, which has no compiler.runtime setting, so the C runtime
+              # must be absent rather than invented. The same field is stated and compared on
+              # Windows, where it is a real ABI axis.
+              if "crt" in identity:
+                  failures.append(f"a Linux profile stated a C runtime: {identity.get('crt')!r}")
+              print("conan-identity.json:", json.dumps(identity, sort_keys=True))
+
+          if os.path.isfile(packages_path):
+              document = json.load(open(packages_path, encoding="utf-8"))
+              packages = document.get("packages") or []
+              if not packages:
+                  failures.append("no resolved package was recorded, so the enumeration did not run")
+              for entry in packages:
+                  for field in ("name", "version", "ref", "package_id"):
+                      if not entry.get(field):
+                          failures.append(f"package entry is missing {field}: {entry}")
+              refs = [entry.get("ref") for entry in packages]
+              if refs != sorted(refs):
+                  failures.append(f"packages are not sorted, so the manifest would not be deterministic: {refs}")
+              print("conan-packages.json:", json.dumps(document, sort_keys=True))
+
+          # CMake receives the documents either through the toolchain or, when the generator does
+          # not put cache variables in conan_toolchain.cmake -- Visual Studio writes them to
+          # CMakePresets.json -- by falling back to the build directory. What must hold is that the
+          # documents are in the build folder, and that anything stating the paths points at files
+          # that exist. The harness step below then configures against these documents, which is the
+          # real check that CMake consumes them.
+          generators = os.path.join(base, "generators")
+          stated_in = []
+          for root, _dirnames, filenames in os.walk(generators):
+              for name in filenames:
+                  path = os.path.join(root, name)
+                  try:
+                      text = open(path, encoding="utf-8", errors="replace").read()
+                  except OSError:
+                      continue
+                  if "RV_CONAN_IDENTITY_FILE" in text or "RV_CONAN_PACKAGES_FILE" in text:
+                      stated_in.append(os.path.relpath(path, generators))
+          if stated_in:
+              print("the generated files state the CMake paths:", stated_in)
+          else:
+              print("note: no generated file states the CMake paths, so CMake's build-directory fallback is what will be used")
+
+          if not os.path.isdir(generators):
+              failures.append(f"no generators directory at {generators}, so CMake would not be configured from here")
+
+          if failures:
+              for failure in failures:
+                  print(f"FAIL: {failure}", file=sys.stderr)
+              sys.exit(1)
+          print("OK: the Conan generate step works against real Conan")
+          PY
+
+      - name: Select a real system artifact to probe
+        id: artifact
+        run: |
+          set -euo pipefail
+          # The fixture must actually reference the C++ runtime. A function doing only integer
+          # arithmetic resolves no symbol from libstdc++, so the linked library records an empty
+          # version-needs section and the probe has nothing to read.
+          cat > "$RUNNER_TEMP/probe_fixture.cpp" <<'CPP'
+          #include <string>
+
+          extern "C" int rv_probe_fixture(int x)
+          {
+            std::string s(static_cast<std::string::size_type>(x), 'r');
+            return static_cast<int>(s.size()) + x;
+          }
+          CPP
+          candidate=""
+          case "$RUNNER_OS" in
+            Linux)
+              # A compiled C++ shared library, not libstdc++.so.6: libstdc++ *provides* GLIBCXX,
+              # so probing it exercises no symbol-version demand. A library that links it does
+              # demand GLIBCXX and CXXABI, which is the fact class behind the historical
+              # "openexr from conan has a different libstdc++ GLIBCXX" incident.
+              if g++ -shared -fPIC -o "$RUNNER_TEMP/libprobe_fixture.so" "$RUNNER_TEMP/probe_fixture.cpp" 2>/dev/null; then
+                candidate="$RUNNER_TEMP/libprobe_fixture.so"
+              elif command -v g++ >/dev/null 2>&1; then
+                candidate="$(g++ -print-file-name=libstdc++.so.6)"
+              fi
+              ;;
+            macOS)
+              if clang++ -shared -fPIC -o "$RUNNER_TEMP/libprobe_fixture.dylib" "$RUNNER_TEMP/probe_fixture.cpp" 2>/dev/null; then
+                candidate="$RUNNER_TEMP/libprobe_fixture.dylib"
+              else
+                for fallback in /usr/lib/libc++.1.dylib /usr/lib/libSystem.B.dylib "$(command -v python3)"; do
+                  if [ -f "$fallback" ]; then
+                    candidate="$fallback"
+                    break
+                  fi
+                done
+              fi
+              ;;
+            Windows)
+              candidate="C:/Windows/System32/ucrtbase.dll"
+              ;;
+          esac
+          # An empty path is never written: it would register nothing and then fail later with a
+          # confusing message about a missing probe document instead of about the runner.
+          if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+            echo "path=$candidate" >> "$GITHUB_OUTPUT"
+            echo "probing: $candidate"
+          else
+            echo "::warning::no artifact could be selected to probe on $RUNNER_OS"
+          fi
+
+      - name: Configure the harness against this platform's real compiler
+        env:
+          # Passed through the environment rather than interpolated into the shell text.
+          RV_HARNESS_ARTIFACT: ${{ steps.artifact.outputs.path }}
+          # Documents produced by the real-Conan step above, if it ran. Planting them in the harness
+          # build directory is the Windows shape, where the toolchain never states the paths and
+          # CMake has to find them by convention.
+          RV_CONAN_DOCUMENTS: ${{ steps.conan_probe.outputs.documents }}
+        run: |
+          set -euo pipefail
+          HARNESS="$RUNNER_TEMP/identity-harness"
+          rm -rf "$HARNESS"
+          mkdir -p "$HARNESS"
+
+          # Documents produced by the real-Conan step above. Planting them in the build directory
+          # with no toolchain variable set is the Windows shape, where the generator does not put
+          # the cache variables in conan_toolchain.cmake and CMake has to find them by convention.
+          if [ -n "${RV_CONAN_DOCUMENTS:-}" ] && [ -d "$RV_CONAN_DOCUMENTS" ]; then
+            mkdir -p "$HARNESS/build"
+            cp "$RV_CONAN_DOCUMENTS"/conan-identity.json "$RV_CONAN_DOCUMENTS"/conan-packages.json "$HARNESS/build/"
+            echo "planted the Conan documents in the harness build directory"
+          fi
+          cat > "$HARNESS/CMakeLists.txt" <<'CMAKE'          # Stands in for the project root so the real macros can be exercised without
+          # configuring the whole of OpenRV (which needs Qt and would build dependencies).
+          cmake_minimum_required(VERSION 3.27)
+          project(build_identity_harness LANGUAGES CXX)
+
+          if(APPLE)
+            set(RV_TARGET_DARWIN ON)
+          elseif(WIN32)
+            set(RV_TARGET_WINDOWS ON)
+          else()
+            set(RV_TARGET_LINUX ON)
+          endif()
+
+          set(RV_VFX_PLATFORM "CY2025" CACHE STRING "")
+          set(RV_CPP_STANDARD "17" CACHE STRING "")
+          set(RV_DEPS_PYTHON_VERSION "3.11.9" CACHE STRING "")
+          set(RV_DEPS_QT_VERSION "6.5.3" CACHE STRING "")
+          set(RV_BUILD_IDENTITY ON)
+          set(RV_BUILD_MANIFEST ON)
+          set(RV_DEPS_PROBE_ARTIFACTS ON)
+          set(RV_DEPS_PROBE_STRICT OFF)
+          set(RV_DEPS_STORE "")
+          set(RV_HARNESS_REPO "" CACHE STRING "")
+          set(RV_HARNESS_ARTIFACT "" CACHE STRING "")
+
+          # The macros resolve their scripts relative to PROJECT_SOURCE_DIR.
+          set(PROJECT_SOURCE_DIR "${RV_HARNESS_REPO}")
+          list(APPEND CMAKE_MODULE_PATH "${RV_HARNESS_REPO}/cmake/macros")
+
+          include(rv_build_identity)
+          RV_COMPUTE_BUILD_IDENTITY()
+          include(rv_probe_artifact)
+          include(rv_build_manifest)
+          if(RV_HARNESS_ARTIFACT)
+            RV_REGISTER_PREBUILT_ARTIFACT(input "${RV_HARNESS_ARTIFACT}")
+          endif()
+          RV_WRITE_BUILD_MANIFEST()
+          CMAKE
+          cmake -S "$HARNESS" -B "$HARNESS/build" -DCMAKE_BUILD_TYPE=Release -DRV_HARNESS_REPO="$GITHUB_WORKSPACE" -DRV_HARNESS_ARTIFACT="$RV_HARNESS_ARTIFACT"
+
+      - name: Report the identity and the manifest
+        run: |
+          set -euo pipefail
+          echo '========== build-identity.json =========='
+          cat "$RUNNER_TEMP/identity-harness/build/build-identity.json"
+          echo '========== build-manifest.json =========='
+          cat "$RUNNER_TEMP/identity-harness/build/build-manifest.json"
+
+      - name: Assert the layer did not silently degrade on this platform
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          base = os.path.join(os.environ["RUNNER_TEMP"], "identity-harness", "build")
+          runner_os = os.environ["RUNNER_OS"]
+
+          identity = json.load(open(os.path.join(base, "build-identity.json"), encoding="utf-8"))
+          manifest = json.load(open(os.path.join(base, "build-manifest.json"), encoding="utf-8"))
+
+          failures = []
+
+          fields = [
+              "vfx_platform", "target_os", "target_arch", "compiler_id", "compiler_version",
+              "stdlib", "cxx_standard", "build_config", "python_abi", "qt_version", "fields_version", "hash",
+          ]
+          missing = [field for field in fields if not identity.get(field)]
+          if missing:
+              failures.append(f"identity is incomplete: missing {missing}")
+
+          # What this platform must produce, so a wrong mapping cannot pass quietly.
+          expected = {
+              "Linux": ("linux", "gcc", "libstdc++11"),
+              "macOS": ("macos", "apple-clang", "libc++"),
+              "Windows": ("windows", "msvc", "msvc"),
+          }[runner_os]
+          actual = (identity.get("target_os"), identity.get("compiler_id"), identity.get("stdlib"))
+          if actual != expected:
+              failures.append(f"identity mismatch: expected (target_os, compiler_id, stdlib)={expected}, got {actual}")
+
+          # The C runtime is recorded on Windows only, from the compiler's own runtime selection
+          # rather than from the configuration name. The harness is configured Release, so MSVC
+          # links the dynamic runtime. Everywhere else the field must be absent rather than set to a
+          # placeholder, because a placeholder would be read as a fact about the build.
+          if runner_os == "Windows":
+              if identity.get("crt") != "dynamic":
+                  failures.append(f"expected a dynamic C runtime for a Release build, got {identity.get('crt')!r}")
+          elif "crt" in identity:
+              failures.append(f"a C runtime was recorded on {runner_os}: {identity.get('crt')!r}")
+
+          if not manifest.get("identity"):
+              failures.append("manifest carries no identity")
+
+          # The Conan documents were planted in the build directory with no toolchain variable set,
+          # so a Conan section here means CMake found them by convention rather than because the
+          # generator told it where they were.
+          if runner_os == "Linux":
+              conan = manifest.get("conan") or {}
+              if not conan.get("identity"):
+                  failures.append("the manifest dropped the Conan profile identity that was placed in the build directory")
+              if not conan.get("packages"):
+                  failures.append("the manifest dropped the resolved Conan package set that was placed in the build directory")
+              if conan:
+                  print("conan section read from the build directory:", sorted(conan.keys()))
+
+          probes = (manifest.get("artifacts") or {}).get("probes") or []
+          if not probes:
+              failures.append("manifest records no probed artifact")
+          else:
+              probe = probes[0]
+              if not probe.get("content_reference"):
+                  failures.append("the probed artifact has no content-derived reference")
+              if probe.get("format") in (None, "unknown"):
+                  failures.append(f"the probed artifact's format was not recognised: {probe.get('format')}")
+
+              # An inspection tool is expected on Linux and macOS. Windows runners have neither dumpbin nor the LLVM tools on
+              # PATH, where recording unknown is the documented behaviour rather than a defect.
+              if runner_os in ("Linux", "macOS") and not probe["abi_demands"].get("known"):
+                  failures.append(f"ABI demands were not read on {runner_os}: {probe['abi_demands'].get('reason')}")
+              if runner_os == "Windows" and not probe["abi_demands"].get("known"):
+                  print(f"note: ABI demands unknown on Windows, as expected: {probe['abi_demands'].get('reason')}")
+
+              # On Linux the fixture links libstdc++, so its demands must name GLIBCXX or CXXABI with
+              # the version split out of the version name. This is the fact class the historical
+              # OpenEXR/libstdc++ failure turned on, so its presence is asserted rather than assumed.
+              if runner_os == "Linux":
+                  namespaces = {entry.get("namespace") for entry in probe["abi_demands"].get("values") or []}
+                  cxx_namespaces = {n for n in namespaces if n in ("GLIBCXX", "CXXABI")}
+                  if not cxx_namespaces:
+                      failures.append(f"no GLIBCXX/CXXABI demand was read from a C++ shared library; namespaces seen: {sorted(n for n in namespaces if n)}")
+                  else:
+                      print("C++ symbol-version namespaces read:", sorted(cxx_namespaces))
+
+          print("identity:", json.dumps({k: identity.get(k) for k in fields if k != "hash"}, sort_keys=True))
+          print("identity hash:", identity.get("hash"))
+          if probes:
+              probed = probes[0]
+              print("probed:", probed.get("path"))
+              print("  format:", probed.get("format"), "| linkage:", probed["linkage"].get("type"), "/", probed["linkage"].get("config"))
+              print("  abi demands known:", probed["abi_demands"].get("known"), "| count:", len(probed["abi_demands"].get("values") or []))
+              for entry in (probed["abi_demands"].get("values") or [])[:6]:
+                  print("    ", entry)
+
+          if failures:
+              for failure in failures:
+                  print(f"FAIL: {failure}", file=sys.stderr)
+              sys.exit(1)
+          print("OK: the build-identity layer behaves correctly on this platform")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        # upload-artifact is not used anywhere else in this repository, so there is no pinned SHA to copy. Pin it to a commit SHA, as the other actions are,
+        # before upstreaming.
+        with:
+          name: build-identity-${{ matrix.os }}
+          # A missing probe document is reported by the assertion step above with a useful message, so a missing file is not escalated here.
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/identity-harness/build/build-identity.json
+            ${{ runner.temp }}/identity-harness/build/build-manifest.json
+            ${{ runner.temp }}/identity-harness/build/artifact-probes.json
+
+      # Separate step so the paths are only used where the documents exist.
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: conan-documents-${{ matrix.os }}
+          if-no-files-found: warn
+          path: |
+            ${{ steps.conan_probe.outputs.documents }}/conan-identity.json
+            ${{ steps.conan_probe.outputs.documents }}/conan-packages.json

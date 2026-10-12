@@ -148,6 +148,18 @@ FIND_PACKAGE(
 GET_TARGET_PROPERTY(MOC_EXECUTABLE Qt6::moc IMPORTED_LOCATION)
 GET_TARGET_PROPERTY(UIC_EXECUTABLE Qt6::uic IMPORTED_LOCATION)
 
+# Qt is the prebuilt artifact every configuration consumes, and the one whose ABI the most code depends on: RV's C++ shares Qt objects with PySide6, and Mu
+# binds Qt as well. Record it for probing, pointing the probe at Qt's own installation so its version and feature set are read from Qt's configure output rather
+# than guessed from a filename.
+IF(RV_DEPS_PROBE_ARTIFACTS)
+  RV_RESOLVE_IMPORTED_LOCATION(Qt6::Core _qt_probe_location)
+  IF(_qt_probe_location)
+    RV_REGISTER_PREBUILT_ARTIFACT(input "${_qt_probe_location}" METADATA_ROOT "${RV_DEPS_QT_LOCATION}")
+  ELSE()
+    MESSAGE(STATUS "Artifact probing: could not resolve Qt6::Core's location, so Qt will not be probed")
+  ENDIF()
+ENDIF()
+
 SET(QT_MOC_EXECUTABLE
     "${MOC_EXECUTABLE}"
     CACHE STRING "Qt MOC executable"

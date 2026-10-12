@@ -163,3 +163,37 @@ SET_PROPERTY(
   CACHE RV_DEPS_VERSION_MATCH
   PROPERTY STRINGS EXACT MINIMUM
 )
+
+#
+# Build identity, manifest and artifact probing
+#
+# The build identity is a single authoritative description of the platform this build targets -- VFX platform, target OS and architecture, toolchain, build
+# configuration, Python ABI series and Qt version -- computed once so that the CMake dependency path and the Conan profile cannot drift apart. It is reported at
+# configure time and recorded in the build manifest.
+#
+# Everything in this group is read-only: it records and reports what the build already is and reroutes nothing. Turning RV_BUILD_IDENTITY off restores the
+# previous configure output exactly.
+#
+OPTION(RV_BUILD_IDENTITY "Compute and report the build identity" ON)
+OPTION(RV_BUILD_MANIFEST "Write a build manifest recording what this build is made of" ON)
+OPTION(RV_DEPS_PROBE_ARTIFACTS "Probe prebuilt artifacts and record their facts in the build manifest" ON)
+
+#
+# Strict artifact probing: fail naming the missing inspection tool instead of recording the fact as unknown. The store path requires strict probing because a
+# store entry that cannot be verified must not be used. A default build leaves this OFF so that a machine without readelf/otool/dumpbin still builds.
+#
+OPTION(RV_DEPS_PROBE_STRICT "Fail artifact probing when an inspection tool is missing" OFF)
+
+#
+# Identity-addressed dependency store (phase 1).
+#
+# When set, CMake-built dependencies are placed in this store, keyed by the build identity, instead of inside the build directory. When unset -- the default --
+# dependencies are built into the build directory exactly as before. Unsetting it returns a previously configured tree to the build-directory layout, because
+# the RV_DEPS_BASE_DIR default is re-derived on every configure.
+#
+# The store is never required: building everything from source remains a supported mode on every platform.
+#
+SET(RV_DEPS_STORE
+    ""
+    CACHE STRING "Identity-addressed store for CMake-built dependencies (phase 1; unset preserves the in-build-directory layout)"
+)

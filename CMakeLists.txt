@@ -115,6 +115,14 @@ SET(FETCHCONTENT_QUIET
 
 ADD_SUBDIRECTORY(cmake/dependencies)
 
+# Build identity and manifest. Both are read-only: they record and report what this build is made of and reroute nothing. With RV_BUILD_IDENTITY=OFF and
+# RV_BUILD_MANIFEST=OFF, configure output and build behaviour are exactly as they were before.
+INCLUDE(rv_build_identity)
+RV_COMPUTE_BUILD_IDENTITY()
+
+INCLUDE(rv_build_manifest)
+RV_WRITE_BUILD_MANIFEST()
+
 # RV's main code
 ADD_SUBDIRECTORY(src)
 ADD_SUBDIRECTORY(packages)

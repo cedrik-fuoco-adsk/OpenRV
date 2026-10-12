@@ -20,9 +20,23 @@ on:
         required: true
         default: 'false'
 
+# Whether the build matrix runs at all.
+#
+# Upstream always runs. A fork can also run the full matrix, either by dispatching this workflow manually or by setting the RV_CI_ON_FORK repository variable to
+# 'true'. With neither of those true the behaviour is exactly as before.
+#
+# A cheap push-triggered validation of the build-identity layer lives in validate-identity.yml instead, so that iterating on it does not cost a full matrix.
+#
+# The condition is written out on each job rather than held in a workflow-level env variable: a job-level `if` cannot read the `env` context (only github, needs,
+# strategy, matrix, inputs and vars are available there), and referencing it fails workflow validation outright with "Unrecognized named-value: 'env'", producing
+# a run with no jobs at all.
+#
+# Only this workflow is opened up. conan.yml, release.yml, release-pr.yml and semantic-pull-request.yml stay upstream-only: they need the ASWF Conan remote's
+# credentials or write to the repository.
+#
 jobs:
   detect-changes:
-    if: github.repository_owner == 'AcademySoftwareFoundation'
+    if: github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true'
     runs-on: ubuntu-latest
     outputs:
       cmake_changed: ${{ steps.filter.outputs.cmake }}
@@ -38,7 +52,7 @@ jobs:
               - '**/*.cmake'
 
   linux:
-    if: github.repository_owner == 'AcademySoftwareFoundation'
+    if: github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true'
     needs: detect-changes
     uses: ./.github/workflows/ci-linux.yml
     with:
@@ -47,7 +61,7 @@ jobs:
       run_debug: ${{ github.event_name != 'pull_request' || needs.detect-changes.outputs.cmake_changed == 'true' }}
 
   macos:
-    if: github.repository_owner == 'AcademySoftwareFoundation'
+    if: github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true'
     needs: detect-changes
     uses: ./.github/workflows/ci-macos.yml
     with:
@@ -56,7 +70,7 @@ jobs:
       run_debug: ${{ github.event_name != 'pull_request' || needs.detect-changes.outputs.cmake_changed == 'true' }}
 
   windows:
-    if: github.repository_owner == 'AcademySoftwareFoundation'
+    if: github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true'
     needs: detect-changes
     uses: ./.github/workflows/ci-windows.yml
     with:

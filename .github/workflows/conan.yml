@@ -10,6 +10,20 @@ on:
       - '.github/workflows/conan.yml'
       - 'openrvcore-conanfile.py'
       - 'cmake/dependencies/**'
+  push:
+    branches:
+      - main
+      # Fork validation: lets a push to this branch run the Conan matrix on a fork without moving
+      # the fork's default branch. Temporary, and removed together with the entry itself.
+      - ci/phase0-build-identity-manifest
+  # Manual triggering, so a fork can run the Conan path on demand. This workflow needs no
+  # secrets: the ASWF Conan remote it configures is a public Artifactory endpoint.
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Comma-separated platforms to run: rocky8,macos,windows'
+        required: false
+        default: 'rocky8,macos,windows'
 
 env:
   SKIP_DEPS_CACHE: 'false'
@@ -22,7 +36,9 @@ env:
 
 jobs:
   rocky-linux:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    # The platforms input lets a fork dispatch a single platform instead of the whole matrix; for
+    # schedule and pull_request events it is empty, so every job runs.
+    if : ${{ (github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true' || github.ref == 'refs/heads/ci/phase0-build-identity-manifest') && contains(format(',{0},', inputs.platforms || 'rocky8,macos,windows'), ',rocky8,') }}
     name: 'Rocky Linux ${{ matrix.rocky-version }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -318,6 +334,18 @@ jobs:
           echo "Conan home path: $CONAN_HOME_OUTPUT"
           echo "CONAN_HOME=$CONAN_HOME_OUTPUT" >> $GITHUB_ENV
 
+      - name: Cache the Conan store
+        # Temporary, to make iterating on the generated-file comparison affordable: the dependency
+        # installation is by far the slowest part of this job, and without a cache every attempt
+        # pays it again before reaching anything under test. Keyed on what determines resolution,
+        # with a restore-key so a change still gets the packages it did not affect.
+        uses: actions/cache@v4
+        with:
+          path: /github/home/.conan2
+          key: conan-${{ runner.os }}-${{ matrix.rocky-version }}-${{ hashFiles('conan/packages.yml', 'conan/profiles/common', 'openrvcore-conanfile.py') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ matrix.rocky-version }}-
+
       - name: Add ASWF Conan remote
         # Required so conan/profiles/common [replace_requires] can resolve
         # openssl/*@openrv/vfx2024 from the ASWF JFrog Artifactory.
@@ -361,6 +389,192 @@ jobs:
           fi
           $CONAN_EXECUTABLE install conanfile.py $BUILD_FLAGS -pr:a ./conan/profiles/x86_64_rocky8
 
+      - name: Compare Conan's generated files against the pre-change baseline
+        # The identity work is allowed to add documents and two toolchain cache variables and to
+        # change nothing else about what Conan generates. Installing the same tree twice -- once at
+        # the baseline commit, once here -- and diffing the output is the only way to actually show
+        # that rather than assert it.
+        #
+        # Installing the baseline tree a *second* time acts as a control. Conan renders some paths
+        # from cache state rather than from the graph, so a difference that also appears between two
+        # installs of the same tree is environment noise and must not be attributed to this change.
+        # Only differences unique to the baseline-versus-current comparison fail the step.
+        run: |
+          set -euo pipefail
+          BASELINE="$RUNNER_TEMP/conan-baseline"
+          OUT_B1="$RUNNER_TEMP/conan-baseline-1"
+          OUT_B2="$RUNNER_TEMP/conan-baseline-2"
+          OUT_B3="$RUNNER_TEMP/conan-baseline-3"
+          OUT_CURRENT="$RUNNER_TEMP/conan-current"
+          rm -rf "$BASELINE" "$OUT_B1" "$OUT_B2" "$OUT_B3" "$OUT_CURRENT"
+
+          # The default branch is the pre-change baseline: the change lives on this branch.
+          if ! git fetch --depth=1 origin main 2>/dev/null; then
+            echo "::warning::could not fetch the baseline branch, so the generated-file comparison was skipped"
+            exit 0
+          fi
+          git worktree add --detach "$BASELINE" FETCH_HEAD
+
+          BUILD_FLAGS="--build=missing"
+          if [ "${{ matrix.rocky-version }}" = "8" ]; then
+            BUILD_FLAGS="--build=missing --build=openexr/* --build=b2/*"
+          fi
+
+          # Conan's CMakeDeps renders a generated file's variable blocks by iterating a set of
+          # strings -- conan/tools/cmake/cmakedeps/templates/config.py does
+          # `list(set([self.file_name] + prefix_list))` -- and CPython randomises string hashing per
+          # process, so WebPConfig.cmake's WebP_* and WEBP_* blocks swap on roughly half of installs
+          # and two installs of one tree disagree. Measured: 60 fresh processes split 34/26.
+          #
+          # Pinning the seed makes both trees render in the same order, so that reordering cannot
+          # arise here at all. The comparison still tolerates one, as a safety net for another
+          # generator doing the same thing, or for an install run without the seed.
+          export PYTHONHASHSEED=0
+
+          # Both trees are installed from here, in the same cache state, so install order cannot
+          # explain a difference between them. The current tree's earlier install is deliberately
+          # not used: it ran before the cache reached this state, and Conan resolves and skips
+          # packages differently then, which shows up as path differences unrelated to any change.
+          (
+            cd "$BASELINE"
+            $CONAN_EXECUTABLE export openrvcore-conanfile.py
+            $CONAN_EXECUTABLE install conanfile.py $BUILD_FLAGS -pr:a ./conan/profiles/x86_64_rocky8 -of "$OUT_B1"
+            $CONAN_EXECUTABLE install conanfile.py $BUILD_FLAGS -pr:a ./conan/profiles/x86_64_rocky8 -of "$OUT_B2"
+            $CONAN_EXECUTABLE install conanfile.py $BUILD_FLAGS -pr:a ./conan/profiles/x86_64_rocky8 -of "$OUT_B3"
+          )
+
+          # Exporting the baseline recipe replaced the current one in the Conan cache under the same
+          # reference; put ours back before generating the current tree's output.
+          $CONAN_EXECUTABLE export openrvcore-conanfile.py
+          $CONAN_EXECUTABLE install conanfile.py $BUILD_FLAGS -pr:a ./conan/profiles/x86_64_rocky8 -of "$OUT_CURRENT"
+
+          # set -e would abort the step before the diagnostics below could be printed, so the
+          # comparison's status is captured explicitly instead.
+          set +e
+          python3 - "$OUT_B2/build/Release/generators" "$OUT_B3/build/Release/generators" "$OUT_B1/build/Release/generators" "$OUT_CURRENT/build/Release/generators" "$OUT_B2" "$OUT_B3" "$OUT_B1" "$OUT_CURRENT" <<'PY'
+          import difflib
+          import importlib.util
+          import os
+          import re
+          import sys
+
+          # Fail with something readable if the caller and this script disagree, rather than with
+          # "not enough values to unpack" from a silently wrong argument list.
+          if len(sys.argv) != 9:
+              raise SystemExit(
+                  f"expected 4 generator directories and 4 roots, got {len(sys.argv) - 1}: {sys.argv[1:]}"
+              )
+          generators_control, generators_control_2, generators_baseline, generators_current = sys.argv[1:5]
+          control_root, control_2_root, baseline_root, current_root = sys.argv[5:9]
+
+          spec = importlib.util.spec_from_file_location("compare_conan_generators", "src/build/compare_conan_generators.py")
+          comparator = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(comparator)
+
+          # Each tree embeds its own absolute path.
+          normalizations = [
+              (control_root, "<TREE>"),
+              (control_2_root, "<TREE>"),
+              (baseline_root, "<TREE>"),
+              (current_root, "<TREE>"),
+          ]
+
+          # Conan's cache package folders are normalized too. Rocky 8 forces openexr to be rebuilt on
+          # every install, so its folder hash changes and every generated file mentioning it churns.
+          # Leaving that in exempted those files from being compared at all -- the control saw the
+          # same churn, so they were classified as noise rather than as equal -- which made most of
+          # Rocky 8's generated tree unchecked. A cache location is not a fact about what was
+          # generated.
+          regex_normalizations = [(re.compile(r"/\.conan2/p/(?:b/)?[^/\"]+/p"), "<PKG>")]
+
+          # The two cache variables the identity work adds. Where Conan records them depends on the
+          # generator -- the toolchain, or the preset -- so they are dropped from JSON files wherever
+          # they appear rather than line-matched. Run 7 showed conan_toolchain.cmake byte-identical
+          # between the trees and CMakePresets.json differing by exactly these.
+          json_ignore_keys = ["RV_CONAN_IDENTITY_FILE", "RV_CONAN_PACKAGES_FILE"]
+
+          allow_added = [r"conan-identity\.json", r"conan-identity\.inputs", r"conan-packages\.json"]
+          # Still narrow: any difference left in these files, on a line not naming those two variables,
+          # is a violation.
+          allow_changed = [r"conan_toolchain\.cmake", r"CMakePresets\.json"]
+          allow_changed_lines = [r"RV_CONAN_IDENTITY_FILE", r"RV_CONAN_PACKAGES_FILE"]
+
+          def differences(before, after):
+              baseline_files = comparator.collect(before, normalizations, json_ignore_keys, regex_normalizations)
+              current_files = comparator.collect(after, normalizations, json_ignore_keys, regex_normalizations)
+              return comparator.compare(baseline_files, current_files, allow_added, [], allow_changed, allow_changed_lines)
+
+          # Determinism control, three pairs of installs of the same tree. One pair is not enough:
+          # a file that is only sometimes non-deterministic can happen to differ in the tree
+          # comparison while agreeing in a single control pair, which reports a difference that
+          # the change did not make. WebPConfig.cmake behaves exactly that way.
+          _, control_a = differences(generators_control, generators_control_2)
+          _, control_b = differences(generators_control, generators_baseline)
+          _, control_c = differences(generators_control_2, generators_baseline)
+          control_violations = control_a + control_b + control_c
+          # The comparison that matters: the two trees, same cache state, differing only in the recipe.
+          _, baseline_violations = differences(generators_baseline, generators_current)
+
+          def key(violation):
+              return (violation["kind"], violation["path"])
+
+          control_files = sorted({violation["path"] for violation in control_violations})
+          print(f"control, three pairs of installs of the same tree: {len(control_files)} file(s) non-deterministic")
+          for name in control_files:
+              print(f"  non-deterministic: {name}")
+          print(f"baseline versus current, same cache state: {len(baseline_violations)} difference(s)")
+          for violation in baseline_violations:
+              print(f"  {violation['kind']}: {violation['path']}: {violation.get('detail', '')[:200]}")
+
+          noise_keys = {key(violation) for violation in control_violations}
+          attributable = [violation for violation in baseline_violations if key(violation) not in noise_keys]
+          if attributable:
+              print()
+              print(f"{len(attributable)} difference(s) not explained by the control:")
+              for violation in attributable:
+                  print(f"  {violation['kind']}: {violation['path']}: {violation.get('detail', '')[:300]}")
+
+              # The raw diff of every flagged file, so a failure names what actually varies
+              # instead of leaving it to be inferred from a truncated detail line.
+              print()
+              print("===== raw diffs, baseline versus current =====")
+              for violation in attributable:
+                  name = violation["path"]
+                  print(f"--- {name}")
+                  try:
+                      with open(os.path.join(generators_baseline, name), encoding="utf-8", errors="replace") as handle:
+                          before = handle.read().splitlines()
+                      with open(os.path.join(generators_current, name), encoding="utf-8", errors="replace") as handle:
+                          after = handle.read().splitlines()
+                  except OSError as error:
+                      print(f"    could not read: {error}")
+                      continue
+                  printed = 0
+                  for line in difflib.unified_diff(before, after, lineterm="", n=1):
+                      print("  " + line[:400])
+                      printed += 1
+                      if printed > 80:
+                          print("  (truncated)")
+                          break
+              sys.exit(1)
+
+          print()
+          print("OK: the two trees generate the same output, with only the expected additions")
+          PY
+          COMPARE_STATUS=$?
+          set -e
+
+          if [ "$COMPARE_STATUS" -ne 0 ]; then
+            echo '===== control versus baseline toolchain, raw diff ====='
+            diff -u "$OUT_B2/build/Release/generators/conan_toolchain.cmake" "$OUT_B1/build/Release/generators/conan_toolchain.cmake" || true
+            echo '===== baseline versus current toolchain, raw diff ====='
+            diff -u "$OUT_B1/build/Release/generators/conan_toolchain.cmake" "$OUT_CURRENT/build/Release/generators/conan_toolchain.cmake" || true
+            echo '===== baseline versus current preset, raw diff ====='
+            diff -u "$OUT_B1/build/Release/generators/CMakePresets.json" "$OUT_CURRENT/build/Release/generators/CMakePresets.json" || true
+            exit "$COMPARE_STATUS"
+          fi
+
+          git worktree remove --force "$BASELINE"
       - name: Build OpenRV main executable
         run: |
           $CONAN_EXECUTABLE build conanfile.py --build=missing -pr:a ./conan/profiles/${{ matrix.conan-profile }}
@@ -380,7 +594,9 @@ jobs:
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   macos:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    # The platforms input lets a fork dispatch a single platform instead of the whole matrix; for
+    # schedule and pull_request events it is empty, so every job runs.
+    if : ${{ (github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true' || github.ref == 'refs/heads/ci/phase0-build-identity-manifest') && contains(format(',{0},', inputs.platforms || 'rocky8,macos,windows'), ',macos,') }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -550,7 +766,9 @@ jobs:
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    # The platforms input lets a fork dispatch a single platform instead of the whole matrix; for
+    # schedule and pull_request events it is empty, so every job runs.
+    if : ${{ (github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true' || github.ref == 'refs/heads/ci/phase0-build-identity-manifest') && contains(format(',{0},', inputs.platforms || 'rocky8,macos,windows'), ',windows,') }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
