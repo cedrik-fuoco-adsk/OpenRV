@@ -11,6 +11,9 @@ OPTION(RV_SHOW_ALL_VARIABLES "Displays all build variables." ON)
 
 #
 # General build options
+#
+# RV_DEPS_BASE_DIR stays local to the build directory: it holds dependency source, build and stamp trees, which embed absolute paths and must not be shared.
+# Only *installed* dependency trees are placed in the store, by RV_DEPS_INSTALL_ROOT in cmake/macros/rv_deps_store.cmake.
 SET(RV_DEPS_BASE_DIR
     "${CMAKE_BINARY_DIR}"
     CACHE STRING "RV's 3rd party cache location."
@@ -187,13 +190,24 @@ OPTION(RV_DEPS_PROBE_STRICT "Fail artifact probing when an inspection tool is mi
 #
 # Identity-addressed dependency store (phase 1).
 #
-# When set, CMake-built dependencies are placed in this store, keyed by the build identity, instead of inside the build directory. When unset -- the default --
-# dependencies are built into the build directory exactly as before. Unsetting it returns a previously configured tree to the build-directory layout, because
-# the RV_DEPS_BASE_DIR default is re-derived on every configure.
+# When set, the *installed* trees of the dependencies named in RV_DEPS_STORE_ELIGIBLE are placed in this store, keyed by the build identity, instead of inside
+# the build directory. Source, build and stamp trees stay local, because they embed absolute paths and are not portable -- see D4. When unset, the default,
+# nothing is placed in a store and the layout is exactly as before.
+#
+# Eligibility is per dependency and starts empty: a dependency is named here only once its relocation check has passed, so the store never holds a dependency
+# whose installed tree cannot be moved. See D5.
 #
 # The store is never required: building everything from source remains a supported mode on every platform.
 #
 SET(RV_DEPS_STORE
     ""
-    CACHE STRING "Identity-addressed store for CMake-built dependencies (phase 1; unset preserves the in-build-directory layout)"
+    CACHE STRING "Identity-addressed store for installed dependency trees (phase 1; unset preserves the in-build-directory layout)"
+)
+# Dependencies whose installed trees have been through the relocation gate. Each name here was installed, relocated, linked against and run from a different
+# path before being added, and then verified by a first build populating the store and a second build directory reusing it -- see
+# docs/build_system/dependency_store.md. RV_DEPS_ZLIB passed the gate on 2026-10-12: status relocatable, with its shared library loaded from the relocated tree
+# and no reference to the path it was installed at.
+SET(RV_DEPS_STORE_ELIGIBLE
+    "RV_DEPS_ZLIB"
+    CACHE STRING "Semicolon-separated dependency targets whose installed trees may be placed in the store; each must have passed its relocation check"
 )

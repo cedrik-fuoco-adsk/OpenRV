@@ -420,6 +420,21 @@ FUNCTION(RV_COMPUTE_BUILD_IDENTITY)
       "${_rbbi_hash}"
       CACHE INTERNAL "Build identity hash" FORCE
   )
+ENDFUNCTION()
+
+#
+# RV_REPORT_BUILD_IDENTITY()
+#
+# Print the identity, and compare it against the Conan profile's view of the platform.
+#
+# Separate from the computation because the computation has to happen before the dependencies are configured -- when a store location is set, the dependency
+# base directory is derived from the identity -- while the report belongs where the platform is settled and the Conan documents are on disk. Reporting reads the
+# document the computation wrote rather than recomputing, so the two cannot disagree.
+#
+FUNCTION(RV_REPORT_BUILD_IDENTITY)
+  IF(NOT RV_BUILD_IDENTITY_AVAILABLE)
+    RETURN()
+  ENDIF()
 
   # Report every field the identity carries, so what the build believes it is building against is visible without inspecting internal state. A field the
   # document does not carry is skipped rather than printed empty: the C runtime is absent off Windows, and `crt:` with nothing after it would read as a field

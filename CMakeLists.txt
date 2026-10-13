@@ -113,12 +113,20 @@ SET(FETCHCONTENT_QUIET
     OFF
 )
 
-ADD_SUBDIRECTORY(cmake/dependencies)
-
-# Build identity and manifest. Both are read-only: they record and report what this build is made of and reroute nothing. With RV_BUILD_IDENTITY=OFF and
-# RV_BUILD_MANIFEST=OFF, configure output and build behaviour are exactly as they were before.
+# The build identity is computed before the dependencies, because a store location makes the dependency base directory an identity-derived path. It is reported
+# further down, once the platform is settled.
 INCLUDE(rv_build_identity)
 RV_COMPUTE_BUILD_IDENTITY()
+
+# The store is resolved before the dependencies are configured, because it decides where their installed trees go.
+INCLUDE(rv_deps_store)
+RV_RESOLVE_DEPS_STORE()
+
+ADD_SUBDIRECTORY(cmake/dependencies)
+
+# Build identity report and manifest. Both are read-only: they record and report what this build is made of and reroute nothing. With RV_BUILD_IDENTITY=OFF and
+# RV_BUILD_MANIFEST=OFF, configure output and build behaviour are exactly as they were before.
+RV_REPORT_BUILD_IDENTITY()
 
 INCLUDE(rv_build_manifest)
 RV_WRITE_BUILD_MANIFEST()

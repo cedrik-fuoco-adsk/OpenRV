@@ -25,9 +25,11 @@ directory as it does today, and SHALL NOT read from or write to any store.
 
 ### Requirement: Store placement is derived from the build identity
 
-When a store location is configured, each dependency SHALL be placed at a path derived
-from the build identity, so that artifacts produced under one identity are never served
-to a build targeting another.
+When a store location is configured, the installed tree of each dependency that is eligible for the
+store SHALL be placed at a path derived from the build identity, so that artifacts produced under
+one identity are never served to a build targeting another. Only installed trees are placed there:
+dependency source, build and stamp trees stay local to the build directory, because they embed
+absolute paths and a store may be shared between machines.
 
 #### Scenario: Distinct identities are placed apart
 

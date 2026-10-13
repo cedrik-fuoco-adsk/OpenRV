@@ -96,19 +96,25 @@ recipes are heavy to author and maintenance-intensive, and "fetch a prebuilt int
 and adapt it" is not a build recipe; (b) one CMake-only store for all dependencies —
 rejected, it would orphan working infrastructure.
 
-### D3: The store redirects `RV_DEPS_BASE_DIR`, and the default is re-derived with `FORCE`
+### D3: The store redirects where installed trees go, and that default is re-derived with `FORCE`
 
-When a store location is configured, `RV_DEPS_BASE_DIR` defaults to a store path derived
-from the identity; when it is not configured, the default remains `${CMAKE_BINARY_DIR}`.
-Because `RV_DEPS_BASE_DIR` is a `CACHE STRING`, the default must be re-derived on every
-configure with `FORCE`, otherwise a tree once configured against a store would keep that
-path after the store was removed — making "opt out" a lie. The codebase already contains
-this exact bug class and its fix, documented for `RV_CPP_STANDARD`:
+When a store location is configured, installed dependency trees are placed under a store path
+derived from the identity. This was originally described as redirecting `RV_DEPS_BASE_DIR`, and
+implementing it showed why that is wrong: `RV_CREATE_STANDARD_DEPS_VARIABLES` derives the source,
+build and install directories from that one variable, so redirecting it would put host-specific
+build state in the store -- the alternative D4 rejects. `RV_DEPS_BASE_DIR` therefore stays local,
+and a separate install root carries the store.
+
+Because that root is a `CACHE STRING`, the default must be re-derived on every configure with
+`FORCE`, otherwise a tree once configured against a store would keep that path after the store was
+removed -- making "opt out" a lie. The codebase already contains this exact bug class and its fix,
+documented for `RV_CPP_STANDARD`:
 
 > "Without it an existing build tree reconfigured to a newer VFX platform would keep the
 > standard cached by its first configure and silently build CY2026 with C++17."
 
-An explicitly user-set `RV_DEPS_BASE_DIR` still wins.
+An explicitly set `RV_DEPS_BASE_DIR` still wins for the local trees, and an explicitly set install
+root wins over the store.
 
 ### D4: Satisfying a dependency from the store goes through the find path, not the build path
 

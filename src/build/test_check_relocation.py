@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# *****************************************************************************
+# Copyright 2026 Autodesk, Inc. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# *****************************************************************************
+
+"""Self-verifying tests for check_relocation.py.
+
+Run directly:
+
+    python3 src/build/test_check_relocation.py
+
+Exits non-zero if any check fails.
+
+A relocation check that cannot fail is worth nothing, so these tests build a real installed
+dependency three ways:
+
+  relocatable     an ordinary CMake install, whose export files use relative paths
+  absolute        a config that hardcodes the install directory it was built at, which is the
+                  shape a hand-written or badly generated package config takes
+  referenced      a config that works from the new location but still names the old one, so the
+                  build and the run both succeed and only a reference search can tell
+
+The second must fail, and the third must fail for the right reason: they are what the check is for.
+Building requires a working C++ toolchain; without one the suite reports that it could not run
+rather than passing quietly.
+"""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SCRIPT = os.path.join(HERE, "check_relocation.py")
+
+FAILURES = []
+
+PACKAGE = """\
+cmake_minimum_required(VERSION 3.27)
+project(Tiny LANGUAGES CXX VERSION 1.0.0)
+
+# Without this a Windows DLL exports nothing, produces no import library, and cannot be linked --
+# the fixture would then fail for a reason that has nothing to do with relocation.
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+add_library(tiny SHARED tiny.cpp)
+# Declared public, as a real dependency does: without it the export carries no include directory and
+# a consumer cannot include the header even though the tree is relocatable.
+target_include_directories(tiny PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:include>)
+install(TARGETS tiny EXPORT TinyTargets
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+install(FILES tiny.h DESTINATION include)
+install(EXPORT TinyTargets NAMESPACE Tiny:: FILE TinyTargets.cmake DESTINATION lib/cmake/Tiny)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/TinyConfigVersion.cmake"
+  VERSION 1.0.0
+  COMPATIBILITY SameMajorVersion)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/TinyConfigVersion.cmake" DESTINATION lib/cmake/Tiny)
+install(FILES TinyConfig.cmake DESTINATION lib/cmake/Tiny)
+"""
+
+CONFIG = """\
+include("${CMAKE_CURRENT_LIST_DIR}/TinyTargets.cmake")
+set(Tiny_VERSION "1.0.0")
+"""
+
+SOURCE = """\
+extern "C" int tiny_value() { return 42; }
+"""
+
+HEADER = """\
+#pragma once
+extern "C" int tiny_value();
+"""
+
+
+def check(description: str, condition: bool, detail: str = "") -> None:
+    if condition:
+        print(f"  ok   {description}")
+    else:
+        print(f"  FAIL {description}{(': ' + detail) if detail else ''}")
+        FAILURES.append(description)
+
+
+def build_package(work: str, mutation=None) -> str:
+    """Build and install the fixture, optionally rewriting its package config."""
+    source = os.path.join(work, "package-src")
+    build = os.path.join(work, "package-build")
+    install = os.path.join(work, "install")
+    os.makedirs(source, exist_ok=True)
+
+    for name, body in (
+        ("CMakeLists.txt", PACKAGE),
+        ("tiny.cpp", SOURCE),
+        ("tiny.h", HEADER),
+        ("TinyConfig.cmake", CONFIG),
+    ):
+        with open(os.path.join(source, name), "w", encoding="utf-8") as handle:
+            handle.write(body)
+
+    if mutation is not None:
+        with open(os.path.join(source, "TinyConfig.cmake"), "w", encoding="utf-8") as handle:
+            handle.write(mutation(install))
+
+    for command in (
+        # The build type is set explicitly, as a build would: on a single-configuration generator an
+        # unset one produces an export with no per-configuration location, and a consumer configured
+        # for Release then finds nothing to link.
+        ["cmake", "-S", source, "-B", build, "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={install}"],
+        ["cmake", "--build", build, "--config", "Release"],
+        ["cmake", "--install", build, "--config", "Release"],
+    ):
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"could not build the fixture: {command}\n{result.stdout}\n{result.stderr}")
+    return install
+
+
+def absolute_config(install: str) -> str:
+    """A config that remembers where it was installed, as a generated one might."""
+    return (
+        'include("${CMAKE_CURRENT_LIST_DIR}/TinyTargets.cmake")\n'
+        f'set_property(TARGET Tiny::tiny PROPERTY INTERFACE_INCLUDE_DIRECTORIES "{install}/include")\n'
+        f'set(Tiny_VERSION "1.0.0")\n'
+    )
+
+
+def referenced_config(install: str) -> str:
+    """A config that works from anywhere but still names where it came from.
+
+    Only a *recorded* path, not one used to find anything: pointing an imported target at the old
+    directory makes the configure fail outright, which is the absolute fixture above. What is left is
+    the shape that passes a build-and-run check and still breaks on a machine that lacks the
+    original: a package config that remembers the prefix it was built at.
+    """
+    forward = install.replace("\\", "/")
+    return (
+        'include("${CMAKE_CURRENT_LIST_DIR}/TinyTargets.cmake")\n'
+        f'set(Tiny_ORIGINAL_INSTALL "{forward}" CACHE INTERNAL "where this package was built")\n'
+        'set(Tiny_VERSION "1.0.0")\n'
+    )
+
+
+def relocate(work: str, install: str):
+    result = subprocess.run(
+        [
+            sys.executable,
+            SCRIPT,
+            "--install",
+            install,
+            "--package",
+            "Tiny",
+            "--target",
+            "Tiny::tiny",
+            "--include",
+            "tiny.h",
+            "--exercise",
+            'if (tiny_value() != 42) { std::printf("unexpected value\\n"); return 1; }',
+            "--work",
+            os.path.join(work, "relocation"),
+            "--json",
+            os.path.join(work, "report.json"),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+
+def read_json(path: str) -> dict:
+    import json
+
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def test_a_relocatable_package_passes(work: str) -> None:
+    print("an ordinarily installed package is relocatable")
+    install = build_package(os.path.join(work, "relocatable"))
+    code, output = relocate(os.path.join(work, "relocatable"), install)
+    check("the check passes", code == 0, output[-1200:])
+    check("the tree was put back", os.path.isdir(install) and not os.path.isdir(install + ".relocating"))
+    report = read_json(os.path.join(work, "relocatable", "report.json"))
+    check("the result says relocatable", report.get("status") == "relocatable", str(report.get("status")))
+    check("the check ran the consumer", "run" in report.get("steps", {}), str(report.get("steps", {}).keys()))
+    check(
+        "the relocated copy was not the original path",
+        install not in report.get("steps", {}).get("relocated", ""),
+        str(report.get("steps", {}).get("relocated")),
+    )
+
+
+def test_a_package_that_remembers_where_it_was_built_fails(work: str) -> None:
+    print("a package that hardcodes its install directory is not relocatable")
+    install = build_package(os.path.join(work, "absolute"), absolute_config)
+    code, output = relocate(os.path.join(work, "absolute"), install)
+    check("the check fails", code == 1, f"exit {code}: {output[-800:]}")
+    report = read_json(os.path.join(work, "absolute", "report.json"))
+    check("the result says it is not relocatable", report.get("status") == "failed", str(report.get("status")))
+    check(
+        "the failure is attributed to a stage",
+        report.get("stage") in ("configure", "build"),
+        str(report.get("stage")),
+    )
+    check("the tree was put back anyway", os.path.isdir(install) and not os.path.isdir(install + ".relocating"))
+
+
+def test_a_package_that_merely_names_the_old_path_fails(work: str) -> None:
+    print("a package that still names the old location is not relocatable")
+    install = build_package(os.path.join(work, "referenced"), referenced_config)
+    code, output = relocate(os.path.join(work, "referenced"), install)
+    check("the check fails", code == 1, f"exit {code}: {output[-800:]}")
+    report = read_json(os.path.join(work, "referenced", "report.json"))
+    check("the result says it is not relocatable", report.get("status") == "failed", str(report.get("status")))
+    # Built and ran, but something still points at where the tree came from: this is the case a
+    # check that only built and ran the consumer would accept.
+    check(
+        "it got as far as running the consumer", "run" in report.get("steps", {}), str(report.get("steps", {}).keys())
+    )
+    check(
+        "the failure is a reference to the old location", report.get("stage") == "reference", str(report.get("stage"))
+    )
+    check(
+        "the reference is reported with the file that holds it",
+        bool(report.get("references")),
+        str(report.get("references")),
+    )
+
+
+def test_a_missing_tree_is_an_error_not_a_pass(work: str) -> None:
+    print("a tree that is not there is an error, not a silent pass")
+    code, output = relocate(os.path.join(work, "missing"), os.path.join(work, "missing-install"))
+    check("the check reports it could not run", code == 2, f"exit {code}: {output[-600:]}")
+    check("the reason names the missing tree", "no installed tree" in output, output[-600:])
+
+
+def main() -> int:
+    for tool in ("cmake",):
+        if shutil.which(tool) is None:
+            print(f"{tool} is not on PATH, so the relocation check cannot be tested")
+            return 0
+
+    print(f"relocation check ({HERE})")
+    with tempfile.TemporaryDirectory() as work:
+        try:
+            build_package(os.path.join(work, "toolchain-probe"))
+        except RuntimeError as error:
+            print("no working C++ toolchain, so the relocation check cannot be tested")
+            print(re.sub(r"\s+", " ", str(error))[:400])
+            return 0
+
+        test_a_relocatable_package_passes(work)
+        test_a_package_that_remembers_where_it_was_built_fails(work)
+        test_a_package_that_merely_names_the_old_path_fails(work)
+        test_a_missing_tree_is_an_error_not_a_pass(work)
+
+    print()
+    if FAILURES:
+        print(f"{len(FAILURES)} check(s) failed:")
+        for failure in FAILURES:
+            print(f"  - {failure}")
+        return 1
+    print("all relocation check checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

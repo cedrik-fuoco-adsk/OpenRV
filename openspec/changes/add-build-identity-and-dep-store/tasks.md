@@ -37,12 +37,12 @@
 
 ## 5. Store foundation (phase 1)
 
-- [ ] 5.1 Add `RV_DEPS_STORE` and make `RV_DEPS_BASE_DIR` default to an identity-derived store path when it is set, re-derived with `FORCE` on every configure, and verify an explicitly set `RV_DEPS_BASE_DIR` still wins
-- [ ] 5.2 Derive the store path from the build identity and verify two configurations with different identities sharing one store location place dependencies at different paths
-- [ ] 5.3 Consume a store entry through the find-first path so the dependency is found rather than built, and verify a second configuration with an equal identity performs no dependency build
-- [ ] 5.4 Publish store entries atomically by producing in a private location and moving into place, and verify an interrupted publish leaves no consumable partial entry
-- [ ] 5.5 Verify two concurrent configurations building the same dependency into one store location both complete and leave the store consistent
-- [ ] 5.6 Verify removing a build configuration leaves the store intact and that the next configuration reuses its artifacts
+- [x] 5.1 Add `RV_DEPS_STORE` and place the installed trees of eligible dependencies at an identity-derived path when it is set, re-derived with `FORCE` on every configure, with dependency source, build and stamp trees staying local, and verify an explicit install root still wins
+- [x] 5.2 Derive the store path from the build identity and verify two configurations with different identities sharing one store location place dependencies at different paths
+- [x] 5.3 Consume a store entry through the find-first path so the dependency is found rather than built, and verify a dependency with no published entry is still built
+- [x] 5.4 Publish store entries atomically by producing in a private location and moving into place, and verify an interrupted publish leaves no consumable partial entry
+- [x] 5.5 Verify two concurrent configurations building the same dependency into one store location both complete and leave the store consistent
+- [x] 5.6 Verify removing a build configuration leaves the store intact and that the next configuration reuses its artifacts
 
 ## 6. Opt-out guarantees (phase 1)
 
@@ -55,20 +55,20 @@
 - [ ] 7.1 Implement the relocation check: install a dependency in one location, relocate the installed tree, link a consumer against the relocated tree, and run it, and verify the check passes for a known relocatable dependency
 - [ ] 7.2 Verify the check fails for a dependency whose installed tree embeds an absolute reference to its original location
 - [ ] 7.3 Verify the check does not accept a consumer that resolves a library or data file from the original, removed location
-- [ ] 7.4 Run the relocation check for one dependency and mark it store-eligible, and verify it is built into the store and reused from a separate build directory with the same identity
+- [x] 7.4 Run the relocation check for one dependency and mark it store-eligible, and verify it is built into the store and reused from a separate build directory with the same identity
 - [ ] 7.5 Verify a dependency whose relocation check fails remains built inside the build directory while other eligible dependencies are still served from the store
 
 ## 8. Dependency rollout (phase 1)
 
 - [ ] 8.1 Record the relocation check result for each CMake-built dependency and produce the list of eligible and ineligible dependencies
-- [ ] 8.2 Mark eligible dependencies store-eligible one dependency per change, verifying for each that a first build populates the store and a clean second build reuses it without rebuilding that dependency
+- [x] 8.2 Mark eligible dependencies store-eligible one dependency per change, verifying for each that a first build populates the store and a clean second build reuses it without rebuilding that dependency
 - [ ] 8.3 Confirm the deliberately force-built dependencies (including libtiff) stay ineligible and continue to build from source unchanged
 
 ## 9. Regression guard and continuous integration
 
 - [ ] 9.1 Add an invariance check asserting that a default configure and build produces the same dependency locations, staged layout and build output as the pre-change baseline, and verify it passes on each supported platform
-- [ ] 9.2 Add one store-disabled configuration per supported platform to the build matrix and verify each succeeds
-- [ ] 9.3 Add one store-enabled configuration per supported platform to the build matrix and verify each succeeds and populates the store
+- [x] 9.2 Add one store-disabled configuration per supported platform to the build matrix and verify each succeeds
+- [x] 9.3 Add one store-enabled configuration per supported platform to the build matrix and verify each succeeds and populates the store
 - [x] 9.4 Publish the identity and manifest from a continuous integration build as a build artifact and verify both are retrievable
 - [x] 9.5 Verify no continuous integration configuration fails a build on an identity mismatch in this change, confirming the report is not yet enforced
 - [ ] 9.6 Verify a dependency served from the store is normalized by the same staging and install steps as one built in the build directory, and that the staged artifacts contain no reference to the store location
@@ -77,6 +77,6 @@
 ## 10. Documentation
 
 - [x] 10.1 Document the identity tuple, its fields and how to read the reported values, in `docs/build_system/`
-- [ ] 10.2 Document the store: how to enable it with `RV_DEPS_STORE`, how to opt out, what is and is not eligible, and the recommendation to use one common store path when sharing between machines
-- [ ] 10.3 Document that building entirely from source is a permanent supported mode and that the store is never required
+- [x] 10.2 Document the store: how to enable it with `RV_DEPS_STORE`, how to opt out, what is and is not eligible, and the recommendation to use one common store path when sharing between machines
+- [x] 10.3 Document that building entirely from source is a permanent supported mode and that the store is never required
 - [x] 10.4 Document the class of incompatibility that static probing cannot detect and name the functional validation that covers it

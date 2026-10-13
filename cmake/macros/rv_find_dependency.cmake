@@ -41,7 +41,36 @@ MACRO(RV_FIND_DEPENDENCY)
       ""
   )
 
-  IF(RV_DEPS_PREFER_INSTALLED
+  # A dependency this identity has already built and published is consumed from the store instead of built again. That is what the store is for: another build
+  # directory, or another machine with the same identity, finds the installed tree.
+  #
+  # This is checked independently of RV_DEPS_PREFER_INSTALLED, because a store entry is this project's own artifact for this identity rather than a system
+  # package that happens to be present. A dependency forced to build from source is never taken from the store.
+  #
+  # The entry is consumed by the ordinary find_package below -- pointing the search at the store rather than pre-seeding ExternalProject state -- so the
+  # dependency's own config files are what describe it, and a store entry that cannot be found leaves the dependency to be built.
+  SET(_rfd_store_entry
+      ""
+  )
+  RV_DEPS_IS_STORE_ELIGIBLE(${_RFD_TARGET} _rfd_store_eligible)
+  IF(_rfd_store_eligible
+     AND NOT ${_RFD_TARGET}_FORCE_BUILD
+  )
+    RV_DEPS_INSTALL_PATHS(${_RFD_TARGET} _rfd_store_install _rfd_store_staging)
+    # Only a published entry counts, so a directory left by a configure, or by an interrupted install, is not consumed as if it were a finished dependency.
+    RV_DEPS_PUBLISH_COMPLETE(${_RFD_TARGET} _rfd_store_complete)
+    IF(_rfd_store_complete)
+      SET(_rfd_store_entry
+          "${_rfd_store_install}"
+      )
+      LIST(APPEND CMAKE_PREFIX_PATH "${_rfd_store_install}")
+      LIST(REMOVE_DUPLICATES CMAKE_PREFIX_PATH)
+      MESSAGE(STATUS "${_RFD_TARGET}: found in the dependency store (${_rfd_store_install})")
+    ENDIF()
+  ENDIF()
+
+  IF((RV_DEPS_PREFER_INSTALLED
+      OR _rfd_store_entry)
      AND NOT ${_RFD_TARGET}_FORCE_BUILD
   )
 

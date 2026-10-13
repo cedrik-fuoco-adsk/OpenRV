@@ -18,9 +18,10 @@ MACRO(RV_CREATE_STANDARD_DEPS_VARIABLES target_name version make_command configu
   SET(_base_dir
       ${RV_DEPS_BASE_DIR}/${target_name}
   )
-  SET(_install_dir
-      ${_base_dir}/install
-  )
+  # Where the installed tree goes, and where it is assembled before being published. An eligible dependency installs into the store, staged under
+  # RV_DEPS_STORE_IDENTITY_DIR/.publishing; anything else installs beside its source and build trees, as before, with no staging root at all. See
+  # rv_deps_store.cmake.
+  RV_DEPS_INSTALL_PATHS(${target_name} _install_dir _staging_root)
   # Create commonly used definition when cross-building dependencies RV_DEPS_<target-name>_ROOT_DIR variable
   SET(${target_name}_ROOT_DIR
       ${_install_dir}
@@ -135,9 +136,24 @@ MACRO(RV_CREATE_STANDARD_DEPS_VARIABLES target_name version make_command configu
   LIST(APPEND _configure_options "-S ${_source_dir}")
   LIST(APPEND _configure_options "-B ${_build_dir}")
 
-  SET(_cmake_install_command
-      ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${_install_dir} --config ${CMAKE_BUILD_TYPE}
-  )
+  # A stored dependency is installed into a staging tree and published afterwards, so that an interrupted install cannot leave a partial tree where a later
+  # configure would find it.
+  #
+  # Staged with DESTDIR rather than by changing the install prefix: the prefix stays where the tree will actually live, so anything the dependency bakes into
+  # its installed files names the real place, and the relocation check on the published path can see it. For everything not stored there is no staging root and
+  # this is the command it always was.
+  IF(_staging_root)
+    # One command for both halves -- install into the staging tree, then publish -- because two commands here needed ExternalProject to treat COMMAND as a
+    # separator after a `cmake -E env` prefix, which it does not: the publish half silently never ran.
+    SET(_cmake_install_command
+        ${CMAKE_COMMAND} -DRV_INSTALL_BUILD=${_build_dir} -DRV_INSTALL_PREFIX=${_install_dir} -DRV_INSTALL_CONFIG=${CMAKE_BUILD_TYPE}
+        -DRV_INSTALL_STAGING_ROOT=${_staging_root} -DRV_INSTALL_SUFFIX=${target_name}/install -P ${RV_DEPS_INSTALL_SCRIPT}
+    )
+  ELSE()
+    SET(_cmake_install_command
+        ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${_install_dir} --config ${CMAKE_BUILD_TYPE}
+    )
+  ENDIF()
 
   #
   # Finally add a clean-<target-name> target

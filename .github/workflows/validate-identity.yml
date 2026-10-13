@@ -70,6 +70,25 @@ jobs:
       - name: Check the Conan generator comparison
         run: python3 src/build/test_compare_conan_generators.py
 
+      # The store's addressing is exercised by configuring, and reconfiguring, a small project that
+      # includes the real options, identity and store macros in the order the real configure uses
+      # them. Opting out only shows up on a second configure, because RV_DEPS_BASE_DIR is cached.
+      - name: Check the dependency store path resolution
+        run: python3 src/build/test_deps_store.py
+
+      # The relocation gate decides what may be stored at all. Its tests build a real installed
+      # dependency three ways -- relocatable, hardcoding its install directory, and working but still
+      # naming it -- and require the second and third to fail. A gate that cannot fail is worth
+      # nothing.
+      - name: Check the relocation gate
+        run: python3 src/build/test_check_relocation.py
+
+      # The store's round trip with a real dependency: a first build populates it, a second build
+      # directory consumes it, and deleting or cleaning the first leaves it untouched. This is the
+      # check that found every defect in the store, which the planted-tree suite could not.
+      - name: Check the store round trip with a real dependency
+        run: python3 src/build/test_deps_store_roundtrip.py
+
       # The runtime resolution is CMake string logic, which the Python checks cannot reach, and what
       # it produces decides whether two builds may share artifacts. Forcing MSVC on means the
       # Windows-only branch is checked on every platform rather than only where the matrix is slow.
