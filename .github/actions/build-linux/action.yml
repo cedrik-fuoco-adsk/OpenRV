@@ -23,6 +23,15 @@ inputs:
     required: false
     default: 'icu qtbase qtdeclarative qtsvg qttools qttranslations qtwayland'
 
+  configure-only:
+    description: 'Stop after configuring, for checks that only need the generated build'
+    required: false
+    default: 'false'
+  invariance-baseline:
+    description: 'Git ref to configure with the same options and compare against, or merge-base for the merge base with upstream main; empty to skip'
+    required: false
+    default: ''
+
 runs:
   using: "composite"
   steps:
@@ -263,24 +272,48 @@ runs:
         cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }}
       shell: bash
 
+    # Configures a baseline checkout with the same options and checks that this configure generates the same build. See
+    # src/build/check_default_invariance.py. Only runs when a baseline is given; needs the full history for merge-base.
+    - name: Check the default configure against a baseline
+      if: inputs.invariance-baseline != ''
+      run: |
+        baseline="${{ inputs.invariance-baseline }}"
+        if [ "$baseline" = "merge-base" ]; then
+          git fetch --no-tags https://github.com/AcademySoftwareFoundation/OpenRV.git main
+          baseline=$(git merge-base HEAD FETCH_HEAD)
+        fi
+        echo "Baseline: $baseline"
+        git config --global --add safe.directory "$(cd .. && pwd)/openrv-baseline"
+        git worktree add --detach ../openrv-baseline "$baseline"
+        git -C ../openrv-baseline submodule update --init --recursive
+        export QT_HOME=/__w/OpenRV/OpenRV/deps/Qt/${{ inputs.qt-version}}/gcc_64
+        cmake -S ../openrv-baseline -B ../openrv-baseline/_build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }}
+        python src/build/check_default_invariance.py ../openrv-baseline/_build _build
+      shell: bash
+
     - name: Build OpenRV dependencies
+      if: inputs.configure-only != 'true'
       run: cmake --build _build --config ${{ inputs.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
       shell: bash
 
     - name: Build OpenRV main executable
+      if: inputs.configure-only != 'true'
       run: cmake --build _build --config ${{ inputs.build-type }} --target main_executable --parallel=$(python -c 'import os; print(os.cpu_count())') -v
       shell: bash
 
     - name: Tests
+      if: inputs.configure-only != 'true'
       run: ctest --test-dir _build -C ${{ inputs.build-type }} --extra-verbose
       shell: bash
 
     - name: Free some spaces for the install steps
+      if: inputs.configure-only != 'true'
       run: |
         rm -rf _build/RV_DEPS_*
         rm -rf _build/_deps
       shell: bash
 
     - name: Install OpenRV
+      if: inputs.configure-only != 'true'
       run: cmake --install _build --prefix $(pwd)/_install --config ${{ inputs.build-type }}
       shell: bash

@@ -1,0 +1,110 @@
+name: Check default configure invariance
+
+# Configures this checkout and a baseline with the same options on each platform, and checks that the two generate the same build: the same dependency
+# locations and ExternalProject commands, the same staging and install rules. See src/build/check_default_invariance.py.
+#
+# Run on demand, for a change that must leave the default build untouched. It is not a gate on every pull request, because most changes to the CMake files are
+# meant to change the generated build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: 'Git ref to compare against, or merge-base for the merge base with upstream main'
+        required: true
+        default: 'merge-base'
+
+  # TEMPORARY: lets the fork run this for the build identity branch, because a workflow can only be dispatched once it is on the default branch. Remove before
+  # upstreaming.
+  push:
+    branches:
+      - ci/phase0-build-identity-manifest
+
+jobs:
+  rocky-linux:
+    name: 'Rocky Linux 9 CY2025 Release'
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rockylinux:9
+      volumes:
+        - /usr/local/lib/android:/github/home/android
+        - /usr/share/dotnet:/github/home/dotnet
+        - /opt/ghc:/github/home/ghc
+        - /usr/local/.ghcup:/github/home/.ghcup
+        - /usr/local/graalvm:/github/home/graalvm
+        - /usr/local/share/powershell:/github/home/powershell
+        - /usr/local/share/chromium:/github/home/chromium
+        - /usr/local/lib/node_modules:/github/home/node_modules
+        - /opt/hostedtoolcache:/github/home/hostedtoolcache
+        - /usr/local/share/boost:/github/home/boost
+        - /usr/share/swift:/github/home/swift
+        - /usr/share/miniconda:/github/home/miniconda
+        - /usr/local/share/vcpkg:/github/home/vcpkg
+        - /home/runner/.cargo:/github/home/.cargo
+        - /home/runner/.rustup:/github/home/.rustup
+    steps:
+      - name: Install git
+        run: dnf install -y git
+        shell: bash
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ./.github/actions/build-linux
+        with:
+          rocky-version: "9"
+          build-type: "Release"
+          qt-version: "6.5.3"
+          cmake-version: "3.31.6"
+          python-version: "3.11.8"
+          vfx-platform: "CY2025"
+          extra_repo: "crb"
+          configure-only: 'true'
+          invariance-baseline: ${{ inputs.baseline || 'merge-base' }}
+
+  macos:
+    name: 'macOS 14 arm64 CY2025 Release'
+    runs-on: macos-14
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ./.github/actions/build-macos
+        with:
+          arch-type: "arm64"
+          build-type: "Release"
+          qt-version: "6.5.3"
+          qt-version-short: "6.5"
+          python-version: "3.11"
+          cmake-version: "3.31.6"
+          vfx-platform: "CY2025"
+          # The baseline is configured without restored dependencies, so this checkout must be too.
+          skip_deps_cache: 'true'
+          configure-only: 'true'
+          invariance-baseline: ${{ inputs.baseline || 'merge-base' }}
+
+  windows:
+    name: 'Windows 2022 CY2025 Release'
+    runs-on: windows-2022
+    env:
+      SCCACHE_GHA_ENABLED: false
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ./.github/actions/build-windows
+        with:
+          build-type: "Release"
+          qt-version: "6.5.3"
+          python-version: "3.11"
+          cmake-version: "3.31.6"
+          vfx-platform: "CY2025"
+          msvc-component: "14.40.17.10.x86.x64"
+          msvc-compiler: "14.40.33807"
+          configure-only: 'true'
+          invariance-baseline: ${{ inputs.baseline || 'merge-base' }}

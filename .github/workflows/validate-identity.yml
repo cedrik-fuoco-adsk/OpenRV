@@ -36,6 +36,8 @@ on:
       - 'src/build/test_check_relocation.py'
       - 'src/build/test_deps_store.py'
       - 'src/build/test_deps_store_roundtrip.py'
+      - 'src/build/check_default_invariance.py'
+      - 'src/build/test_check_default_invariance.py'
       - 'openrvcore-conanfile.py'
       # The conan generator comparison guards its argument seam against this file, so a
       # change here must re-run the check.
@@ -96,6 +98,11 @@ jobs:
       # that cannot fail is worth nothing.
       - name: Check the relocation gate
         run: python3 src/build/test_check_relocation.py
+
+      # The default-configure invariance check runs on real configured trees in check-default-invariance.yml, where an equivalence it reported
+      # wrongly would pass silently. These planted trees each differ in one way, and every real difference must be reported.
+      - name: Check the default configure invariance check
+        run: python3 src/build/test_check_default_invariance.py
 
       # The store's round trip with a real dependency: a first build populates it, staging leaves the
       # entry untouched, the relocation gate passes on the published zlib, a second build directory
