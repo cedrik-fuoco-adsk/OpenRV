@@ -15,7 +15,7 @@ Run directly:
     python3 src/build/test_deps_store_roundtrip.py
 
 Exits non-zero if any check fails, and reports that it could not run (without failing) when there is
-no network or no toolchain.
+no network or no toolchain -- except in CI, where either is a broken runner and fails.
 
 test_deps_store.py checks the store's addressing with planted trees, which is fast and runs
 everywhere. This checks the thing those cannot: that a real dependency builds into the store, is
@@ -26,8 +26,11 @@ prefix that contradicted the install prefix, a publish step that never ran, a st
 level too shallow, and an unexpected writer of the install directory. A fixture cannot catch those,
 because a fixture is written by someone who already believes they know how the mechanism works.
 
-The harness includes the real options, identity, store and find macros in the order the real
-configure uses them, and the real dependency file for zlib. Its dependency versions come from
+The harness includes the real options, identity, store, find and staging macros in the order the
+real configure uses them, and the real dependency file for zlib, so what consumers do to a stored
+dependency -- staging its library, fixing its install name -- is exercised against the store too.
+The published entry is then put through the relocation gate, so the evidence for zlib's eligibility
+is re-established on every run rather than recorded once. Its dependency versions come from
 cmake/defaults/CY20xx.cmake, the same source the real configure reads, so the harness cannot drift
 from it; an earlier version restated them and missed an identity input for it.
 """
@@ -91,17 +94,25 @@ include(rv_add_imported_library)
 # Defines RV_REGISTER_PREBUILT_TARGET, which the find path calls when it accepts a package.
 include(rv_probe_artifact)
 
-# Staging copies dependency libraries next to the application, which this harness does not build.
-# Only that step is replaced; the dependency file, the store and the find path are the real ones.
-macro(RV_STAGE_DEPENDENCY_LIBS)
-endmacro()
+# The real staging, into a stage directory in the build tree, so whatever it does to the dependency's
+# files is done here as it would be in a real build.
+set(RV_STAGE_ROOT_DIR "${{CMAKE_BINARY_DIR}}/stage")
+set(RV_STAGE_LIB_DIR "${{RV_STAGE_ROOT_DIR}}/lib")
+set(RV_STAGE_BIN_DIR "${{RV_STAGE_ROOT_DIR}}/bin")
+set(RV_STAGE_INCLUDE_DIR "${{RV_STAGE_ROOT_DIR}}/include")
+add_custom_target(dependencies ALL)
+include(rv_stage_dependency_libs)
 
 include("${{RV_SRC}}/cmake/dependencies/zlib.cmake")
 message(STATUS "HARNESS entry=${{RV_DEPS_STORE_IDENTITY_DIR}}")
-message(STATUS "HARNESS zlib_install=${{RV_DEPS_STORE_IDENTITY_DIR}}/RV_DEPS_ZLIB/install")
+message(STATUS "HARNESS zlib_install=${{_install_dir}}")
 """
 
 ENTRY_RE = re.compile(r"^--\s+HARNESS entry=(.*)$", re.MULTILINE)
+INSTALL_RE = re.compile(r"^--\s+HARNESS zlib_install=(.*)$", re.MULTILINE)
+
+sys.path.insert(0, HERE)
+from check_relocation import find_references, spellings  # noqa: E402
 
 
 def check(description: str, condition: bool, detail: str = "") -> None:
@@ -113,11 +124,8 @@ def check(description: str, condition: bool, detail: str = "") -> None:
 
 
 def configure(source: str, build: str, store: str, eligible: str):
-    # Forward slashes, which is how CMake itself writes a Windows path. A raw backslash path works in
-    # most places and then breaks where it is interpolated into a string that is re-parsed, as
-    # RV_ADD_IMPORTED_LIBRARY does -- an argument defect rather than a store one, and not what this
-    # suite is about.
-    store = store.replace("\\", "/")
+    # Passed as the platform writes it, backslashes and all on Windows: the store normalizes its location,
+    # and a test that cleaned it up first would hide a defect there.
     result = subprocess.run(
         [
             "cmake",
@@ -134,9 +142,9 @@ def configure(source: str, build: str, store: str, eligible: str):
     return result.returncode, result.stdout + result.stderr
 
 
-def build(build_dir: str, log: str) -> int:
+def build(build_dir: str, log: str, target: str = "RV_DEPS_ZLIB") -> int:
     result = subprocess.run(
-        ["cmake", "--build", build_dir, "--config", "Release", "--target", "RV_DEPS_ZLIB"],
+        ["cmake", "--build", build_dir, "--config", "Release", "--target", target],
         capture_output=True,
         text=True,
     )
@@ -168,7 +176,8 @@ def main() -> int:
     for tool in ("cmake",):
         if shutil.which(tool) is None:
             print(f"{tool} is not on PATH, so the round trip cannot be run")
-            return 0
+            # In CI a missing tool is a broken runner, and a skip there would read as a pass.
+            return 1 if os.environ.get("CI") else 0
 
     print(f"dependency store round trip with a real dependency ({REPO})")
     with tempfile.TemporaryDirectory() as work:
@@ -177,6 +186,9 @@ def main() -> int:
         os.makedirs(source)
         with open(os.path.join(source, "CMakeLists.txt"), "w", encoding="utf-8") as handle:
             handle.write(HARNESS.format(repo=REPO.replace("\\", "/"), vfx="CY2025"))
+        # The dependency files find their patches relative to CMAKE_CURRENT_SOURCE_DIR, which is the
+        # harness here rather than cmake/dependencies, so the patches go where they will be looked for.
+        shutil.copytree(os.path.join(REPO, "cmake", "dependencies", "patch"), os.path.join(source, "patch"))
 
         first = os.path.join(work, "first")
         code, output = configure(source, first, store, "RV_DEPS_ZLIB")
@@ -194,25 +206,92 @@ def main() -> int:
         print("first build")
         code = build(first, os.path.join(work, "first.log"))
         if code != 0:
-            # A download failure is not this suite's subject. Say so rather than failing on it.
+            # A download failure is not this suite's subject. Say so rather than failing on it -- but
+            # only for a failed download, never for a step that merely follows one, and never in CI,
+            # where a skip would read as a pass.
             log = read(os.path.join(work, "first.log"))
-            if re.search(r"download|Could not resolve|curl|timed out", log, re.IGNORECASE):
+            download_failed = re.search(
+                r"error: downloading|Could not resolve host|status_code: [1-9]|timed out", log, re.IGNORECASE
+            )
+            if download_failed and not os.environ.get("CI"):
                 print("could not fetch the dependency, so the round trip was not run")
                 return 0
             check("the dependency builds", False, log[-1500:])
             return 1
 
         log = read(os.path.join(work, "first.log"))
-        install = os.path.join(entry, "RV_DEPS_ZLIB", "install")
-        check("the install was staged before being published", ".publishing" in log, log[-800:])
+        install = (INSTALL_RE.search(output) or [None, ""])[1].strip()
+        check(
+            "the entry is addressed by recipe under the slot",
+            re.search(r"/RV_DEPS_ZLIB/[0-9a-f]{12}/install$", install) is not None,
+            install,
+        )
+        check("the install was staged before being published", "/.staging/" in log.replace("\\", "/"), log[-800:])
         check("the entry was published", "Dependency store: published" in log, log[-800:])
         check(
             "the published tree is complete",
-            all(os.path.isdir(os.path.join(install, part)) for part in ("bin", "include", "lib")),
+            # zlib installs bin/ only on Windows, where it holds the DLL.
+            all(
+                os.path.isdir(os.path.join(install, part))
+                for part in (("bin",) if os.name == "nt" else ()) + ("include", "lib")
+            ),
             str(sorted(os.listdir(install)) if os.path.isdir(install) else install),
         )
-        check("the published marker is present", os.path.isfile(os.path.join(entry, "RV_DEPS_ZLIB", ".published")))
-        check("the staging tree was tidied away", not os.path.exists(os.path.join(entry, ".publishing")))
+        check("the published marker is present", os.path.isfile(os.path.join(os.path.dirname(install), ".published")))
+        staging = os.path.join(store, ".staging")
+        leftovers = (
+            [name for name in os.listdir(staging) if not name.endswith(".lock")] if os.path.isdir(staging) else []
+        )
+        check("the staging tree was tidied away", not leftovers, str(leftovers))
+        if sys.platform == "darwin":
+            result = subprocess.run(
+                ["otool", "-D", os.path.join(install, "lib", "libz.dylib")], capture_output=True, text=True
+            )
+            check(
+                "the install name was fixed before publishing",
+                result.stdout.strip().endswith("@rpath/libz.dylib"),
+                result.stdout,
+            )
+
+        # A consumer stages the library next to the application, and on macOS sets its install name.
+        # That is done to the published entry's copy, never to the entry: other build directories may
+        # be reading it.
+        published = content_digest(install)
+        code = build(first, os.path.join(work, "first-stage.log"), "RV_DEPS_ZLIB-stage-target")
+        check(
+            "the first configuration stages the library", code == 0, read(os.path.join(work, "first-stage.log"))[-800:]
+        )
+        check("staging did not modify the published entry", content_digest(install) == published)
+        stage = os.path.join(first, "stage")
+        references = find_references(stage, spellings(store))
+        check("nothing staged names the store", not references, str(references))
+
+        # The relocation gate, against the tree the store actually published: this is the evidence that
+        # zlib may be stored, re-established on every run.
+        print("relocation gate on the published entry")
+        result = subprocess.run(
+            [
+                sys.executable,
+                os.path.join(HERE, "check_relocation.py"),
+                "--install",
+                install,
+                "--package",
+                "ZLIB",
+                "--target",
+                "ZLIB::ZLIB",
+                "--module",
+                "--include",
+                "zlib.h",
+                "--exercise",
+                "if (!zlibVersion()) { return 1; }",
+                "--work",
+                os.path.join(work, "gate"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        check("the published zlib is relocatable", result.returncode == 0, (result.stdout + result.stderr)[-1500:])
+        check("the gate put the entry back unchanged", content_digest(install) == published)
 
         print("cleaning a configuration that built it")
         before = content_digest(install)
@@ -235,13 +314,21 @@ def main() -> int:
             output[-1000:],
         )
         # Consuming it means nothing is rebuilt: the entry must come out of the second configuration
-        # exactly as it went in. Whether a build target exists is an implementation detail and not
-        # what the store promises -- an earlier version of this check asserted its absence and was
-        # wrong, which is its own small lesson about asserting mechanisms rather than outcomes.
-        before = content_digest(install)
+        # exactly as it went in, staging included. Whether a build target exists is an implementation
+        # detail and not what the store promises -- an earlier version of this check asserted its
+        # absence and was wrong, which is its own small lesson about asserting mechanisms rather than
+        # outcomes.
         result = subprocess.run(["cmake", "--build", second, "--config", "Release"], capture_output=True, text=True)
-        check("the second configuration builds", result.returncode == 0, (result.stdout + result.stderr)[-800:])
+        check(
+            "the second configuration builds and stages", result.returncode == 0, (result.stdout + result.stderr)[-800:]
+        )
         check("reusing the entry did not change it", content_digest(install) == before)
+        check(
+            "the second configuration did not build zlib",
+            not os.path.isdir(os.path.join(second, "RV_DEPS_ZLIB", "src")),
+        )
+        references = find_references(os.path.join(second, "stage"), spellings(store))
+        check("nothing the second configuration staged names the store", not references, str(references))
 
         print("removing the build directory that populated the store")
         shutil.rmtree(first)

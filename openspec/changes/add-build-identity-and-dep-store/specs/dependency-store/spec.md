@@ -26,8 +26,10 @@ directory as it does today, and SHALL NOT read from or write to any store.
 ### Requirement: Store placement is derived from the build identity
 
 When a store location is configured, the installed tree of each dependency that is eligible for the
-store SHALL be placed at a path derived from the build identity, so that artifacts produced under
-one identity are never served to a build targeting another. Only installed trees are placed there:
+store SHALL be placed at a path derived from the build identity and from that dependency's recipe
+(its version, its download, its recipe files and the patches they apply), so that artifacts produced
+under one identity are never served to a build targeting another, and an entry is only ever served
+for identical content. Only installed trees are placed there:
 dependency source, build and stamp trees stay local to the build directory, because they embed
 absolute paths and a store may be shared between machines.
 
@@ -40,6 +42,11 @@ absolute paths and a store may be shared between machines.
 
 - **WHEN** two configurations with equal identities share a store location
 - **THEN** the second configuration reuses the first configuration's dependency artifacts without rebuilding them
+
+#### Scenario: A recipe change addresses a new entry
+
+- **WHEN** a dependency's version, download, recipe files or patches change between two configurations of equal identity
+- **THEN** the second configuration does not consume the entry published by the first, and builds and publishes its own
 
 ### Requirement: Opting out is a complete opt-out
 
@@ -77,6 +84,11 @@ build directory, even when a store location is configured.
 
 - **WHEN** some dependencies have passed the relocation check and others have not
 - **THEN** the build succeeds, with each dependency resolved from the location its eligibility permits
+
+#### Scenario: A forced from-source build bypasses the store
+
+- **WHEN** a dependency is forced to build from source and a store location is configured
+- **THEN** that dependency neither reads from nor publishes into the store, and is built and installed inside the build directory
 
 ### Requirement: The relocation check proves an installed tree is position independent
 

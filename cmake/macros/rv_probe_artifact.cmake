@@ -9,6 +9,9 @@
 #
 # Registers the prebuilt artifacts a configuration consumes, and runs the probe over them.
 #
+# Probing is off by default (RV_DEPS_PROBE_ARTIFACTS), because inspecting binaries on every configure is the slowdown D7 rejected. A configuration with a store
+# probes regardless, because a store entry must be verified before it is used.
+#
 # Only prebuilt artifacts are registered. A dependency built from source is described by its build recipe and probing it would slow every configure for no
 # benefit; the artifacts worth recording are the ones the build did not produce, because those are the ones whose ABI the build is trusting.
 #
@@ -45,15 +48,35 @@ DEFINE_PROPERTY(
 )
 
 #
+# RV_DEPS_PROBE_IS_ENABLED(<out_var>)
+#
+# Must remain a MACRO: it sets a variable in the caller's scope.
+#
+MACRO(RV_DEPS_PROBE_IS_ENABLED _rdpie_out)
+  IF(RV_DEPS_PROBE_ARTIFACTS
+     OR RV_DEPS_STORE
+  )
+    SET(${_rdpie_out}
+        TRUE
+    )
+  ELSE()
+    SET(${_rdpie_out}
+        FALSE
+    )
+  ENDIF()
+ENDMACRO()
+
+#
 # RV_REGISTER_PREBUILT_ARTIFACT(<role> <path> [METADATA_ROOT <dir>])
 #
 # Record one prebuilt artifact for probing. <role> is "input" for an artifact the build ingested, or "derived" for one the build produced by adapting an input;
-# keeping them separate is what lets an adaptation that changes a fact be seen.
+# keeping them separate is what lets an adaptation that changes a fact be seen. METADATA_ROOT applies to this artifact alone.
 #
 FUNCTION(RV_REGISTER_PREBUILT_ARTIFACT _rrpa_role _rrpa_path)
   CMAKE_PARSE_ARGUMENTS(_RRPA "" "" "METADATA_ROOT" ${ARGN})
 
-  IF(NOT RV_DEPS_PROBE_ARTIFACTS)
+  RV_DEPS_PROBE_IS_ENABLED(_rrpa_enabled)
+  IF(NOT _rrpa_enabled)
     RETURN()
   ENDIF()
 
@@ -88,7 +111,8 @@ ENDFUNCTION()
 # Register a found dependency target. Its imported location is resolved now, because a target with no location is not an artifact and there is nothing to probe.
 #
 FUNCTION(RV_REGISTER_PREBUILT_TARGET _rrpt_target)
-  IF(NOT RV_DEPS_PROBE_ARTIFACTS)
+  RV_DEPS_PROBE_IS_ENABLED(_rrpt_enabled)
+  IF(NOT _rrpt_enabled)
     RETURN()
   ENDIF()
   IF(NOT TARGET ${_rrpt_target})
@@ -137,7 +161,8 @@ FUNCTION(RV_RUN_ARTIFACT_PROBES _rrap_out)
       PARENT_SCOPE
   )
 
-  IF(NOT RV_DEPS_PROBE_ARTIFACTS)
+  RV_DEPS_PROBE_IS_ENABLED(_rrap_enabled)
+  IF(NOT _rrap_enabled)
     RETURN()
   ENDIF()
 
@@ -172,8 +197,9 @@ FUNCTION(RV_RUN_ARTIFACT_PROBES _rrap_out)
     LIST(GET _rrap_parts 1 _rrap_path)
     LIST(GET _rrap_parts 2 _rrap_root)
     LIST(APPEND _rrap_args "--artifact" "${_rrap_role}=${_rrap_path}")
+    # Keyed by the artifact, not the role: Qt's root carries Qt's version and features, and every other input artifact would otherwise be recorded with them.
     IF(_rrap_root)
-      LIST(APPEND _rrap_args "--metadata-root-for" "${_rrap_role}=${_rrap_root}")
+      LIST(APPEND _rrap_args "--artifact-metadata-root" "${_rrap_path}" "${_rrap_root}")
     ENDIF()
   ENDFOREACH()
   LIST(APPEND _rrap_args "--cache-dir" "${RV_PROBE_CACHE_DIR}" "--out" "${_rrap_document}")

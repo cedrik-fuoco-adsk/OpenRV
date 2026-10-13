@@ -24,6 +24,19 @@ on:
       - 'cmake/macros/rv_probe_artifact.cmake'
       - 'cmake/macros/rv_build_manifest.cmake'
       - 'cmake/defaults/rv_options.cmake'
+      # The dependency store, its relocation gate, and the dependency the round trip builds through it.
+      - 'cmake/macros/rv_deps_store.cmake'
+      - 'cmake/macros/rv_store_install.cmake'
+      - 'cmake/macros/rv_store_publish.cmake'
+      - 'cmake/macros/rv_create_std_deps_vars.cmake'
+      - 'cmake/macros/rv_find_dependency.cmake'
+      - 'cmake/dependencies/zlib.cmake'
+      - 'cmake/dependencies/build/zlib.cmake'
+      - 'src/build/check_relocation.py'
+      - 'src/build/test_check_relocation.py'
+      - 'src/build/test_deps_store.py'
+      - 'src/build/test_deps_store_roundtrip.py'
+      - 'openrvcore-conanfile.py'
       # The conan generator comparison guards its argument seam against this file, so a
       # change here must re-run the check.
       - '.github/workflows/conan.yml'
@@ -31,7 +44,7 @@ on:
   push:
     branches:
       - main
-      # Fork validation: temporary, lets a push to this branch run the fast validation on a fork without moving its default branch. Remove before upstreaming.
+      # TEMPORARY: remove before upstreaming. Fork validation: lets a push to this branch run the fast validation on a fork without moving its default branch.
       - ci/phase0-build-identity-manifest
 
 jobs:
@@ -70,22 +83,25 @@ jobs:
       - name: Check the Conan generator comparison
         run: python3 src/build/test_compare_conan_generators.py
 
-      # The store's addressing is exercised by configuring, and reconfiguring, a small project that
-      # includes the real options, identity and store macros in the order the real configure uses
-      # them. Opting out only shows up on a second configure, because RV_DEPS_BASE_DIR is cached.
+      # The store's addressing, publishing and opt-out are exercised by configuring, and
+      # reconfiguring, a small project that includes the real options, identity and store macros in
+      # the order the real configure uses them, and by racing real publishes and installs against one
+      # entry. Opting out only shows up on a second configure of the same tree.
       - name: Check the dependency store path resolution
         run: python3 src/build/test_deps_store.py
 
       # The relocation gate decides what may be stored at all. Its tests build a real installed
-      # dependency three ways -- relocatable, hardcoding its install directory, and working but still
-      # naming it -- and require the second and third to fail. A gate that cannot fail is worth
-      # nothing.
+      # dependency four ways -- relocatable, hardcoding its install directory, working but still
+      # naming it, and reading a data file from it -- and require all but the first to fail. A gate
+      # that cannot fail is worth nothing.
       - name: Check the relocation gate
         run: python3 src/build/test_check_relocation.py
 
-      # The store's round trip with a real dependency: a first build populates it, a second build
-      # directory consumes it, and deleting or cleaning the first leaves it untouched. This is the
-      # check that found every defect in the store, which the planted-tree suite could not.
+      # The store's round trip with a real dependency: a first build populates it, staging leaves the
+      # entry untouched, the relocation gate passes on the published zlib, a second build directory
+      # consumes it, and deleting or cleaning the first leaves it untouched. This is the check that
+      # found every defect in the store, which the planted-tree suite could not. GitHub sets CI, so
+      # a download or toolchain failure fails this step instead of being reported as a skip.
       - name: Check the store round trip with a real dependency
         run: python3 src/build/test_deps_store_roundtrip.py
 
@@ -214,6 +230,29 @@ jobs:
               sys.exit(1)
           print("OK: the Conan generate step works against real Conan")
           PY
+
+          # On a re-install into a configured build folder, generate() compares the profile against the
+          # identity the configure computed. Plant a computed identity that disagrees with the profile
+          # on two fields and require the re-install to report both, without failing.
+          python3 - "$DOCUMENTS_DIR" <<'PY'
+          import json, os, sys
+          base = sys.argv[1]
+          identity = json.load(open(os.path.join(base, "conan-identity.json"), encoding="utf-8"))
+          identity.pop("partial", None)
+          identity["compiler_version"] = "99.0.0"
+          identity["cxx_standard"] = "26"
+          json.dump(identity, open(os.path.join(base, "build-identity.json"), "w", encoding="utf-8"))
+          PY
+          cp src/build/conan_bookkeeping_probe.py _probe_conanfile.py
+          conan install _probe_conanfile.py -pr:a default -of "$OUT" 2>&1 | tee "$RUNNER_TEMP/conan-reinstall.log"
+          rm -f _probe_conanfile.py CMakeUserPresets.json "$DOCUMENTS_DIR/build-identity.json"
+          for expected in "disagrees with the computed identity" "compiler_version" "cxx_standard"; do
+            if ! grep -q "$expected" "$RUNNER_TEMP/conan-reinstall.log"; then
+              echo "::error::the re-install did not report '$expected' against the computed identity"
+              exit 1
+            fi
+          done
+          echo "OK: the Conan generate step compares the profile against a computed identity"
 
       - name: Select a real system artifact to probe
         id: artifact

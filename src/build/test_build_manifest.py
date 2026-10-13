@@ -27,6 +27,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "build_manifest.py")
 IDENTITY_SCRIPT = os.path.join(HERE, "build_identity.py")
+PROBE_SCRIPT = os.path.join(HERE, "probe_artifact.py")
 
 FAILURES = []
 
@@ -134,6 +135,15 @@ def test_full_manifest(directory: str) -> None:
     )
     check("nothing was omitted", "omitted" not in document, str(document.get("omitted")))
 
+    found = os.path.join(directory, "found.json")
+    run("--identity", identity, "--found", "qt_version=6.8.1", "--out", found)
+    document = json.load(open(found, encoding="utf-8"))
+    check(
+        "the Qt version found is recorded beside the identity",
+        document.get("found", {}).get("qt_version") == "6.8.1" and document["identity"].get("qt_version") == "6.5.3",
+        str(document.get("found")),
+    )
+
 
 def test_determinism(directory: str) -> None:
     print("manifest is deterministic")
@@ -148,6 +158,43 @@ def test_determinism(directory: str) -> None:
         body2 = handle.read()
     check("two configurations produce byte-identical manifests", body1 == body2)
     check("no timestamp is embedded", b"timestamp" not in body1 and b"generated" not in body1)
+
+    # With real probes: the first configure inspects the artifact and the second reads the probe
+    # cache. The manifests must not differ on that account.
+    artifact = os.path.join(directory, "libdet.so.1.0.0")
+    with open(artifact, "wb") as handle:
+        handle.write(b"not a container" * 8)
+    cache = os.path.join(directory, "det-cache")
+    bodies = []
+    for name in ("det-probed", "det-cached"):
+        probes = os.path.join(directory, f"{name}-probes.json")
+        subprocess.run(
+            [
+                sys.executable,
+                PROBE_SCRIPT,
+                "probe",
+                "--artifact",
+                f"input={artifact}",
+                "--cache-dir",
+                cache,
+                "--out",
+                probes,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        with open(probes, "r", encoding="utf-8") as handle:
+            inspection = json.load(handle)["probes"][0].get("inspection")
+        manifest = os.path.join(directory, f"{name}.json")
+        run("--identity", identity, "--probes", probes, "--out", manifest)
+        with open(manifest, "rb") as handle:
+            bodies.append((inspection, handle.read()))
+    check(
+        "the second configure read the probe cache",
+        [inspection for inspection, _body in bodies] == ["performed", "cached"],
+        str([inspection for inspection, _body in bodies]),
+    )
+    check("a probed and a cached configure produce byte-identical manifests", bodies[0][1] == bodies[1][1])
 
 
 def test_write_failure_is_a_warning(directory: str) -> None:
@@ -182,6 +229,14 @@ def test_missing_identity(directory: str) -> None:
     result = run("--identity", os.path.join(directory, "absent.json"), "--require-identity", "--out", required)
     check("a configuration requiring an identity fails", result.returncode == 3, f"exit {result.returncode}")
     check("the failure explains why", "identity" in result.stderr, result.stderr.strip())
+
+    # This configure computed no identity, so none is passed -- a file left by an earlier configure
+    # must not stand in for it.
+    unpassed = os.path.join(directory, "identity_not_passed.json")
+    result = run("--out", unpassed)
+    check("a manifest without an identity argument is written", result.returncode == 0, f"exit {result.returncode}")
+    result = run("--require-identity", "--out", unpassed)
+    check("and a configuration requiring one fails", result.returncode == 3, f"exit {result.returncode}")
 
 
 def test_malformed_input_is_omitted(directory: str) -> None:

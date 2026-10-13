@@ -54,29 +54,80 @@ SET(RV_BUILD_PYTHON
     CACHE STRING "Python 3 interpreter used for the build identity, artifact probing and the build manifest (default: the first python3 on PATH)"
 )
 
-IF(NOT RV_BUILD_PYTHON)
-  FIND_PROGRAM(
-    RV_BUILD_PYTHON_DISCOVERED
-    NAMES python3 python
-  )
-  IF(RV_BUILD_PYTHON_DISCOVERED)
-    SET(RV_BUILD_PYTHON
-        "${RV_BUILD_PYTHON_DISCOVERED}"
-        CACHE STRING "Python 3 interpreter used for the build identity, artifact probing and the build manifest (default: the first python3 on PATH)" FORCE
-    )
-  ENDIF()
-ENDIF()
-
-# Validate that the interpreter actually runs. On Windows, PATH often contains an App Execution Alias (WindowsApps/python3.exe) that is a stub which opens the
-# Store rather than running Python, and find_program cannot tell the difference. Accepting it would leave every later script invocation failing in a way that
-# looks unrelated, so a candidate that does not run is discarded and the graceful no-interpreter path applies instead.
-IF(RV_BUILD_PYTHON)
+#
+# A candidate is accepted only if it runs as Python 3. On Windows, PATH often contains App Execution Aliases (WindowsApps/python3.exe and python.exe) that are
+# stubs which open the Store rather than running Python, and find_program cannot tell the difference. Accepting one would leave every later script invocation
+# failing in a way that looks unrelated.
+#
+FUNCTION(RV_BUILD_PYTHON_RUNS _rbpr_candidate _rbpr_out)
   EXECUTE_PROCESS(
-    COMMAND "${RV_BUILD_PYTHON}" -c "import sys; sys.exit(0 if sys.version_info[0] == 3 else 1)"
-    RESULT_VARIABLE _rvbp_probe_result
+    COMMAND "${_rbpr_candidate}" -c "import sys; sys.exit(0 if sys.version_info[0] == 3 else 1)"
+    RESULT_VARIABLE _rbpr_result
     OUTPUT_QUIET ERROR_QUIET
   )
-  IF(NOT _rvbp_probe_result EQUAL 0)
+  IF(_rbpr_result EQUAL 0)
+    SET(${_rbpr_out}
+        TRUE
+        PARENT_SCOPE
+    )
+  ELSE()
+    SET(${_rbpr_out}
+        FALSE
+        PARENT_SCOPE
+    )
+  ENDIF()
+ENDFUNCTION()
+
+#
+# Find the first interpreter on PATH that runs, trying python3 then python in each directory before moving to the next. A python.org install on Windows provides
+# python.exe but no python3.exe, so a search that tries python3 across the whole PATH first finds the WindowsApps stub and never reaches the real python.exe.
+#
+FUNCTION(RV_BUILD_PYTHON_SEARCH_PATH _rbpsp_out)
+  SET(${_rbpsp_out}
+      ""
+      PARENT_SCOPE
+  )
+  IF(WIN32)
+    SET(_rbpsp_names
+        python3.exe python.exe
+    )
+  ELSE()
+    SET(_rbpsp_names
+        python3 python
+    )
+  ENDIF()
+  FILE(TO_CMAKE_PATH "$ENV{PATH}" _rbpsp_directories)
+  FOREACH(
+    _rbpsp_directory
+    ${_rbpsp_directories}
+  )
+    FOREACH(
+      _rbpsp_name
+      ${_rbpsp_names}
+    )
+      SET(_rbpsp_candidate
+          "${_rbpsp_directory}/${_rbpsp_name}"
+      )
+      IF(EXISTS "${_rbpsp_candidate}"
+         AND NOT IS_DIRECTORY "${_rbpsp_candidate}"
+      )
+        RV_BUILD_PYTHON_RUNS("${_rbpsp_candidate}" _rbpsp_runs)
+        IF(_rbpsp_runs)
+          SET(${_rbpsp_out}
+              "${_rbpsp_candidate}"
+              PARENT_SCOPE
+          )
+          RETURN()
+        ENDIF()
+      ENDIF()
+    ENDFOREACH()
+  ENDFOREACH()
+ENDFUNCTION()
+
+IF(RV_BUILD_PYTHON)
+  # An interpreter given explicitly is validated but never replaced: the caller asked for that one.
+  RV_BUILD_PYTHON_RUNS("${RV_BUILD_PYTHON}" _rvbp_runs)
+  IF(NOT _rvbp_runs)
     MESSAGE(
       WARNING
         "Build identity: '${RV_BUILD_PYTHON}' does not run as a Python 3 interpreter, so it will not be used. Set -DRV_BUILD_PYTHON=<path> to provide one."
@@ -84,6 +135,37 @@ IF(RV_BUILD_PYTHON)
     SET(RV_BUILD_PYTHON
         ""
         CACHE STRING "Python 3 interpreter used for the build identity, artifact probing and the build manifest (default: the first python3 on PATH)" FORCE
+    )
+  ENDIF()
+ELSE()
+  FIND_PROGRAM(
+    RV_BUILD_PYTHON_DISCOVERED
+    NAMES python3 python NAMES_PER_DIR
+  )
+  SET(_rvbp_found
+      ""
+  )
+  IF(RV_BUILD_PYTHON_DISCOVERED)
+    RV_BUILD_PYTHON_RUNS("${RV_BUILD_PYTHON_DISCOVERED}" _rvbp_runs)
+    IF(_rvbp_runs)
+      SET(_rvbp_found
+          "${RV_BUILD_PYTHON_DISCOVERED}"
+      )
+    ENDIF()
+  ENDIF()
+  IF(NOT _rvbp_found)
+    # The first match does not run -- typically a WindowsApps stub ahead of the real interpreter on PATH -- so keep looking rather than giving up on the first.
+    RV_BUILD_PYTHON_SEARCH_PATH(_rvbp_found)
+  ENDIF()
+  IF(_rvbp_found)
+    SET(RV_BUILD_PYTHON
+        "${_rvbp_found}"
+        CACHE STRING "Python 3 interpreter used for the build identity, artifact probing and the build manifest (default: the first python3 on PATH)" FORCE
+    )
+  ELSEIF(RV_BUILD_PYTHON_DISCOVERED)
+    MESSAGE(
+      WARNING
+        "Build identity: '${RV_BUILD_PYTHON_DISCOVERED}' does not run as a Python 3 interpreter and no other on PATH does, so none will be used. Set -DRV_BUILD_PYTHON=<path> to provide one."
     )
   ENDIF()
 ENDIF()
@@ -323,6 +405,9 @@ FUNCTION(RV_COMPUTE_BUILD_IDENTITY)
       ""
       CACHE INTERNAL "Build identity hash" FORCE
   )
+  # A document left by an earlier configure describes that configure. Removed before anything can return early, so that a configure which computes no identity
+  # -- disabled, no interpreter, an emit failure -- leaves no file for the manifest, the store or a reader to mistake for its own.
+  FILE(REMOVE "${RV_BUILD_IDENTITY_FILE}")
 
   IF(NOT RV_BUILD_IDENTITY)
     MESSAGE(STATUS "Build identity: disabled by RV_BUILD_IDENTITY=OFF")
@@ -364,6 +449,9 @@ FUNCTION(RV_COMPUTE_BUILD_IDENTITY)
       "${CMAKE_BINARY_DIR}/build-identity.inputs"
   )
 
+  # build_config is CMAKE_BUILD_TYPE even with a multi-configuration generator (Visual Studio, Xcode). RV builds its dependencies with --config
+  # ${CMAKE_BUILD_TYPE} and names their libraries from it, so it is the configuration the dependencies actually are; building another --config in the same tree
+  # was already a mismatch before the identity existed, and the identity does not try to describe it.
   FILE(
     WRITE "${_rbbi_inputs}"
     "# Raw build identity inputs, gathered by cmake/macros/rv_build_identity.cmake.\n"
@@ -449,6 +537,18 @@ FUNCTION(RV_REPORT_BUILD_IDENTITY)
       MESSAGE(STATUS "    ${_rbbi_field}: ${_rbbi_value}")
     ENDIF()
   ENDFOREACH()
+
+  # The identity is computed before the dependencies, so its Qt version is the one this build is configured for. The Qt actually found is only known now, and
+  # can differ when QT_HOME points at another Qt; that is reported here, and the manifest records the found version alongside the identity.
+  RV_IDENTITY_GET(qt_version _rbbi_identity_qt)
+  IF(RV_DEPS_QT_FOUND_VERSION
+     AND NOT "${RV_DEPS_QT_FOUND_VERSION}" STREQUAL "${_rbbi_identity_qt}"
+  )
+    MESSAGE(
+      WARNING
+        "Build identity: the identity records Qt ${_rbbi_identity_qt}, the version ${RV_VFX_PLATFORM} specifies, but the Qt found is ${RV_DEPS_QT_FOUND_VERSION}. The build uses the Qt found; the manifest records both."
+    )
+  ENDIF()
 
   # Compare against the Conan profile when the Conan path produced one. Phase 0 reports drift; it does not fail the build for it.
   RV_BUILD_IDENTITY_COMPARE_WITH_CONAN()

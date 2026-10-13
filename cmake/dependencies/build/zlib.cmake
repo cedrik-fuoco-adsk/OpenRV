@@ -31,8 +31,11 @@ EXTERNALPROJECT_ADD(
 )
 
 IF(RV_TARGET_WINDOWS)
-  # FFmpeg expects "zlib" in Release and Debug.
-  IF(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+  # FFmpeg expects "zlib" in Release and Debug. A stored zlib gets the copy in its staged tree before it is published, because a published store entry is never
+  # modified in place; see zlib.cmake.
+  IF(CMAKE_BUILD_TYPE MATCHES "^Debug$"
+     AND NOT _staging_root
+  )
     ADD_CUSTOM_COMMAND(
       TARGET ${_target}
       POST_BUILD

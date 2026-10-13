@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 from conan import ConanFile
@@ -241,12 +242,15 @@ class OpenRVBase:
             "build_config": str(settings.get_safe("build_type") or ""),
         }
 
-        # The C runtime is a Windows-only axis, and a profile expresses it as two settings. Both are
-        # required before the field is stated at all: a profile that says "dynamic" without saying
-        # whether that is the debug runtime is not disagreeing with a computed "dynamic-debug", it
-        # is simply not saying. Recording half of it would report drift that does not exist.
+        # The C runtime is a Windows-only axis, and a profile expresses it as two settings. An unset
+        # runtime_type follows build_type: Conan's default profile plugin fills it in exactly that way
+        # before this runs, and the same rule is applied here for a profile plugin that does not, so
+        # the profiles need not state it to have the runtime compared. Without a runtime there is
+        # nothing to state, and recording half of it would report drift that does not exist.
         runtime = str(settings.get_safe("compiler.runtime") or "")
         runtime_type = str(settings.get_safe("compiler.runtime_type") or "")
+        if runtime and not runtime_type and compiler in ("msvc", "clang"):
+            runtime_type = "Debug" if str(settings.get_safe("build_type") or "") == "Debug" else "Release"
         if runtime and runtime_type:
             inputs["crt"] = f"{runtime}:{runtime_type}"
 
@@ -258,8 +262,12 @@ class OpenRVBase:
                 for key, value in inputs.items():
                     handle.write(f"{key}={value}\n")
 
+            python = self.__python_interpreter()
+            if not python:
+                self.output.warning("Conan identity: no Python 3 interpreter found, so the profile was not recorded")
+                return
             completed = subprocess.run(
-                [sys.executable, script, "emit", "--inputs", inputs_file, "--partial", "--out", document],
+                [python, script, "emit", "--inputs", inputs_file, "--partial", "--out", document],
                 capture_output=True,
                 text=True,
             )
@@ -274,6 +282,56 @@ class OpenRVBase:
 
         tc.cache_variables["RV_CONAN_IDENTITY_FILE"] = self.__cmake_path(document)
         self.output.info(f"Conan identity: recorded the profile at {document}")
+
+        # The identity is computed by CMake's configure, which runs after this, so on a first install there
+        # is nothing to compare against yet and the configure reports drift instead. On a re-install into a
+        # build folder that has been configured, the computed identity is on disk and the profile is checked
+        # against it here, before any package is built with the wrong settings. Reported, not enforced.
+        computed = os.path.join(self.build_folder, "build-identity.json")
+        if os.path.isfile(computed):
+            try:
+                compared = subprocess.run(
+                    [
+                        python,
+                        script,
+                        "compare",
+                        "--left",
+                        computed,
+                        "--right",
+                        document,
+                        "--right-name",
+                        "conan-profile",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError as error:
+                self.output.warning(
+                    f"Conan identity: could not compare the profile with the computed identity: {error}"
+                )
+                return
+            if compared.returncode == 0:
+                self.output.info("Conan identity: the profile agrees with the computed identity")
+            elif compared.returncode == 2:
+                self.output.warning(
+                    "Conan identity: the profile disagrees with the computed identity (reported, not enforced):\n"
+                    + compared.stdout.strip()
+                )
+            else:
+                self.output.warning(
+                    f"Conan identity: could not compare the profile with the computed identity (exit {compared.returncode}). "
+                    + compared.stderr.strip()
+                )
+
+    def __python_interpreter(self):
+        """The interpreter to run build_identity.py with.
+
+        Conan's own interpreter when it has one. A frozen Conan -- the installer's conan.exe -- reports
+        itself as sys.executable, and running a script with it fails, so one is found on PATH instead.
+        """
+        if not getattr(sys, "frozen", False) and sys.executable:
+            return sys.executable
+        return shutil.which("python3") or shutil.which("python")
 
     def __write_conan_packages(self, tc):
         """Write the resolved host package set, sorted so the build manifest stays deterministic.

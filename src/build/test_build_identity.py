@@ -214,7 +214,7 @@ def test_unsupported_platform(directory: str) -> None:
     print("unsupported platform")
     inputs = write_inputs(directory, "plan9.inputs", target_os="Plan9")
     result = run("emit", "--inputs", inputs, "--out", os.path.join(directory, "plan9.json"))
-    check("configuration fails", result.returncode != 0, f"exit {result.returncode}")
+    check("configuration fails", result.returncode == 3, f"exit {result.returncode}")
     check("the message names the unsupported platform", "Plan9" in result.stderr, result.stderr.strip())
 
     missing = write_inputs(directory, "missing.inputs")
@@ -226,7 +226,14 @@ def test_unsupported_platform(directory: str) -> None:
         handle.writelines(lines)
     result = run("emit", "--inputs", missing, "--out", os.path.join(directory, "missing.json"))
     check("a missing required input fails", result.returncode != 0)
+    # Exit 3 is the one CMake turns into a fatal error. A missing or malformed input means the identity
+    # cannot be computed, not that the platform cannot be built, so it must never be reported as 3.
+    check("a missing required input is not an unsupported target", result.returncode == 6, f"exit {result.returncode}")
     check("the message names the missing field", "compiler_id" in result.stderr, result.stderr.strip())
+
+    malformed = write_inputs(directory, "malformed.inputs", python_version="unknown", cxx_standard="latest")
+    result = run("emit", "--inputs", malformed, "--out", os.path.join(directory, "malformed.json"))
+    check("a malformed input is not an unsupported target", result.returncode == 6, f"exit {result.returncode}")
 
 
 def test_compare(directory: str) -> None:
@@ -254,6 +261,25 @@ def test_compare(directory: str) -> None:
 
     result = run("compare", "--left", computed, "--right", conan_match, "--version-granularity", "exact")
     check("exact granularity surfaces the coarse profile", result.returncode == 2, f"exit {result.returncode}")
+
+    # MSVC: CMake reports 19.44.35229.0, a Conan profile states the toolset series 194.
+    msvc = dict(target_os="Windows", compiler_id="MSVC", stdlib="msvc", crt="dynamic:release")
+    msvc_computed = os.path.join(directory, "msvc_computed.json")
+    run(
+        "emit",
+        "--inputs",
+        write_inputs(directory, "mc.inputs", compiler_version="19.44.35229.0", **msvc),
+        "--out",
+        msvc_computed,
+    )
+    msvc_profile = os.path.join(directory, "msvc_profile.json")
+    run("emit", "--inputs", write_inputs(directory, "mp.inputs", compiler_version="194", **msvc), "--out", msvc_profile)
+    result = run("compare", "--left", msvc_computed, "--right", msvc_profile)
+    check("an MSVC 19.44 compiler matches a 194 profile", result.returncode == 0, result.stdout.strip())
+    msvc_older = os.path.join(directory, "msvc_older.json")
+    run("emit", "--inputs", write_inputs(directory, "mo.inputs", compiler_version="193", **msvc), "--out", msvc_older)
+    result = run("compare", "--left", msvc_computed, "--right", msvc_older)
+    check("an MSVC 19.44 compiler does not match a 193 profile", result.returncode == 2, result.stdout.strip())
 
 
 def test_partial_emission(directory: str) -> None:

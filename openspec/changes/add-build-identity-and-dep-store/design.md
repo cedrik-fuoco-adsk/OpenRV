@@ -96,25 +96,44 @@ recipes are heavy to author and maintenance-intensive, and "fetch a prebuilt int
 and adapt it" is not a build recipe; (b) one CMake-only store for all dependencies —
 rejected, it would orphan working infrastructure.
 
-### D3: The store redirects where installed trees go, and that default is re-derived with `FORCE`
+### D3: The store redirects where installed trees go, re-derived on every configure
 
 When a store location is configured, installed dependency trees are placed under a store path
 derived from the identity. This was originally described as redirecting `RV_DEPS_BASE_DIR`, and
 implementing it showed why that is wrong: `RV_CREATE_STANDARD_DEPS_VARIABLES` derives the source,
 build and install directories from that one variable, so redirecting it would put host-specific
 build state in the store -- the alternative D4 rejects. `RV_DEPS_BASE_DIR` therefore stays local,
-and a separate install root carries the store.
+and only the install directory of an eligible dependency moves, to
+`<store>/<platform>/<dependency>/<recipe>/install`:
 
-Because that root is a `CACHE STRING`, the default must be re-derived on every configure with
-`FORCE`, otherwise a tree once configured against a store would keep that path after the store was
-removed -- making "opt out" a lie. The codebase already contains this exact bug class and its fix,
+- `<platform>` is a short digest of the identity hash, mixed with the facts the identity does not
+  carry yet but that still decide compatibility: the macOS architectures and deployment target,
+  and the Linux glibc version. They belong in the identity eventually; until then the store slot
+  carries them so that, for example, Rocky 9 artifacts are never served to Rocky 8.
+- `<recipe>` is a short digest of the dependency's version, its download hash, its recipe files
+  (`cmake/dependencies/<x>.cmake` and `build/<x>.cmake`), the patches they apply, the library
+  layout, and a store format number. Without it a version bump addressed the same entry, the new
+  build was discarded at publish as "already published", and RV linked the old version while
+  configure reported the new one. Edits to shared macros such as `rv_create_std_deps_vars.cmake`
+  are deliberately not hashed, so unrelated edits do not invalidate every entry; a change there
+  that affects what is built bumps `RV_DEPS_STORE_FORMAT`.
+
+The store's working values are plain variables re-derived on every configure, never cache entries,
+so a configure without a store gains no cache entry beyond the options themselves. Re-deriving is
+not enough on its own, though: other cache entries record paths into the store -- a dependency's own
+include directory, the find module caches -- and would survive the store being removed, making "opt
+out" a lie. When the store slot changes or the store is removed, every cache entry whose value
+points into the previous slot is therefore forgotten, and every dependency sub-build configured
+after a stored dependency is passed `-U<Package>_*` so that it re-resolves rather than linking the
+previous tree. A tree that never used a store gets neither. The codebase already contains this exact bug class and its fix,
 documented for `RV_CPP_STANDARD`:
 
 > "Without it an existing build tree reconfigured to a newer VFX platform would keep the
 > standard cached by its first configure and silently build CY2026 with C++17."
 
-An explicitly set `RV_DEPS_BASE_DIR` still wins for the local trees, and an explicitly set install
-root wins over the store.
+An explicitly set `RV_DEPS_BASE_DIR` still wins for the local trees. A separate, user-settable
+install root was first planned and then removed: no requirement needed it, and it added a cache
+entry to every store-less configure.
 
 ### D4: Satisfying a dependency from the store goes through the find path, not the build path
 
@@ -131,6 +150,21 @@ whichever configuration produced them.
           │
           └─ no ──▶ ExternalProject as today ──▶ install into the store (if eligible)
 ```
+
+A dependency forced to build from source neither reads from nor publishes into the store: it is
+installed locally. Otherwise a forced rebuild, the natural way to get rid of a bad entry, was itself
+discarded at publish and the bad entry used anyway.
+
+Publishing is staged and serialized. Each install goes, through `DESTDIR`, into its own private
+directory under `<store>/.staging`, held under a lock while it runs, so two builds of the same
+dependency can never install over each other; a leftover whose lock is free belongs to an
+interrupted install and is removed by the next one. The publish then takes a per-entry lock, and
+under it: a marked entry is never touched again and the staged copy is discarded; an unmarked
+entry is replaced; the marker is written last. Finding nothing staged is an error, never success.
+A consumer never modifies a published entry: adjustments a dependency makes to its installed tree
+(the macOS install name, the Windows Debug `zlib.lib` copy) are applied to the staged tree before
+publish. If a build directory's entry has disappeared -- the store is a cache and may be evicted --
+its install stamps are removed at configure so that the install runs again.
 
 *Alternative considered:* store `ExternalProject` source and build trees as well.
 Rejected — non-portable state, and it would make partial write-in-progress much harder
@@ -165,14 +199,21 @@ this change. Content-addressing an ingested artifact already yields a provenance
 with no registry to maintain, and static probing in the provision/requirement model
 distinguishes same-version-different-build artifacts without any registry at all.
 
-### D7: Probes run as a separate cached check, not during configure
+### D7: Probing is off by default and cached
 
 Probing requires `readelf`, `otool` or `dumpbin`, which a default build must not depend
-on. Probe results are cached by artifact content, so the cost is paid once per artifact
-rather than once per configure.
+on, so `RV_DEPS_PROBE_ARTIFACTS` is off by default; a configure with a store set probes
+regardless, because a store entry must be verified before it is used. Probe results are
+cached by artifact content and metadata root, so the cost is paid once per artifact rather
+than once per configure. The metadata root is given per artifact, not per role: keyed by
+role, Qt's root was applied to every input and zlib was recorded with Qt's version and
+features. A result whose inspection did not happen -- a missing tool, a timeout, an
+unreadable file -- is never cached, so a strict probe cannot be satisfied by an unknown
+recorded earlier by a non-strict one.
 
-*Alternative considered:* probe during configure. Rejected — it slows every configure and
-introduces a hard tool dependency into the default path.
+*Alternative considered:* probe on every configure. Rejected — it slows every configure and
+introduces a hard tool dependency into the default path. Phase 0 first shipped with probing
+on by default, contradicting this decision; it is now off.
 
 ### D8: One manifest, referencing the Conan lock and the store
 
@@ -185,9 +226,11 @@ question is asked about the build, not about a subsystem.
 
 ### D9: Store location defaults to a user cache, overridable
 
-The default is a per-user cache location, overridden by `RV_DEPS_STORE`. A studio can
-point several machines at one shared path; a developer who wants isolation can point it
-at a project-local directory.
+In this change the store is off unless `RV_DEPS_STORE` is set (D11), so there is no
+default location; a per-user cache directory is the recommended value. A studio can point
+several machines at one shared path; a developer who wants isolation can point it at a
+project-local directory. The value is normalized -- `~` expanded, separators converted,
+made absolute against the build directory -- so `C:\rv-store` works as typed.
 
 *Alternative considered:* repo-local store. Rejected as the default because every fresh
 clone would pay the full cost again, which is the problem being solved.
@@ -274,12 +317,15 @@ placeholder would be read as a fact.
 Because this changes every identity hash, `FIELDS_VERSION` moved to 2, so an identity
 computed under the old rules can never be confused with one computed under the new ones.
 
-The Windows Conan profile states `compiler.runtime_type` explicitly rather than leaning on
-the default. An unset runtime type follows the build type, so stating it changes no package
-ID -- checked against zlib, openssl, boost, pcre2 and openexr -- but it is what lets the
-comparison see this field at all, because the profile must state both halves before the
-field is emitted. While it stated only the runtime, the C runtime axis was compared as
-unstated on the one platform where it is a real ABI axis.
+The Windows Conan profiles are left unchanged. An unset `compiler.runtime_type` follows the
+build type, which is what Conan's default profile plugin does before `generate()` runs, and
+the conanfile applies the same rule when it is unset, so the C runtime is still compared.
+Stating it in the Release profile was tried first and reverted: it changed no package ID,
+but a `-s build_type=Debug` override of that profile then kept the Release runtime.
+
+The MSVC compiler version is compared at Conan's granularity: CMake reports `19.44.35229`
+and the profile states `194`, so `19.4x` normalizes to `194` before comparison. Without it
+every Windows configure reported drift, and a report that always fires is ignored.
 
 *Alternative considered:* derive `crt` from `build_config`. Rejected -- that inference is
 exactly what was wrong, and it fails on the case that matters, a Release build told to use
@@ -307,6 +353,19 @@ another generator doing the same thing or for an install run without the seed.
 failure for a change that made no difference, because a control observes non-determinism by
 sampling and can miss what it does not happen to see.
 
+### D16: The identity's Qt version is the configured one; the found one is recorded beside it
+
+The identity is computed before dependencies are configured, because the store address
+derives from it, and Qt is itself a dependency. The identity therefore carries the Qt version
+the VFX platform configures. The Qt version actually found is recorded by the Qt dependency
+file; configure warns when the two differ, and the manifest records the found value under
+`found`, separately from the identity.
+
+Only an unrecognized target OS is fatal to identity computation (exit 3). Any other input
+error -- a missing or malformed field from a downstream platform file -- produces a warning
+and no identity, never a failed configure, because identity is phase 0 and must not break a
+build that worked before.
+
 ## Risks / Trade-offs
 
 - **[Baked-in absolute paths make a stored dependency unusable from a different store
@@ -319,9 +378,10 @@ sampling and can miss what it does not happen to see.
   include and library paths. Do not relocate a store between differing host paths without
   re-running the check.
 
-- **[A store hit silently masks a dependency change]** → Content-derived references mean
-  a changed artifact produces a different reference, so a hit can only occur for
-  identical content. The manifest records the reference actually used.
+- **[A store hit silently masks a dependency change]** → The entry is addressed by the
+  dependency's recipe digest (D3), so a version, download, recipe-file or patch change
+  addresses a new entry and a hit can only occur for identical content. The manifest
+  records the reference actually used.
 
 - **[Probing cannot see layout-only incompatibilities]** → Explicitly documented, with a
   functional validation reserved for the phases that introduce prebuilt Qt and PySide6
@@ -436,5 +496,5 @@ them.
   the format decision.
 
 - Windows probe tooling: `dumpbin` is only on `PATH` inside a Visual Studio developer
-  prompt. Since probing is confined to the opt-in store path, this can be resolved when
+  prompt. Since probing is off by default and only forced on by the store, this can be resolved when
   the Windows store rollout begins.

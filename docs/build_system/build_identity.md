@@ -29,13 +29,13 @@ disagreeing about what a compiler version or a build type is called.
 | `target_os` | `linux` | `linux`, `macos` or `windows` |
 | `target_arch` | `x86_64` | `x86_64` or `arm64` |
 | `compiler_id` | `gcc` | `gcc`, `clang`, `apple-clang` or `msvc` |
-| `compiler_version` | `11.2.1` | Full version. A Conan profile usually carries only the major, so comparisons use the major |
+| `compiler_version` | `11.2.1` | Full version. A Conan profile usually carries only the major, so comparisons use the major; for MSVC that is the toolset series, so `19.44.35229.0` compares equal to a profile's `194` |
 | `stdlib` | `libstdc++11` | `libstdc++11`, `libc++` or `msvc` |
 | `cxx_standard` | `17` | Derived from `RV_VFX_PLATFORM` |
-| `build_config` | `Release` | `Release` or `Debug` |
+| `build_config` | `Release` | `Release` or `Debug`, from `CMAKE_BUILD_TYPE` — also with Visual Studio and Xcode, because RV builds its dependencies with `--config ${CMAKE_BUILD_TYPE}` |
 | `crt` | `dynamic` | **Windows only.** `dynamic` or `static`, each optionally `-debug`. Absent elsewhere |
 | `python_abi` | `3.11` | **The ABI series, not the patch release** — see below |
-| `qt_version` | `6.5.3` | Qt is an external prebuilt install |
+| `qt_version` | `6.5.3` | The Qt version `RV_VFX_PLATFORM` specifies — see below |
 | `fields_version` | `2` | Bumped when the normalization rules change |
 | `hash` | `sha256:…` | Over the canonical form of the fields above |
 
@@ -70,10 +70,19 @@ On Linux and macOS there is no such axis — the C++ standard library is already
 by `stdlib` and the C library is part of the platform — so the field is **absent**
 rather than set to a placeholder, because a placeholder would read as a fact.
 
-A Conan profile expresses this as two settings, and both must be present before the
-field is stated: a profile that says `runtime=dynamic` without saying whether that is the
-debug runtime is not disagreeing with a computed `dynamic-debug`, it is simply not
-saying. Recording half of it would report drift that does not exist.
+A Conan profile expresses this as two settings, `compiler.runtime` and
+`compiler.runtime_type`. An unset `runtime_type` follows `build_type` — Conan's default
+profile plugin fills it in that way, and the `generate` step applies the same rule for a
+plugin that does not — so the profiles need not state it for the runtime to be compared.
+A profile with no `compiler.runtime` states no C runtime at all.
+
+### The Qt version is the configured one
+
+The identity is computed before any dependency is configured, because a store location
+is derived from it. At that point the Qt that will be found is not yet known, so
+`qt_version` is the version `RV_VFX_PLATFORM` specifies. When `QT_HOME` points at a
+different Qt, configuration warns once Qt has been found, naming both versions, and the
+build manifest records the found one under `found.qt_version` beside the identity.
 
 ## Reading it
 
@@ -102,7 +111,10 @@ inputs it was computed from to `<build-dir>/build-identity.inputs`.
 
 When the Conan path is used, its `generate` step writes the profile's own view of the
 platform to `<build-dir>/conan-identity.json` and hands the path to CMake. CMake then
-compares the two and reports every field that disagrees:
+compares the two and reports every field that disagrees. On a re-install into a build
+folder that has already been configured, the `generate` step makes the same comparison
+itself, against the `build-identity.json` that configure left there, before any package
+is built:
 
 ```
 -- Build identity: the Conan profile disagrees with the computed identity (reported, not enforced):
@@ -137,11 +149,23 @@ cmake -B _build -DRV_BUILD_IDENTITY=OFF …
 ```
 
 With it off, no identity is computed, nothing is reported, and no identity document is
-written. The build otherwise behaves exactly as before.
+written; one left by an earlier configure is removed, so it cannot be mistaken for this
+configure's. The build otherwise behaves as it would without the identity: no dependency
+path depends on it unless a store is configured.
 
 Configuration fails with a message naming the platform if an identity is requested for a
 target the build does not support. Set `-DRV_BUILD_IDENTITY=OFF` to configure on such a
-platform without one.
+platform without one. That is the only identity failure that stops a configure: a missing
+interpreter, or an input that cannot be normalized, warns and the build continues without
+an identity.
+
+## The Python interpreter
+
+The identity, the probe and the manifest run under `RV_BUILD_PYTHON`. When it is not set,
+the first interpreter on `PATH` that actually runs as Python 3 is used, trying `python3`
+then `python` in each directory. On Windows this skips the WindowsApps aliases, which are
+stubs that open the Store, and finds a python.org install that provides only
+`python.exe`. An interpreter given explicitly is validated but never replaced.
 
 ## Tests
 

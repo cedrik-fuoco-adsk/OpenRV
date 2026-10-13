@@ -124,8 +124,8 @@ RV_RESOLVE_DEPS_STORE()
 
 ADD_SUBDIRECTORY(cmake/dependencies)
 
-# Build identity report and manifest. Both are read-only: they record and report what this build is made of and reroute nothing. With RV_BUILD_IDENTITY=OFF and
-# RV_BUILD_MANIFEST=OFF, configure output and build behaviour are exactly as they were before.
+# Build identity report and manifest. Both are read-only: they record and report what this build is made of and reroute nothing. Neither changes a dependency
+# path or what is built.
 RV_REPORT_BUILD_IDENTITY()
 
 INCLUDE(rv_build_manifest)

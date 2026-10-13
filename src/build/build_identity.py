@@ -178,6 +178,15 @@ def _log(message: str) -> None:
     print(f"[build_identity] {message}", file=sys.stderr, flush=True)
 
 
+class UnsupportedTargetError(ValueError):
+    """The target platform is not one RV builds for.
+
+    Kept apart from other input errors because it is the only one that should stop a configure: a
+    platform RV does not support cannot be built at all, while a malformed or missing input only
+    means the identity cannot be computed.
+    """
+
+
 def _first_int(value: str, what: str) -> str:
     """Return the leading integer of ``value`` (``gnu++17`` -> ``17``)."""
     match = _VERSION_LEADING_INT_RE.search(value)
@@ -196,7 +205,9 @@ def normalize_vfx_platform(raw: str) -> str:
 def normalize_os(raw: str) -> str:
     value = raw.strip().lower()
     if value not in _OS_ALIASES:
-        raise ValueError(f"unsupported target OS {raw!r}; supported platforms are {', '.join(SUPPORTED_OSES)}")
+        raise UnsupportedTargetError(
+            f"unsupported target OS {raw!r}; supported platforms are {', '.join(SUPPORTED_OSES)}"
+        )
     return _OS_ALIASES[value]
 
 
@@ -382,9 +393,23 @@ def read_inputs(path: str) -> dict:
     return raw
 
 
-def _major(value: str) -> str:
-    match = _MAJOR_RE.match(str(value))
-    return match.group(1) if match else str(value)
+_MSVC_VERSION_RE = re.compile(r"^\s*19\.(\d)")
+
+
+def _major(value: str, compiler_id: str = "") -> str:
+    """The part of a compiler version both sides can state.
+
+    MSVC needs its own rule. CMake reports the compiler as ``19.44.35229.0`` and a Conan profile
+    states ``compiler.version=194`` -- the toolset series, ``19`` followed by the first digit of the
+    minor version. Taking the leading integer of each gives ``19`` and ``194``, which never agree.
+    """
+    value = str(value)
+    if compiler_id == "msvc":
+        match = _MSVC_VERSION_RE.match(value)
+        if match:
+            return f"19{match.group(1)}"
+    match = _MAJOR_RE.match(value)
+    return match.group(1) if match else value
 
 
 def compare_documents(left: dict, right: dict, fields, granularity: str):
@@ -404,7 +429,7 @@ def compare_documents(left: dict, right: dict, fields, granularity: str):
         left_value = str(left[field])
         right_value = str(right[field])
         if granularity == "major" and field in ("compiler_version",):
-            if _major(left_value) == _major(right_value):
+            if _major(left_value, left.get("compiler_id", "")) == _major(right_value, right.get("compiler_id", "")):
                 continue
         if left_value != right_value:
             disagreements.append((field, left_value, right_value))
@@ -415,9 +440,13 @@ def cmd_emit(args: argparse.Namespace) -> int:
     try:
         raw = read_inputs(args.inputs)
         fields = normalize_raw_fields(raw, partial=args.partial)
-    except ValueError as error:
+    except UnsupportedTargetError as error:
         print(f"build identity is not supported on this target: {error}", file=sys.stderr)
         return 3
+    except (OSError, ValueError) as error:
+        # Not fatal to a configure: the identity cannot be computed, and the build goes on without it.
+        print(f"build identity could not be computed from its inputs: {error}", file=sys.stderr)
+        return 6
 
     document = build_identity_document(fields)
 

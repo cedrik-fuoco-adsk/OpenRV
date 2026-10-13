@@ -165,6 +165,11 @@ reused for subsequent configurations that reference the same content.
 - **WHEN** an artifact's content changes
 - **THEN** it is probed again rather than served from the cache
 
+#### Scenario: An inspection that did not happen is not cached
+
+- **WHEN** a fact could not be read because an inspection tool was missing, timed out or could not read the artifact
+- **THEN** the result is not cached, and a later strict probe of the same artifact inspects it rather than accepting the earlier unknown
+
 ### Requirement: Probing does not modify the artifact
 
 The probe SHALL treat artifacts as read-only and SHALL NOT alter, relocate or re-sign

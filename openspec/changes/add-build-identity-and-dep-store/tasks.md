@@ -2,7 +2,7 @@
 
 ## 1. Identity computation (phase 0)
 
-- [x] 1.1 Add the identity and store options to `cmake/defaults/rv_options.cmake`, defaulting to today's behaviour, and verify a default configure produces no change in dependency paths by diffing the generated cache against a pre-change baseline
+- [ ] 1.1 Add the identity and store options to `cmake/defaults/rv_options.cmake`, defaulting to today's behaviour, and verify a default configure produces no change in dependency paths by diffing the generated cache against a pre-change baseline (options added; the baseline diff is not automated yet -- folded into 9.1)
 - [x] 1.2 Implement identity computation producing the full tuple (VFX platform, target OS and architecture, compiler identifier and version, standard library, C++ standard, build configuration, Python ABI series, Qt version), and verify the tuple is recorded in the build directory
 - [x] 1.3 Record the Python ABI series rather than the exact patch release, and verify two configurations differing only in Python patch level produce equal identities
 - [x] 1.4 Report the computed identity in configure output, and verify the report names every field of the tuple
@@ -12,8 +12,8 @@
 ## 2. Identity as the single shared input (phase 0)
 
 - [x] 2.1 Emit the computed identity to a machine-readable file in the build directory, and verify the file is present and parseable after configure
-- [x] 2.2 Make the Conan `generate` step read the emitted identity and report a mismatch against the profile's compiler, standard library, C++ standard and build type, and verify a deliberately mismatched profile produces the mismatch report
-- [x] 2.3 Verify that with a matching profile the Conan path produces identical generated files to the pre-change baseline
+- [x] 2.2 Make the Conan `generate` step, on a re-install into a configured build folder, read the emitted identity and report a mismatch against the profile's compiler, standard library, C++ standard and build type, with a first install compared by configure once the identity exists, and verify a deliberately mismatched profile produces the mismatch report
+- [x] 2.3 Verify that with a matching profile the Conan path produces identical generated files to the pre-change baseline (run on manual dispatch, not as a gate, so a legitimate dependency bump cannot fail it)
 
 ## 3. Artifact probing (phase 0 / opt-in path)
 
@@ -37,8 +37,8 @@
 
 ## 5. Store foundation (phase 1)
 
-- [x] 5.1 Add `RV_DEPS_STORE` and place the installed trees of eligible dependencies at an identity-derived path when it is set, re-derived with `FORCE` on every configure, with dependency source, build and stamp trees staying local, and verify an explicit install root still wins
-- [x] 5.2 Derive the store path from the build identity and verify two configurations with different identities sharing one store location place dependencies at different paths
+- [x] 5.1 Add `RV_DEPS_STORE` and place the installed trees of eligible dependencies at an identity-derived path when it is set, re-derived with `FORCE` on every configure, with dependency source, build and stamp trees staying local, and verify an explicitly set `RV_DEPS_BASE_DIR` is still honoured for the local trees
+- [x] 5.2 Derive the store path from the build identity and from each dependency's recipe, so a version, download or patch change addresses a new entry, and verify two configurations with different identities sharing one store location place dependencies at different paths
 - [x] 5.3 Consume a store entry through the find-first path so the dependency is found rather than built, and verify a dependency with no published entry is still built
 - [x] 5.4 Publish store entries atomically by producing in a private location and moving into place, and verify an interrupted publish leaves no consumable partial entry
 - [x] 5.5 Verify two concurrent configurations building the same dependency into one store location both complete and leave the store consistent
@@ -46,15 +46,15 @@
 
 ## 6. Opt-out guarantees (phase 1)
 
-- [ ] 6.1 Verify that reconfiguring a tree that used a store, with the store location removed, resolves dependencies back to the build-directory layout
-- [ ] 6.2 Verify that after removing the store location no dependency is resolved from the removed path, including in a tree reused from a prior configure
-- [ ] 6.3 Verify a default configure with no store location creates no store directory and consults no store location
+- [x] 6.1 Verify that reconfiguring a tree that used a store, with the store location removed, resolves dependencies back to the build-directory layout
+- [x] 6.2 Verify that after removing the store location no dependency is resolved from the removed path, including in a tree reused from a prior configure
+- [x] 6.3 Verify a default configure with no store location creates no store directory and consults no store location
 
 ## 7. Relocation check and first eligible dependency (phase 1)
 
-- [ ] 7.1 Implement the relocation check: install a dependency in one location, relocate the installed tree, link a consumer against the relocated tree, and run it, and verify the check passes for a known relocatable dependency
-- [ ] 7.2 Verify the check fails for a dependency whose installed tree embeds an absolute reference to its original location
-- [ ] 7.3 Verify the check does not accept a consumer that resolves a library or data file from the original, removed location
+- [x] 7.1 Implement the relocation check: install a dependency in one location, relocate the installed tree, link a consumer against the relocated tree, and run it, and verify the check passes for a known relocatable dependency
+- [x] 7.2 Verify the check fails for a dependency whose installed tree embeds an absolute reference to its original location
+- [x] 7.3 Verify the check does not accept a consumer that resolves a library or data file from the original, removed location
 - [x] 7.4 Run the relocation check for one dependency and mark it store-eligible, and verify it is built into the store and reused from a separate build directory with the same identity
 - [ ] 7.5 Verify a dependency whose relocation check fails remains built inside the build directory while other eligible dependencies are still served from the store
 

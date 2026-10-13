@@ -45,27 +45,76 @@ MACRO(RV_FIND_DEPENDENCY)
   # directory, or another machine with the same identity, finds the installed tree.
   #
   # This is checked independently of RV_DEPS_PREFER_INSTALLED, because a store entry is this project's own artifact for this identity rather than a system
-  # package that happens to be present. A dependency forced to build from source is never taken from the store.
+  # package that happens to be present. A dependency forced to build from source is not eligible, so it is never taken from the store.
   #
-  # The entry is consumed by the ordinary find_package below -- pointing the search at the store rather than pre-seeding ExternalProject state -- so the
-  # dependency's own config files are what describe it, and a store entry that cannot be found leaves the dependency to be built.
+  # The entry is consumed by the ordinary find_package below, pointed at the entry through <Package>_ROOT -- which is searched before CMAKE_PREFIX_PATH and the
+  # system -- rather than by pre-seeding ExternalProject state, so the dependency's own files are what describe it. What was found is then checked to be inside
+  # the entry before the build is told it came from the store.
   SET(_rfd_store_entry
       ""
   )
   RV_DEPS_IS_STORE_ELIGIBLE(${_RFD_TARGET} _rfd_store_eligible)
+
+  # Sub-builds configured after this point forget what they cached for this package whenever they are reconfigured, in any tree where it has ever been stored;
+  # see RV_CREATE_STANDARD_DEPS_VARIABLES. Recorded here, where the package is processed, rather than up front, so that a dependency configured before it --
+  # which cannot be consuming it -- never gets the argument, and so never has its configure command change between configures.
   IF(_rfd_store_eligible
-     AND NOT ${_RFD_TARGET}_FORCE_BUILD
+     AND NOT "${_RFD_PACKAGE}" IN_LIST RV_DEPS_STORE_PACKAGES
   )
+    SET(RV_DEPS_STORE_PACKAGES
+        ${RV_DEPS_STORE_PACKAGES} ${_RFD_PACKAGE}
+        CACHE INTERNAL "Packages that have been served from or published into a dependency store in this tree"
+    )
+  ENDIF()
+  IF("${_RFD_PACKAGE}" IN_LIST RV_DEPS_STORE_PACKAGES)
+    SET_PROPERTY(
+      GLOBAL APPEND
+      PROPERTY RV_DEPS_STORE_FORGET_IN_SUBBUILDS ${_RFD_PACKAGE}
+    )
+  ENDIF()
+
+  IF(_rfd_store_eligible)
     RV_DEPS_INSTALL_PATHS(${_RFD_TARGET} _rfd_store_install _rfd_store_staging)
+    GET_FILENAME_COMPONENT(_rfd_store_recipe_dir "${_rfd_store_install}" DIRECTORY)
+    GET_FILENAME_COMPONENT(_rfd_store_target_dir "${_rfd_store_recipe_dir}" DIRECTORY)
+
+    # Cached paths into another recipe of this dependency -- the entry before a version bump or a patch change -- name a tree this configuration must not use.
+    RV_DEPS_FORGET_CACHED_PATHS("${_rfd_store_target_dir}" KEEP "${_rfd_store_recipe_dir}")
+
     # Only a published entry counts, so a directory left by a configure, or by an interrupted install, is not consumed as if it were a finished dependency.
     RV_DEPS_PUBLISH_COMPLETE(${_RFD_TARGET} _rfd_store_complete)
     IF(_rfd_store_complete)
       SET(_rfd_store_entry
           "${_rfd_store_install}"
       )
-      LIST(APPEND CMAKE_PREFIX_PATH "${_rfd_store_install}")
-      LIST(REMOVE_DUPLICATES CMAKE_PREFIX_PATH)
-      MESSAGE(STATUS "${_RFD_TARGET}: found in the dependency store (${_rfd_store_install})")
+      # A find module keeps what it found in the cache and does not search again, so what an earlier configure found elsewhere -- the system's copy, or this
+      # dependency built in the build directory -- would win over the entry. Forgotten here, and searched for again with the entry first.
+      GET_CMAKE_PROPERTY(_rfd_store_cache CACHE_VARIABLES)
+      STRING(TOUPPER "${_RFD_PACKAGE}" _rfd_store_upper)
+      FOREACH(
+        _rfd_store_name
+        ${_rfd_store_cache}
+      )
+        IF(_rfd_store_name MATCHES "^(${_RFD_PACKAGE}|${_rfd_store_upper})_(DIR|INCLUDE_DIR|INCLUDE_DIRS|LIBRARY|LIBRARY_RELEASE|LIBRARY_DEBUG|LIBRARIES)$"
+           OR _rfd_store_name STREQUAL "__pkg_config_checked_${_RFD_TARGET}_PC"
+        )
+          UNSET(${_rfd_store_name} CACHE)
+        ENDIF()
+      ENDFOREACH()
+      SET(_rfd_store_saved_root_defined
+          FALSE
+      )
+      IF(DEFINED ${_RFD_PACKAGE}_ROOT)
+        SET(_rfd_store_saved_root_defined
+            TRUE
+        )
+        SET(_rfd_store_saved_root
+            "${${_RFD_PACKAGE}_ROOT}"
+        )
+      ENDIF()
+      SET(${_RFD_PACKAGE}_ROOT
+          "${_rfd_store_install}"
+      )
     ENDIF()
   ENDIF()
 
@@ -366,6 +415,32 @@ MACRO(RV_FIND_DEPENDENCY)
       RV_PRINT_PACKAGE_INFO(${_RFD_PACKAGE})
     ELSE()
       MESSAGE(STATUS "${_RFD_PACKAGE} ${_RFD_VERSION} not found. It will be built from source")
+    ENDIF()
+  ENDIF()
+
+  IF(_rfd_store_entry)
+    # <Package>_ROOT pointed at the entry for this search only; whatever the caller had is put back.
+    IF(_rfd_store_saved_root_defined)
+      SET(${_RFD_PACKAGE}_ROOT
+          "${_rfd_store_saved_root}"
+      )
+    ELSE()
+      UNSET(${_RFD_PACKAGE}_ROOT)
+    ENDIF()
+
+    # Reported as coming from the store only when it did. The search can still settle elsewhere -- a find module that prefers a cached or system location -- and
+    # a report that says "store" while the build links something else is worse than none.
+    IF(${_RFD_TARGET}_FOUND)
+      # Compared after resolving symbolic links: the found-package helpers resolve them, and a store under a linked directory (/tmp on macOS) would otherwise
+      # never match.
+      GET_FILENAME_COMPONENT(_rfd_store_found_real "${_install_dir}" REALPATH)
+      GET_FILENAME_COMPONENT(_rfd_store_entry_real "${_rfd_store_entry}" REALPATH)
+      STRING(FIND "${_rfd_store_found_real}/" "${_rfd_store_entry_real}/" _rfd_store_inside)
+      IF(_rfd_store_inside EQUAL 0)
+        MESSAGE(STATUS "${_RFD_TARGET}: found in the dependency store (${_rfd_store_entry})")
+      ELSE()
+        MESSAGE(WARNING "${_RFD_TARGET}: a published store entry exists at '${_rfd_store_entry}', but ${_RFD_PACKAGE} was found at '${_install_dir}' instead")
+      ENDIF()
     ENDIF()
   ENDIF()
 ENDMACRO()

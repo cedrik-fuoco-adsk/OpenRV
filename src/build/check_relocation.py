@@ -26,6 +26,17 @@ renamed, not deleted, so a failure to restore is visible and recoverable -- and 
 against a copy at a different path. Any reference to the original path then has nothing to resolve
 to, which is what makes the check mean something.
 
+Before anything is built, the relocated tree itself is searched for the path it was installed at --
+package config files, pkg-config files, and the runtime search paths and install names inside its
+libraries -- in every spelling of that path: as given, with symbolic links resolved, with either
+separator, and in UTF-16 as Windows binaries store it. A reference the consumer happens not to
+inherit is still a reference.
+
+The consumer is then run without pointing the loader at the relocated tree on Linux and macOS: it
+finds the libraries through the runtime search path the build gave it, so a library that looks for a
+sibling at the original location fails to load instead of being rescued by LD_LIBRARY_PATH. Windows
+has no runtime search path, so there the relocated tree is put on PATH.
+
 Nothing about this runs during a normal configure or build. It is run when a dependency is being
 considered for the store, and its result is recorded.
 """
@@ -130,30 +141,68 @@ def write_consumer(
 
 
 def runtime_environment(install_dir: str):
-    """The environment a consumer needs to load a dependency from a relocated tree.
+    """The environment a consumer runs in.
 
-    A linked executable is started by the loader, which finds shared libraries through the platform's
-    search path -- not through the directory of the library it was linked against. For the check to
-    be about relocation rather than about the loader, that search path is pointed at the relocated
-    tree. It is never pointed anywhere near the original, which is part of what the check proves.
+    On Linux and macOS, unchanged: the consumer's own runtime search path, which the build points at
+    the relocated tree, is how it finds the dependency's libraries, so a library that names the
+    original location for a sibling fails to load rather than being found through the loader's
+    environment. Windows has no runtime search path, so the relocated tree is put on PATH there, and
+    the reference search is what catches a library naming the original location.
     """
     environment = dict(os.environ)
+    if os.name != "nt":
+        return environment
     directories = [
         path for name in ("bin", "lib", "lib64") for path in [os.path.join(install_dir, name)] if os.path.isdir(path)
     ]
-    if not directories:
-        return environment
-
-    if os.name == "nt":
-        variable = "PATH"
-    elif sys.platform == "darwin":
-        variable = "DYLD_LIBRARY_PATH"
-    else:
-        variable = "LD_LIBRARY_PATH"
-
-    existing = environment.get(variable, "")
-    environment[variable] = os.pathsep.join(directories + ([existing] if existing else []))
+    if directories:
+        existing = environment.get("PATH", "")
+        environment["PATH"] = os.pathsep.join(directories + ([existing] if existing else []))
     return environment
+
+
+def spellings(path: str) -> set:
+    """Every way a file may have recorded ``path``."""
+    found = set()
+    for variant in {path, os.path.realpath(path)}:
+        found.update({variant, variant.replace("\\", "/"), variant.replace("/", "\\")})
+    return {variant for variant in found if variant}
+
+
+def find_references(root: str, needles) -> dict:
+    """Files under ``root`` that mention any of ``needles``, with the lines that do.
+
+    Searched as bytes, in UTF-8 and UTF-16LE -- the encoding of wide strings in Windows binaries --
+    and case-insensitively on Windows, where a path's case does not distinguish it. A symbolic link
+    whose target names the path counts too.
+    """
+    fold = os.name == "nt"
+    patterns = []
+    for needle in needles:
+        for encoding in ("utf-8", "utf-16-le"):
+            pattern = needle.encode(encoding)
+            patterns.append((needle, pattern.lower() if fold else pattern))
+
+    offenders = {}
+    for directory, _subdirectories, files in os.walk(root):
+        for name in files:
+            path = os.path.join(directory, name)
+            try:
+                if os.path.islink(path):
+                    body = os.readlink(path).encode("utf-8")
+                else:
+                    with open(path, "rb") as handle:
+                        body = handle.read()
+            except OSError:
+                continue
+            haystack = body.lower() if fold else body
+            for needle, pattern in patterns:
+                if pattern in haystack:
+                    offenders[os.path.relpath(path, root)] = references(body.decode("utf-8", errors="replace"), needle)[
+                        :3
+                    ] or [f"(binary, mentions {needle})"]
+                    break
+    return offenders
 
 
 def references(output: str, needle: str) -> list:
@@ -187,15 +236,32 @@ def check(options) -> dict:
     relocated = os.path.join(work, "relocated", "install")
     build = os.path.join(work, "build")
 
+    # Every spelling of the original location, taken before the tree is moved: once it is gone, the
+    # path with its symbolic links resolved can no longer be computed.
+    needles = spellings(install)
+
+    # Move the tree aside first: the original path has to be empty for a reference to it to be
+    # detectable, and renamed rather than deleted so it can always be put back. A rename that fails --
+    # a file held open on Windows -- means the check could not run, not that the tree failed it.
     try:
-        # Move the tree aside first: the original path has to be empty for a reference to it to be
-        # detectable, and renamed rather than deleted so it can always be put back.
         os.rename(install, moved_aside)
+    except OSError as error:
+        return {"status": "error", "reason": f"could not move {install} aside: {error}"}
+
+    try:
         os.makedirs(os.path.dirname(relocated), exist_ok=True)
         shutil.copytree(moved_aside, relocated, symlinks=True)
         report["steps"]["relocated"] = relocated
         libraries = shared_libraries(relocated)
         report["shared_libraries"] = [os.path.relpath(path, relocated) for path in libraries]
+
+        # The relocated tree itself, before anything is built from it: a package file, a pkg-config
+        # file, or a library's runtime search path or install name that names the original location.
+        offenders = find_references(relocated, needles)
+        report["steps"]["tree_references"] = {"files": len(offenders)}
+        if offenders:
+            report.update({"status": "failed", "stage": "tree-reference", "references": offenders})
+            return report
 
         consumer = write_consumer(
             work,
@@ -240,29 +306,10 @@ def check(options) -> dict:
             report.update({"status": "failed", "stage": "run", "output": output[-4000:]})
             return report
 
-        # Nothing in what was built may point at the location the tree came from. The original path
-        # does not exist while this runs, so a hit means the consumer or the dependency would look
-        # there on a machine that has it, or fail where it does not.
-        #
-        # Both separator styles are searched for: CMake writes the path however the package config
-        # wrote it, and a checker that only looked for the style it was given would miss a real
-        # reference and report a dependency as relocatable when it is not.
-        needles = {install, install.replace("\\", "/"), install.replace("/", "\\")}
-        offenders = {}
-        for root, _directories, files in os.walk(build):
-            for name in files:
-                path = os.path.join(root, name)
-                try:
-                    with open(path, "rb") as handle:
-                        body = handle.read()
-                except OSError:
-                    continue
-                for needle in needles:
-                    if needle.encode("utf-8") in body:
-                        offenders[os.path.relpath(path, build)] = references(
-                            body.decode("utf-8", errors="replace"), needle
-                        )[:3]
-                        break
+        # Nothing in what was built may point at the location the tree came from either. The original
+        # path does not exist while this runs, so a hit means the consumer would look there on a
+        # machine that has it, or fail where it does not.
+        offenders = find_references(build, needles)
         if offenders:
             report.update({"status": "failed", "stage": "reference", "references": offenders})
             return report
@@ -271,7 +318,10 @@ def check(options) -> dict:
         return report
     finally:
         if os.path.isdir(moved_aside) and not os.path.isdir(install):
-            os.rename(moved_aside, install)
+            try:
+                os.rename(moved_aside, install)
+            except OSError as error:
+                log(f"could not move {moved_aside} back to {install}: {error}")
         elif os.path.isdir(moved_aside):
             # Both exist, which means the move back would lose something. Leave the copy in place and
             # say so loudly, rather than overwrite either.
@@ -309,7 +359,11 @@ def main(argv=None) -> int:
         return 2
 
     report = check(options)
-    report["dependency"] = os.path.basename(os.path.dirname(os.path.abspath(options.install)))
+    # Named after the nearest RV_DEPS_* directory above the tree -- a store entry sits one level further
+    # down, under its recipe digest -- or else after the directory that holds it.
+    ancestors = os.path.abspath(options.install).replace("\\", "/").split("/")[:-1]
+    named = [part for part in ancestors if part.startswith("RV_DEPS_")]
+    report["dependency"] = named[-1] if named else (ancestors[-1] if ancestors else options.install)
 
     if options.json:
         # The report is written even when the check could not run, so create its directory rather

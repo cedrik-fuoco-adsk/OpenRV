@@ -11,6 +11,12 @@ Two related pieces of phase 0 bookkeeping:
 
 Both are read-only. Neither reroutes a dependency path.
 
+The manifest is written on every configure. Probing is **off by default**
+(`RV_DEPS_PROBE_ARTIFACTS=OFF`), because inspecting binaries on every configure is a
+slowdown a default build should not pay; a configuration with a dependency store probes
+regardless, because a store entry must be verified before it is used. Turn it on with
+`-DRV_DEPS_PROBE_ARTIFACTS=ON` to record probed facts in the manifest.
+
 ## Why version equality is not enough
 
 Two artifacts can carry the same version and still be incompatible: different compiler,
@@ -47,7 +53,7 @@ the same as "this is fine".
 | Fact | Source |
 | ---- | ------ |
 | format, linkage type | The file's own headers, parsed directly. No external tool |
-| version, feature set | Metadata the artifact ships with: Qt's `mkspecs/qconfig.pri`, or a pkg-config file installed alongside the library |
+| version, feature set | Metadata the artifact ships with: Qt's `mkspecs/qconfig.pri`, or a pkg-config file installed alongside the library. A metadata root given for one artifact applies to that artifact only — Qt's root is never consulted for any other library |
 | ABI demands | Tool-backed: `readelf` or `llvm-readobj` on ELF, `otool` or `llvm-objdump` on Mach-O, `llvm-readobj` or `dumpbin` on PE |
 
 ABI demands are recorded as `(namespace, version)` pairs. On ELF a `readelf` version-needs row
@@ -80,9 +86,14 @@ verified must not be used. A default build leaves it off so that a machine witho
 ### Results are cached by artifact content
 
 An artifact is inspected at most once per distinct content. The cache lives in
-`<build-dir>/rv-probe-cache/`, keyed by a hash of the artifact's bytes. Changing an
-artifact produces a different key, so a stale result can never be served for changed
-bytes.
+`<build-dir>/rv-probe-cache/`, keyed by a hash of the artifact's bytes and of the metadata
+root it was observed with, and by a cache version that is bumped when what is observed
+changes. Changing an artifact produces a different key, so a stale result can never be
+served for changed bytes.
+
+A result whose inspection did not happen — the tool was missing, timed out, or could not
+read the file — is marked `"retryable": true` and never cached, so a tool installed later,
+or a strict probe, inspects again instead of inheriting the unknown.
 
 ## The build manifest
 
@@ -111,8 +122,14 @@ Properties worth relying on:
   of their bytes, so two builds using the same artifact are recognisable as such without
   comparing host paths, and differing content always produces a differing reference.
 - **Deterministic.** Sorted keys and no timestamp, so two configurations with unchanged
-  inputs produce byte-identical manifests and a diff between them is meaningful.
-- **No credentials.** The Conan remote name is recorded; no tokens or passwords are.
+  inputs produce byte-identical manifests and a diff between them is meaningful. How a
+  probe result was obtained — inspected or read from the cache — is left out for that
+  reason.
+- **What was found.** `found` records facts known only after the identity was computed
+  and that can differ from it, such as `found.qt_version` when `QT_HOME` points at a Qt
+  other than the one `RV_VFX_PLATFORM` specifies.
+- **No credentials.** Packages are recorded by name, version, reference, package ID and
+  recipe revision; no remote URL, token or password is.
 - **Never fatal.** A section that cannot be read, or a manifest that cannot be written,
   is a warning and the build continues. Sections that are absent are listed under
   `omitted` with a reason.
@@ -138,7 +155,7 @@ artifact that was not itself checked.
 
 ```bash
 cmake -B _build -DRV_BUILD_MANIFEST=OFF …              # no manifest
-cmake -B _build -DRV_DEPS_PROBE_ARTIFACTS=OFF …        # no probing
+cmake -B _build -DRV_DEPS_PROBE_ARTIFACTS=ON …         # probe prebuilt artifacts (off by default)
 ```
 
 ## Tests

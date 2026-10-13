@@ -54,11 +54,36 @@ def read_json(path, section):
         return None, {"section": section, "reason": f"{path} could not be read: {error}"}
 
 
-def build_document(identity, probes, conan):
+# Per-probe fields that describe how this configure obtained the facts rather than the facts
+# themselves. "inspection" is "performed" on a first configure and "cached" on the next, so keeping
+# it would make two configures of unchanged inputs produce different manifests.
+_PROBE_RUN_FIELDS = ("inspection",)
+
+
+def _without_run_fields(probes):
+    if not isinstance(probes, dict) or not isinstance(probes.get("probes"), list):
+        return probes
+    document = dict(probes)
+    document["probes"] = [
+        (
+            {key: value for key, value in probe.items() if key not in _PROBE_RUN_FIELDS}
+            if isinstance(probe, dict)
+            else probe
+        )
+        for probe in probes["probes"]
+    ]
+    return document
+
+
+def build_document(identity, probes, conan, found=None):
     """Assemble the manifest body. Sections are included only when they exist."""
     document = {"fields_version": FIELDS_VERSION, "identity": identity}
+    if found:
+        # What the configure actually found, where that is only known after the identity was
+        # computed and can differ from it -- the Qt under QT_HOME, against the CY default.
+        document["found"] = dict(sorted(found.items()))
     if probes is not None:
-        document["artifacts"] = probes
+        document["artifacts"] = _without_run_fields(probes)
     if conan:
         document["conan"] = conan
     return document
@@ -66,10 +91,20 @@ def build_document(identity, probes, conan):
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--identity", required=True, help="canonical identity document written by build_identity.py")
+    parser.add_argument(
+        "--identity",
+        help="canonical identity document written by build_identity.py; omitted when this configure computed none",
+    )
     parser.add_argument("--probes", help="provision document written by probe_artifact.py")
     parser.add_argument("--conan-identity", help="identity document written by the Conan generate step")
     parser.add_argument("--conan-packages", help="resolved Conan package set written by the Conan generate step")
+    parser.add_argument(
+        "--found",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="a fact the configure found after computing the identity, such as qt_version; repeatable",
+    )
     parser.add_argument("--out", required=True, help="path of the manifest to write")
     parser.add_argument("--print", action="store_true", help="also write the manifest to stdout")
     parser.add_argument(
@@ -109,7 +144,13 @@ def main(argv=None) -> int:
     else:
         conan["packages"] = conan_packages
 
-    document = build_document(identity, probes, conan)
+    found = {}
+    for entry in args.found:
+        key, separator, value = entry.partition("=")
+        if separator and key.strip() and value.strip():
+            found[key.strip()] = value.strip()
+
+    document = build_document(identity, probes, conan, found)
     if omitted:
         document["omitted"] = sorted(omitted, key=lambda entry: (entry["section"], entry["reason"]))
 

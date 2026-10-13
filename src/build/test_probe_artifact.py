@@ -219,7 +219,12 @@ def test_content_reference(directory: str) -> None:
 
 def test_probe_cache(directory: str) -> None:
     print("probe results are cached by artifact content")
-    artifact = synth_elf(os.path.join(directory, "libcached.so.2.0.0"), 3)
+    # A file of no known container format: its facts are unknown for a reason that is about the file,
+    # not about the host, so it is cached on every host. A synthetic ELF would not be -- on a host without
+    # readelf, or where readelf rejects it, the result is retryable and deliberately not cached.
+    artifact = os.path.join(directory, "libcached.so.2.0.0")
+    with open(artifact, "wb") as handle:
+        handle.write(b"not a container" * 8)
     cache = os.path.join(directory, "cache")
 
     first = probe_document_cached(directory, "cache1", artifact, cache)
@@ -242,6 +247,100 @@ def test_probe_cache(directory: str) -> None:
         "a changed artifact is inspected again",
         third["probes"][0]["inspection"] == "performed",
         str(third["probes"][0]["inspection"]),
+    )
+
+
+def test_retryable_results_are_not_cached(directory: str) -> None:
+    print("an inspection that did not happen is not cached")
+    module = load_module()
+    artifact = synth_pe(os.path.join(directory, "retry.dll"), True)
+    cache = os.path.join(directory, "retry-cache")
+
+    original_which = module.shutil.which
+    try:
+        module.shutil.which = lambda name, *args, **kwargs: None
+        out = os.path.join(directory, "retry1.json")
+        code = module.main(["probe", "--artifact", f"derived={artifact}", "--cache-dir", cache, "--out", out])
+        check("a probe without its tool still succeeds", code == 0, str(code))
+        entries = os.listdir(cache) if os.path.isdir(cache) else []
+        check("a result with a missing tool is not cached", entries == [], str(entries))
+
+        # Plant what an earlier probe, or an earlier version of this one, might have left: a cached
+        # result whose ABI demands are unknown because the tool was missing.
+        with open(out, "r", encoding="utf-8") as handle:
+            planted = json.load(handle)["probes"][0]
+        observed = {key: planted[key] for key in ("format", "linkage", "version", "features", "abi_demands")}
+        os.makedirs(cache, exist_ok=True)
+        reference = module.content_reference(artifact)
+        with open(module._cache_path(cache, reference, None), "w", encoding="utf-8") as handle:
+            json.dump(observed, handle)
+
+        strict_out = os.path.join(directory, "retry-strict.json")
+        code = module.main(
+            ["probe", "--artifact", f"derived={artifact}", "--cache-dir", cache, "--strict", "--out", strict_out]
+        )
+        check("a strict probe is not satisfied by a cached unknown", code == 5, str(code))
+    finally:
+        module.shutil.which = original_which
+
+
+def test_metadata_root_is_per_artifact(directory: str) -> None:
+    print("a metadata root belongs to one artifact")
+    qt = os.path.join(directory, "qt")
+    os.makedirs(os.path.join(qt, "mkspecs"))
+    with open(os.path.join(qt, "mkspecs", "qconfig.pri"), "w", encoding="utf-8") as handle:
+        handle.write("QT_VERSION = 6.5.3\nQT_CONFIG += opengl ssl\n")
+    os.makedirs(os.path.join(qt, "lib"))
+    qtcore = synth_elf(os.path.join(qt, "lib", "libQt6Core.so.6"), 3)
+    zlib_dir = os.path.join(directory, "zlib", "lib")
+    os.makedirs(zlib_dir)
+    zlib = synth_elf(os.path.join(zlib_dir, "libz.so.1.3.1"), 3)
+    cache = os.path.join(directory, "root-cache")
+
+    def probes(name):
+        out = os.path.join(directory, f"{name}.json")
+        result = run(
+            "probe",
+            "--artifact",
+            f"input={qtcore}",
+            "--artifact-metadata-root",
+            qtcore,
+            qt,
+            "--artifact",
+            f"input={zlib}",
+            "--cache-dir",
+            cache,
+            "--out",
+            out,
+        )
+        if result.returncode != 0:
+            return {}
+        with open(out, "r", encoding="utf-8") as handle:
+            return {os.path.basename(probe["path"]): probe for probe in json.load(handle)["probes"]}
+
+    document = probes("roots")
+    check(
+        "Qt's version is read from Qt's root",
+        document.get("libQt6Core.so.6", {}).get("version", {}).get("value") == "6.5.3",
+        str(document.get("libQt6Core.so.6", {}).get("version")),
+    )
+    zlib_probe = document.get("libz.so.1.3.1", {})
+    check(
+        "another input artifact does not inherit Qt's version",
+        zlib_probe.get("version", {}).get("value") == "1.3.1",
+        str(zlib_probe.get("version")),
+    )
+    check(
+        "another input artifact does not inherit Qt's features",
+        not zlib_probe.get("features", {}).get("known"),
+        str(zlib_probe.get("features")),
+    )
+
+    module = load_module()
+    reference = module.content_reference(qtcore)
+    check(
+        "the metadata root is part of the cache key",
+        module._cache_path(cache, reference, qt) != module._cache_path(cache, reference, None),
     )
 
 
@@ -611,6 +710,8 @@ def main() -> int:
         test_input_and_derived_are_separate(directory)
         test_content_reference(directory)
         test_probe_cache(directory)
+        test_retryable_results_are_not_cached(directory)
+        test_metadata_root_is_per_artifact(directory)
         test_probing_does_not_modify(directory)
         test_requirement_comparison(directory)
         test_version_name_parsing(directory)

@@ -31,8 +31,9 @@ on:
 # strategy, matrix, inputs and vars are available there), and referencing it fails workflow validation outright with "Unrecognized named-value: 'env'", producing
 # a run with no jobs at all.
 #
-# Only this workflow is opened up. conan.yml, release.yml, release-pr.yml and semantic-pull-request.yml stay upstream-only: they need the ASWF Conan remote's
-# credentials or write to the repository.
+# TEMPORARY: remove the workflow_dispatch and RV_CI_ON_FORK clauses below before upstreaming, unless upstream wants forks to be able to run the matrix.
+#
+# conan.yml carries its own fork triggers. release.yml, release-pr.yml and semantic-pull-request.yml stay upstream-only: they write to the repository.
 #
 jobs:
   detect-changes:

@@ -54,10 +54,19 @@ FUNCTION(RV_WRITE_BUILD_MANIFEST)
   RV_RUN_ARTIFACT_PROBES(_rvbm_probes)
 
   SET(_rvbm_args
-      --identity "${RV_BUILD_IDENTITY_FILE}" --out "${RV_BUILD_MANIFEST_FILE}"
+      --out "${RV_BUILD_MANIFEST_FILE}"
   )
+  # Only an identity computed by this configure is recorded. The file can be left over from an earlier configure, and a stale identity in the manifest -- or one
+  # satisfying --require-identity below -- would describe a different build.
+  IF(RV_BUILD_IDENTITY_AVAILABLE)
+    LIST(APPEND _rvbm_args --identity "${RV_BUILD_IDENTITY_FILE}")
+  ENDIF()
   IF(_rvbm_probes)
     LIST(APPEND _rvbm_args --probes "${_rvbm_probes}")
+  ENDIF()
+  # The identity records the Qt version the build is configured for; this is the one it found. See RV_REPORT_BUILD_IDENTITY.
+  IF(RV_DEPS_QT_FOUND_VERSION)
+    LIST(APPEND _rvbm_args --found "qt_version=${RV_DEPS_QT_FOUND_VERSION}")
   ENDIF()
   IF(RV_CONAN_IDENTITY_FILE)
     LIST(APPEND _rvbm_args --conan-identity "${RV_CONAN_IDENTITY_FILE}")

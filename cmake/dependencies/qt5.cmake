@@ -59,7 +59,8 @@ GET_TARGET_PROPERTY(UIC_EXECUTABLE Qt5::uic IMPORTED_LOCATION)
 # Qt is the prebuilt artifact every configuration consumes, and the one whose ABI the most code depends on: RV's C++ shares Qt objects with PySide, and Mu binds
 # Qt as well. Record it for probing, pointing the probe at Qt's own installation so its version and feature set are read from Qt's configure output rather than
 # guessed from a filename.
-IF(RV_DEPS_PROBE_ARTIFACTS)
+RV_DEPS_PROBE_IS_ENABLED(_qt_probe_enabled)
+IF(_qt_probe_enabled)
   RV_RESOLVE_IMPORTED_LOCATION(Qt5::Core _qt_probe_location)
   IF(_qt_probe_location)
     RV_REGISTER_PREBUILT_ARTIFACT(input "${_qt_probe_location}" METADATA_ROOT "${RV_DEPS_QT_LOCATION}")
@@ -85,6 +86,12 @@ MESSAGE(STATUS "${_qt_copy_message}")
 SET(RV_DEPS_QT_VERSION
     ${Qt5Core_VERSION_STRING}
     CACHE STRING "Qt Version String"
+)
+# The Qt actually found, which can differ from the CY default the build identity was computed with when QT_HOME points at another Qt. The cache entry above is
+# shadowed by the CY file's normal variable of the same name, so the found version is recorded separately for the identity report and the manifest.
+SET(RV_DEPS_QT_FOUND_VERSION
+    "${Qt5Core_VERSION_STRING}"
+    CACHE INTERNAL "Version of the Qt this configuration found" FORCE
 )
 
 # Common to both Mac and Linux platforms

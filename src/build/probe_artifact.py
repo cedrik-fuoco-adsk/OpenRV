@@ -61,6 +61,11 @@ import sys
 
 FIELDS_VERSION = 1
 
+# Part of every cache entry's name, so that a change to what is observed, or how, invalidates
+# entries written by an earlier probe instead of serving them. Version 2: the metadata root became
+# part of the key, after version 1 entries were found carrying another package's metadata.
+CACHE_VERSION = 2
+
 ELF_MAGIC = b"\x7fELF"
 MACHO_MAGICS = {
     b"\xfe\xed\xfa\xce": "macho32",
@@ -406,9 +411,11 @@ def _abi_demands_elf(path: str, strict: bool):
         ("readelf", ["readelf", "-W", "--version-info", path]),
         ("llvm-readobj", ["llvm-readobj", "--elf-output-style=GNU", "--version-info", path]),
     )
+    attempted = []
     for tool_name, command in candidates:
         if not shutil.which(command[0]):
             continue
+        attempted.append(tool_name)
         output, error = _run(command)
         if output is None:
             continue
@@ -419,6 +426,8 @@ def _abi_demands_elf(path: str, strict: bool):
             if entry not in values:
                 values.append(entry)
         return {"known": True, "values": values, "source": f"{tool_name} --version-info"}
+    if attempted:
+        return _unreadable(f"{', '.join(attempted)} could not read version information from this artifact", strict)
     return _missing_tool("ELF version-info reader (readelf or llvm-readobj)", strict)
 
 
@@ -433,8 +442,10 @@ def _abi_demands_macho(path: str, strict: bool):
                     return {"known": True, "values": values, "source": "llvm-objdump --macho --all-headers"}
         return _missing_tool("otool or llvm-objdump", strict)
 
-    output, _ = _run(["otool", "-l", path])
-    values = _parse_macho_minimum_platform(output) if output is not None else []
+    output, error = _run(["otool", "-l", path])
+    if output is None:
+        return _unreadable(f"otool -l could not read this artifact: {error}", strict)
+    values = _parse_macho_minimum_platform(output)
     if not values:
         return _unknown("otool -l reported no minimum platform version")
     return {"known": True, "values": values, "source": "otool -l"}
@@ -472,13 +483,24 @@ def _abi_demands_pe(path: str, strict: bool):
     return _missing_tool("PE import reader (llvm-readobj or dumpbin)", strict)
 
 
+def _retryable(reason: str) -> dict:
+    """An unknown that says nothing about the artifact: the inspection itself did not happen.
+
+    A missing tool, a tool that timed out or could not read the file, may all be different on the
+    next configure, so such a result is never cached -- see _probe_one.
+    """
+    result = _unknown(reason)
+    result["retryable"] = True
+    return result
+
+
 def _unreadable(what: str, strict: bool):
     """A tool was present but could not read the artifact."""
     reason = f"{what}"
     if strict:
         raise MissingToolError(reason)
     _log(f"warning: {reason}; recording ABI demands as unknown")
-    return _unknown(reason)
+    return _retryable(reason)
 
 
 def _missing_tool(what: str, strict: bool):
@@ -486,7 +508,7 @@ def _missing_tool(what: str, strict: bool):
     if strict:
         raise MissingToolError(reason)
     _log(f"warning: {reason}; recording ABI demands as unknown")
-    return _unknown(reason)
+    return _retryable(reason)
 
 
 class MissingToolError(RuntimeError):
@@ -559,8 +581,21 @@ def _observe(path: str, metadata_root: str, strict: bool) -> dict:
     return {"format": fmt, "linkage": linkage, "version": version, "features": features, "abi_demands": demands}
 
 
-def _cache_path(cache_dir: str, reference: str) -> str:
-    return os.path.join(cache_dir, reference.replace(":", "_") + ".json")
+def _cache_path(cache_dir: str, reference: str, metadata_root: str) -> str:
+    """The cache entry for an artifact observed with a given metadata root.
+
+    The root is part of the key because version and features are read from it: the same bytes
+    observed against a different root are a different observation.
+    """
+    name = f"v{CACHE_VERSION}_" + reference.replace(":", "_")
+    if metadata_root:
+        root = os.path.normcase(os.path.abspath(metadata_root))
+        name += "_" + hashlib.sha256(root.encode("utf-8")).hexdigest()[:16]
+    return os.path.join(cache_dir, name + ".json")
+
+
+def _is_retryable(observed: dict) -> bool:
+    return any(isinstance(fact, dict) and fact.get("retryable") for fact in observed.values())
 
 
 def resolve_artifact_path(path: str) -> str:
@@ -586,7 +621,7 @@ def _probe_one(path: str, role: str, metadata_root: str, cache_dir: str, strict:
     observed = None
     inspection = "performed"
     if cache_dir:
-        cached = _cache_path(cache_dir, reference)
+        cached = _cache_path(cache_dir, reference, metadata_root)
         if os.path.isfile(cached):
             try:
                 with open(cached, "r", encoding="utf-8") as handle:
@@ -594,13 +629,18 @@ def _probe_one(path: str, role: str, metadata_root: str, cache_dir: str, strict:
                 inspection = "cached"
             except (OSError, json.JSONDecodeError):
                 observed = None
+        # Retryable results are not written, so one here came from somewhere else. It is never
+        # trusted, and in particular never satisfies a strict probe, which must inspect.
+        if observed is not None and _is_retryable(observed):
+            observed = None
+            inspection = "performed"
 
     if observed is None:
         observed = _observe(path, metadata_root, strict)
-        if cache_dir:
+        if cache_dir and not _is_retryable(observed):
             try:
                 os.makedirs(cache_dir, exist_ok=True)
-                with open(_cache_path(cache_dir, reference), "w", encoding="utf-8") as handle:
+                with open(_cache_path(cache_dir, reference, metadata_root), "w", encoding="utf-8") as handle:
                     json.dump(observed, handle, indent=2, sort_keys=True)
                     handle.write("\n")
             except OSError as error:
@@ -621,23 +661,24 @@ def _parse_artifact_argument(value: str):
     return "derived", value
 
 
+def _same_path(left: str, right: str) -> bool:
+    return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
+
+
 def cmd_probe(args: argparse.Namespace) -> int:
-    # A role-specific metadata root wins over the global one, so a single
-    # invocation can probe artifacts whose metadata lives in different places.
-    role_roots = {}
-    for mapping in args.metadata_root_for or []:
-        if "=" not in mapping:
-            _log(f"warning: ignoring malformed --metadata-root-for {mapping!r}, expected ROLE=DIR")
-            continue
-        role, directory = mapping.split("=", 1)
-        role_roots[role.strip()] = directory.strip()
+    # A metadata root belongs to one artifact, not to a role: Qt's root carries Qt's version and
+    # features, and handing it to every other input artifact recorded them all as Qt.
+    artifact_roots = [(path, directory) for path, directory in args.artifact_metadata_root or []]
 
     probes = []
     try:
         for raw in args.artifact:
             role, path = _parse_artifact_argument(raw)
+            metadata_root = args.metadata_root
+            for root_path, directory in artifact_roots:
+                if _same_path(root_path, path):
+                    metadata_root = directory
             path = resolve_artifact_path(path)
-            metadata_root = role_roots.get(role, args.metadata_root)
             if not os.path.isfile(path):
                 _log(f"warning: artifact not found, recording it as unknown: {path}")
                 probes.append(
@@ -846,11 +887,12 @@ def main(argv=None) -> int:
     )
     probe.add_argument("--metadata-root", help="root of the artifact's own installation, where its metadata lives")
     probe.add_argument(
-        "--metadata-root-for",
+        "--artifact-metadata-root",
         action="append",
+        nargs=2,
         default=[],
-        metavar="ROLE=DIR",
-        help="metadata root for one role, overriding --metadata-root; repeatable",
+        metavar=("PATH", "DIR"),
+        help="metadata root for the artifact at PATH, as given to --artifact, overriding --metadata-root; repeatable",
     )
     probe.add_argument("--cache-dir", help="cache inspected facts here, keyed by artifact content")
     probe.add_argument(

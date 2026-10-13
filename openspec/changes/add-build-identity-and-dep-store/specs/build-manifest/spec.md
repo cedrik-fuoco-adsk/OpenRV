@@ -44,6 +44,11 @@ with the facts that were probed from it.
 - **WHEN** an artifact has been probed
 - **THEN** the manifest records that artifact's probed facts alongside a reference to the artifact
 
+#### Scenario: Found facts that differ from the identity are recorded
+
+- **WHEN** a fact discovered during configuration, such as the Qt version actually found, differs from the value the identity was computed from
+- **THEN** the manifest records the found value separately from the identity, and configure reports the difference
+
 ### Requirement: Manifest reference format
 
 Artifacts referenced by the manifest SHALL be identified by a content-derived reference,
@@ -74,7 +79,9 @@ fail configuration or the build.
 
 For the same identity and the same resolved artifacts, the manifest content SHALL be
 identical across repeated configurations, excluding fields documented as
-non-deterministic such as timestamps and host-specific paths.
+non-deterministic such as timestamps and host-specific paths. Whether a probe result was
+inspected or served from the cache SHALL NOT be recorded, because it differs between two
+otherwise identical configurations.
 
 #### Scenario: Repeated configuration produces an identical manifest
 
