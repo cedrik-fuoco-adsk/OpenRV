@@ -31,8 +31,9 @@ so the variables this change adds appear there too. No install script reads them
 SET() lines are the one difference allowed in a cmake_install.cmake.
 
 The source and build directories are replaced by placeholders before comparing, as are the values
-that differ between any two commits: the git hash compiled into the application, and the names CMake
-derives from absolute paths (Ninja depfiles, Visual Studio project GUIDs). What re-runs CMake when one
+that differ between any two checkouts: the git hash compiled into the application, what git reports
+about the checkout (RV_GIT_*, including a branch that is HEAD in a detached worktree), and the names CMake
+derives from absolute paths (Ninja depfiles, Visual Studio project GUIDs and rule directories). What re-runs CMake when one
 of its input files changes is ignored -- the RERUN_CMAKE statement of build.ninja, ZERO_CHECK and each
 project's CMakeLists.txt custom build -- because it names the macro files this change adds and is not
 part of what is built.
@@ -53,16 +54,20 @@ OWN_VARIABLE = (
     r"|RV_DEPS_STORE\w*|RV_DEPS_INSTALL_SCRIPT|RV_CONAN_\w+_FILE|RV_DEPS_QT_FOUND_VERSION)"
 )
 OWN_CACHE_ENTRY = re.compile(rf"^{OWN_VARIABLE}$")
-FORWARDED_OWN_VARIABLE = re.compile(
-    rf'if\(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT\)\n  SET\({OWN_VARIABLE} [^\n]*\)\nendif\(\)\n\n'
-)
+# What git says about the checkout -- its commit and its branch, which is HEAD in a detached worktree -- differs between any two
+# checkouts and is recorded, not built from.
+GIT_DESCRIPTION = r"RV_GIT_\w+"
+FORWARDED = 'if\\(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT\\)\\n  SET\\({} [^\\n]*\\)\\nendif\\(\\)\\n\\n'
+FORWARDED_OWN_VARIABLE = re.compile(FORWARDED.format(OWN_VARIABLE))
+FORWARDED_GIT_DESCRIPTION = re.compile(FORWARDED.format(GIT_DESCRIPTION))
 
 # Cache entries that differ between any two configures, or any two commits, and say nothing about the build.
 VOLATILE_CACHE_ENTRIES = re.compile(
-    r"^(CMAKE_CACHEFILE_DIR|CMAKE_HOME_DIRECTORY|\w+_BINARY_DIR|\w+_SOURCE_DIR|RV_GIT_COMMIT_SHORT_HASH)$"
+    rf"^(CMAKE_CACHEFILE_DIR|CMAKE_HOME_DIRECTORY|\w+_BINARY_DIR|\w+_SOURCE_DIR|{GIT_DESCRIPTION})$"
 )
 VOLATILE_VALUES = [
     (re.compile(r"CMakeFiles([/\\])d\1[0-9a-f]{64}\.d"), r"CMakeFiles\1d\1<DEPFILE>.d"),
+    (re.compile(r"CMakeFiles([/\\])[0-9a-f]{32}\1"), r"CMakeFiles\1<HASH>\1"),
     (re.compile(r"\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}"), "{<GUID>}"),
 ]
 REGENERATION_CUSTOM_BUILD = re.compile(r'<CustomBuild Include="[^"]*CMakeLists\.txt">.*?</CustomBuild>', re.S)
@@ -85,6 +90,11 @@ def spellings(directory: str):
         if os.name == "nt":
             candidates.add(value.lower())
             candidates.add(value.replace("\\", "/").lower())
+        # The msys2 spelling, /D/a/..., which commands run through an msys2 shell are given.
+        forward = value.replace("\\", "/")
+        if re.match(r"^[A-Za-z]:/", forward):
+            for drive in (forward[0].upper(), forward[0].lower()):
+                candidates.add(f"/{drive}{forward[2:]}")
     return sorted(candidates, key=len, reverse=True)
 
 
@@ -199,7 +209,8 @@ def compare(baseline: str, candidate: str) -> list:
         elif path.endswith(".vcxproj"):
             left, right = REGENERATION_CUSTOM_BUILD.sub("", left), REGENERATION_CUSTOM_BUILD.sub("", right)
         elif os.path.basename(path) == "cmake_install.cmake":
-            right = FORWARDED_OWN_VARIABLE.sub("", right)
+            left = FORWARDED_GIT_DESCRIPTION.sub("", left)
+            right = FORWARDED_GIT_DESCRIPTION.sub("", FORWARDED_OWN_VARIABLE.sub("", right))
         if left != right:
             diff = difflib.unified_diff(
                 left.splitlines(), right.splitlines(), f"baseline/{path}", f"candidate/{path}", n=0, lineterm=""

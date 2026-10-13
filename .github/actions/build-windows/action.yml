@@ -195,14 +195,14 @@ runs:
       run: |
         baseline="${{ inputs.invariance-baseline }}"
         if [ "$baseline" = "merge-base" ]; then
-          git fetch --no-tags https://github.com/AcademySoftwareFoundation/OpenRV.git main
+          PATH="/c/Program Files/Git/cmd:$PATH" git fetch --no-tags https://github.com/AcademySoftwareFoundation/OpenRV.git main
           baseline=$(git merge-base HEAD FETCH_HEAD)
         fi
         echo "Baseline: $baseline"
-        # Git for Windows: msys2's git can hang on its first clone when started from this shell.
-        export PATH="/c/Program Files/Git/cmd:$PATH"
-        git worktree add --detach ../openrv-baseline "$baseline"
-        git -C ../openrv-baseline submodule update --init --recursive
+        # Git for Windows for the checkout only: msys2's git can hang on its first clone when started from this shell. The baseline is then configured in the
+        # same environment as this checkout, so both find the same tools.
+        PATH="/c/Program Files/Git/cmd:$PATH" git worktree add --detach ../openrv-baseline "$baseline"
+        PATH="/c/Program Files/Git/cmd:$PATH" git -C ../openrv-baseline submodule update --init --recursive
         export QT_HOME=c:/Qt/${{ inputs.qt-version }}/msvc2019_64
         cmake -S ../openrv-baseline -B ../openrv-baseline/_build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }}
         python src/build/check_default_invariance.py ../openrv-baseline/_build _build
