@@ -38,6 +38,8 @@ on:
       - 'src/build/test_deps_store_roundtrip.py'
       - 'src/build/check_default_invariance.py'
       - 'src/build/test_check_default_invariance.py'
+      - 'src/build/check_packaging.py'
+      - 'src/build/test_check_packaging.py'
       - 'openrvcore-conanfile.py'
       # The conan generator comparison guards its argument seam against this file, so a
       # change here must re-run the check.
@@ -103,6 +105,11 @@ jobs:
       # wrongly would pass silently. These planted trees each differ in one way, and every real difference must be reported.
       - name: Check the default configure invariance check
         run: python3 src/build/test_check_default_invariance.py
+
+      # The packaging check runs on full builds in check-store-packaging.yml. These build a real package that runs from its
+      # prefix and one that only runs while its build directory is there, and require the check to tell them apart.
+      - name: Check the packaging check
+        run: python3 src/build/test_check_packaging.py
 
       # The store's round trip with a real dependency: a first build populates it, staging leaves the
       # entry untouched, the relocation gate passes on the published zlib, a second build directory
