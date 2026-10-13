@@ -1028,11 +1028,18 @@ jobs:
       - name: Build and install OpenRV dependencies
         run: |
           source ~/.bash_profile
+          # Git for Windows rather than msys2's git for the clones made by dependency builds: msys2's git, started from native cmake and MSBuild, intermittently
+          # hangs on its first clone with no output until the job times out.
+          export PATH="/c/Program Files/Git/cmd:$PATH"
+          which git && git --version
           conan install conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_windows -c tools.microsoft.bash:path=C:/msys64/usr/bin/bash.exe -c tools.microsoft.bash:subsystem=msys2
         shell: msys2 {0}
 
       - name: Build OpenRV main executable
         run: |
+          # Git for Windows; see the step above.
+          export PATH="/c/Program Files/Git/cmd:$PATH"
+          which git && git --version
           conan build conanfile.py --build=missing -pr:a ./conan/profiles/x86_64_windows -c tools.microsoft.bash:path=C:/msys64/usr/bin/bash.exe -c tools.microsoft.bash:subsystem=msys2
         shell: msys2 {0}
 
