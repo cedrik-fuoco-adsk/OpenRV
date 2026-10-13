@@ -851,7 +851,9 @@ def test_racing_installs_stage_privately(directory: str) -> None:
     check("the fixup ran on the staged tree", os.path.isfile(os.path.join(final, "fixed-up")))
     with open(os.path.join(final, "lib", "pkgconfig", "fixture.pc"), encoding="utf-8") as handle:
         pc = handle.read()
-    check("the pkg-config file no longer names the install prefix", final not in pc, pc)
+    # Both spellings: on Windows the temporary directory is often an 8.3 short path, and CMake records the long one.
+    spellings = {final, os.path.realpath(final).replace("\\", "/")}
+    check("the pkg-config file no longer names the install prefix", not any(s in pc for s in spellings), pc)
     check("it is relative to itself instead", "prefix=${pcfiledir}/../.." in pc, pc)
     remaining = os.listdir(os.path.join(store, ".staging")) if os.path.isdir(os.path.join(store, ".staging")) else []
     check(

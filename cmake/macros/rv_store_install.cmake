@@ -145,6 +145,23 @@ ENDIF()
 
 # pkg-config files name the absolute install prefix, which is the store entry. Rewritten relative to the file itself, which pkg-config and pkgconf both support,
 # so the entry still describes itself correctly if the store is moved and the relocation check finds no reference to where it was installed.
+#
+# The dependency may have written the prefix in another spelling than the one it was given: on Windows a store under %TEMP% is often an 8.3 short path
+# (C:/Users/RUNNER~1/...) that CMake expands to the long one when it records CMAKE_INSTALL_PREFIX. Both spellings are rewritten, the long one derived from the
+# store root, which exists, because the entry itself does not yet.
+SET(_rvsi_prefix_spellings
+    "${_rvsi_prefix}"
+)
+FILE(TO_CMAKE_PATH "${RV_INSTALL_STORE}" _rvsi_store)
+FILE(REAL_PATH "${_rvsi_store}" _rvsi_store_real)
+STRING(FIND "${_rvsi_prefix}" "${_rvsi_store}" _rvsi_store_at)
+IF(_rvsi_store_at EQUAL 0
+   AND NOT _rvsi_store_real STREQUAL _rvsi_store
+)
+  STRING(LENGTH "${_rvsi_store}" _rvsi_store_length)
+  STRING(SUBSTRING "${_rvsi_prefix}" ${_rvsi_store_length} -1 _rvsi_prefix_tail)
+  LIST(APPEND _rvsi_prefix_spellings "${_rvsi_store_real}${_rvsi_prefix_tail}")
+ENDIF()
 FILE(GLOB _rvsi_pc_files "${_rvsi_staged}/lib/pkgconfig/*.pc" "${_rvsi_staged}/lib64/pkgconfig/*.pc" "${_rvsi_staged}/share/pkgconfig/*.pc")
 FOREACH(
   _rvsi_pc
@@ -153,7 +170,12 @@ FOREACH(
   FILE(READ "${_rvsi_pc}" _rvsi_pc_body)
   GET_FILENAME_COMPONENT(_rvsi_pc_dir "${_rvsi_pc}" DIRECTORY)
   FILE(RELATIVE_PATH _rvsi_pc_up "${_rvsi_pc_dir}" "${_rvsi_staged}")
-  STRING(REPLACE "${_rvsi_prefix}" "\${pcfiledir}/${_rvsi_pc_up}" _rvsi_pc_body "${_rvsi_pc_body}")
+  FOREACH(
+    _rvsi_spelling
+    ${_rvsi_prefix_spellings}
+  )
+    STRING(REPLACE "${_rvsi_spelling}" "\${pcfiledir}/${_rvsi_pc_up}" _rvsi_pc_body "${_rvsi_pc_body}")
+  ENDFOREACH()
   FILE(
     WRITE "${_rvsi_pc}"
     "${_rvsi_pc_body}"
