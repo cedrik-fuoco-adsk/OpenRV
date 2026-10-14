@@ -40,6 +40,8 @@ on:
       - 'src/build/test_check_default_invariance.py'
       - 'src/build/check_packaging.py'
       - 'src/build/test_check_packaging.py'
+      - 'src/build/remove_absolute_runpath.py'
+      - 'src/build/test_remove_absolute_runpath.py'
       - 'openrvcore-conanfile.py'
       # The conan generator comparison guards its argument seam against this file, so a
       # change here must re-run the check.
@@ -110,6 +112,11 @@ jobs:
       # prefix and one that only runs while its build directory is there, and require the check to tell them apart.
       - name: Check the packaging check
         run: python3 src/build/test_check_packaging.py
+
+      # The Linux install removes absolute RUNPATH entries in place. Synthetic ELF files check the rewrite everywhere; on Linux a real program is
+      # also fixed and must still load its library once the absolute directory is gone.
+      - name: Check the RUNPATH cleanup
+        run: python3 src/build/test_remove_absolute_runpath.py
 
       # The store's round trip with a real dependency: a first build populates it, staging leaves the
       # entry untouched, the relocation gate passes on the published zlib, a second build directory

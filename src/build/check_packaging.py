@@ -10,7 +10,7 @@
 
 """Check that staged and installed output is independent of the store and of the build directory.
 
-    python3 src/build/check_packaging.py scan <tree> --forbid <directory> [--forbid <directory> ...]
+    python3 src/build/check_packaging.py scan <tree> --forbid <directory> [--forbid <directory> ...] [--allow-embedded-strings]
     python3 src/build/check_packaging.py fingerprint <tree> --out <file.json>
     python3 src/build/check_packaging.py compare <left.json> <right.json>
     python3 src/build/check_packaging.py run <prefix> [--hide <directory> ...]
@@ -18,7 +18,11 @@
 scan
     Fails if any file under the tree names one of the forbidden directories -- the store, the build
     directory -- in any spelling, as text or as a UTF-16 string. A staged or installed tree that does
-    is not what was packaged: it still reaches back to where it was built.
+    is not what was packaged: it still reaches back to where it was built. Each reference is labelled
+    by where it is: in how a binary finds its libraries (rpath, RUNPATH, install name, dependencies),
+    which changes what it loads; in a text file; or in a string embedded in a binary, such as the
+    configure line FFmpeg records, which names the location without ever using it. With
+    --allow-embedded-strings the last kind is reported but does not fail the check.
 
 fingerprint, compare
     Records what decides whether a staged tree works once moved: every file's relative path, and for
@@ -30,7 +34,7 @@ fingerprint, compare
     need not be at the same location.
 
 run
-    Runs rv, rvio and rvls with -version from an install prefix, with the loader's search variables
+    Runs rv and rvls with -version from an install prefix, with the loader's search variables
     cleared and every --hide directory renamed aside for the duration, so that a library found only
     through the build directory or the store fails to load instead of passing. -version returns before
     any window is created, so no display is needed, while the loader still resolves every library each
@@ -52,7 +56,8 @@ sys.path.insert(0, HERE)
 from check_relocation import find_references, spellings  # noqa: E402
 from probe_artifact import detect_format, read_pe_imports  # noqa: E402
 
-PROGRAMS = ("rv", "rvio", "rvls")
+# rvio is not among them: it creates an OpenGL context before handling -version, so it fails without a display wherever it is run.
+PROGRAMS = ("rv", "rvls")
 
 # The loader's search variables, which would otherwise let a library be found somewhere the package does not carry it.
 LOADER_VARIABLES = ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH")
@@ -86,11 +91,19 @@ def cmd_scan(args) -> int:
     for directory in args.forbid:
         needles |= all_spellings(directory)
     offenders = find_references(args.tree, sorted(needles, key=len, reverse=True))
+    failing = 0
     if offenders:
         print(f"{len(offenders)} file(s) under {args.tree} name a forbidden location:")
         for path, lines in sorted(offenders.items()):
-            print(f"  - {path} [{reference_kind(os.path.join(args.tree, path), needles)}]: {lines[0][:160]}")
+            kind = reference_kind(os.path.join(args.tree, path), needles)
+            allowed = args.allow_embedded_strings and kind == "embedded string"
+            failing += not allowed
+            print(f"  - {path} [{kind}{', allowed' if allowed else ''}]: {lines[0][:160]}")
+    if failing:
         return 1
+    if offenders:
+        print(f"only embedded strings under {args.tree} name {', '.join(args.forbid)}")
+        return 0
     print(f"nothing under {args.tree} names {', '.join(args.forbid)}")
     return 0
 
@@ -269,7 +282,7 @@ def cmd_run(args) -> int:
         for problem in problems:
             print(f"  - {problem}")
         return 1
-    print(f"rv, rvio and rvls run from {args.prefix} with {', '.join(args.hide) or 'nothing'} hidden")
+    print(f"{' and '.join(PROGRAMS)} run from {args.prefix} with {', '.join(args.hide) or 'nothing'} hidden")
     return 0
 
 
@@ -280,6 +293,9 @@ def main(argv=None) -> int:
     scan = commands.add_parser("scan", help="fail if a tree names a forbidden location")
     scan.add_argument("tree")
     scan.add_argument("--forbid", action="append", required=True)
+    scan.add_argument(
+        "--allow-embedded-strings", action="store_true", help="report, but do not fail on, strings embedded in binaries"
+    )
     scan.set_defaults(func=cmd_scan)
 
     record = commands.add_parser("fingerprint", help="record what decides whether a staged tree relocates")
@@ -297,6 +313,8 @@ def main(argv=None) -> int:
     run.add_argument("--hide", action="append", default=[])
     run.set_defaults(func=cmd_run)
 
+    # A file's content is printed as found; a Windows console encoding must not turn that into a crash.
+    sys.stdout.reconfigure(errors="backslashreplace")
     args = parser.parse_args(argv)
     return args.func(args)
 

@@ -143,8 +143,26 @@ def main() -> int:
             handle.write(f"cache={os.path.join(work, 'store')}/entry\n")
         code, output = run("scan", relocatable, "--forbid", os.path.join(work, "store"))
         check("a file naming the store is reported", code == 1 and "planted.txt" in output, output[-600:])
+        code, output = run("scan", relocatable, "--forbid", os.path.join(work, "store"), "--allow-embedded-strings")
+        check("a text file naming the store still fails with embedded strings allowed", code == 1, output[-600:])
         os.remove(planted)
         os.rmdir(os.path.dirname(planted))
+
+        # A binary that names the store only in a string, as FFmpeg's recorded configure line does.
+        embedded = os.path.join(work, "embedded")
+        os.makedirs(embedded)
+        program = next(
+            os.path.join(directory, name)
+            for directory, _subdirectories, names in os.walk(relocatable)
+            for name in names
+            if os.path.splitext(name)[0] == "rvls"
+        )
+        with open(program, "rb") as source, open(os.path.join(embedded, os.path.basename(program)), "wb") as copy:
+            copy.write(source.read() + f"--prefix={os.path.join(work, 'store')}/ffmpeg\0".encode())
+        code, output = run("scan", embedded, "--forbid", os.path.join(work, "store"))
+        check("a string embedded in a binary is reported", code == 1 and "[embedded string]" in output, output[-600:])
+        code, output = run("scan", embedded, "--forbid", os.path.join(work, "store"), "--allow-embedded-strings")
+        check("and is allowed when embedded strings are", code == 0 and "allowed" in output, output[-600:])
         if os.name != "nt":
             code, output = run("scan", bound, "--forbid", bound_build)
             check("a program whose search path names the build directory is reported", code == 1, output[-600:])
@@ -155,7 +173,7 @@ def main() -> int:
         print("run")
         code, output = run("run", relocatable, "--hide", os.path.join(work, "relocatable", "build"))
         check("a relocatable package runs with its build directory hidden", code == 0, output[-600:])
-        check("all three programs ran", output.count("  ok   ") == 3, output[-600:])
+        check("rv and rvls ran", output.count("  ok   ") == 2, output[-600:])
         code, output = run("run", bound, "--hide", bound_build)
         check("a package that loads from its build directory fails once it is hidden", code == 1, output[-600:])
         check("the failure is put down to the hidden location", "depends on a hidden location" in output, output[-600:])
@@ -168,7 +186,7 @@ def main() -> int:
                 handle.write('#!/bin/sh\nexec "$(dirname "$0")/rvls.bin" "$@"\n')
             os.chmod(launcher, 0o755)
             code, output = run("run", relocatable)
-            check("a launcher script is found and run", code == 0 and output.count("  ok   ") == 3, output[-600:])
+            check("a launcher script is found and run", code == 0 and output.count("  ok   ") == 2, output[-600:])
 
         empty = os.path.join(work, "empty")
         os.makedirs(empty)
