@@ -229,15 +229,21 @@ runs:
     - name: Check the packaged output
       if: inputs.packaging-check == 'true'
       run: |
+        # Every check runs, so one build reports everything; the step fails at the end if any did.
+        status=0
         store="${{ inputs.deps-store }}"
         hide=(--hide _build)
         if [ -n "$store" ]; then
-          python src/build/check_packaging.py scan _build/stage --forbid "$store"
-          python src/build/check_packaging.py scan _install --forbid "$store"
+          python src/build/check_packaging.py scan _install --forbid "$store" || status=1
+          python src/build/check_packaging.py scan _build/stage --forbid "$store" || status=1
           hide+=(--hide "$store")
         fi
-        python src/build/check_packaging.py fingerprint _build/stage --out packaging-fingerprint.json
-        python src/build/check_packaging.py run _install "${hide[@]}"
+        # Reported, not enforced: references to the build directory exist with or without the store, and show what the store's references are measured against.
+        python src/build/check_packaging.py scan _install --forbid "$(pwd)/_build" || true
+        python src/build/check_packaging.py fingerprint _build/stage --out packaging-fingerprint-stage.json
+        python src/build/check_packaging.py fingerprint _install --out packaging-fingerprint-install.json
+        python src/build/check_packaging.py run _install "${hide[@]}" || status=1
+        exit $status
       shell: bash
 
     - name: Save dependencies cache

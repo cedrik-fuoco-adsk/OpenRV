@@ -67,9 +67,11 @@ jobs:
           deps-store: ${{ matrix.store == 'on' && format('{0}/rv-deps-store', runner.temp) || '' }}
           packaging-check: 'true'
       - uses: actions/upload-artifact@v4
+        # Uploaded even when the check failed, which is when the comparison is most needed.
+        if: always()
         with:
           name: packaging-fingerprint-linux-store-${{ matrix.store }}
-          path: packaging-fingerprint.json
+          path: packaging-fingerprint-*.json
 
   macos:
     name: 'macOS 14 arm64 CY2025 Release <store=${{ matrix.store }}>'
@@ -97,9 +99,11 @@ jobs:
           deps-store: ${{ matrix.store == 'on' && format('{0}/rv-deps-store', runner.temp) || '' }}
           packaging-check: 'true'
       - uses: actions/upload-artifact@v4
+        # Uploaded even when the check failed, which is when the comparison is most needed.
+        if: always()
         with:
           name: packaging-fingerprint-macos-store-${{ matrix.store }}
-          path: packaging-fingerprint.json
+          path: packaging-fingerprint-*.json
 
   windows:
     name: 'Windows 2022 CY2025 Release <store=${{ matrix.store }}>'
@@ -128,13 +132,15 @@ jobs:
           deps-store: ${{ matrix.store == 'on' && 'D:/rv-deps-store' || '' }}
           packaging-check: 'true'
       - uses: actions/upload-artifact@v4
+        # Uploaded even when the check failed, which is when the comparison is most needed.
+        if: always()
         with:
           name: packaging-fingerprint-windows-store-${{ matrix.store }}
-          path: packaging-fingerprint.json
+          path: packaging-fingerprint-*.json
 
   # The staged tree of the build that took its dependencies from the store must be equivalent to that of the build that built them in place.
   compare:
-    name: 'Compare staged trees <${{ matrix.platform }}>'
+    name: 'Compare staged and installed trees <${{ matrix.platform }}>'
     needs: [rocky-linux, macos, windows]
     if: always()
     runs-on: ubuntu-latest
@@ -148,8 +154,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: packaging-fingerprint-${{ matrix.platform }}-store-*
-      - name: Compare the staged trees
+      - name: Compare the staged and installed trees
         run: |
-          python3 src/build/check_packaging.py compare \
-            packaging-fingerprint-${{ matrix.platform }}-store-off/packaging-fingerprint.json \
-            packaging-fingerprint-${{ matrix.platform }}-store-on/packaging-fingerprint.json
+          status=0
+          for tree in stage install; do
+            echo "== $tree"
+            python3 src/build/check_packaging.py compare \
+              packaging-fingerprint-${{ matrix.platform }}-store-off/packaging-fingerprint-$tree.json \
+              packaging-fingerprint-${{ matrix.platform }}-store-on/packaging-fingerprint-$tree.json || status=1
+          done
+          exit $status

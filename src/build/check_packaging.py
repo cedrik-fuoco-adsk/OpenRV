@@ -43,7 +43,6 @@ import argparse
 import json
 import os
 import re
-import struct
 import subprocess
 import sys
 
@@ -51,7 +50,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from check_relocation import find_references, spellings  # noqa: E402
-from probe_artifact import detect_format  # noqa: E402
+from probe_artifact import detect_format, read_pe_imports  # noqa: E402
 
 PROGRAMS = ("rv", "rvio", "rvls")
 
@@ -70,6 +69,18 @@ def all_spellings(directory: str) -> set:
     return found
 
 
+def reference_kind(path: str, needles) -> str:
+    """Whether a file names a location in how it finds libraries, which changes what it loads, or only in some string."""
+    reader = FACTS.get(detect_format(path))
+    if reader is None:
+        return "file content"
+    facts = reader(path)
+    loads = [value for values in facts.values() if isinstance(values, list) for value in values]
+    if any(needle in value for value in loads for needle in needles):
+        return "library search path"
+    return "embedded string"
+
+
 def cmd_scan(args) -> int:
     needles = set()
     for directory in args.forbid:
@@ -78,7 +89,7 @@ def cmd_scan(args) -> int:
     if offenders:
         print(f"{len(offenders)} file(s) under {args.tree} name a forbidden location:")
         for path, lines in sorted(offenders.items()):
-            print(f"  - {path}: {lines[0]}")
+            print(f"  - {path} [{reference_kind(os.path.join(args.tree, path), needles)}]: {lines[0][:160]}")
         return 1
     print(f"nothing under {args.tree} names {', '.join(args.forbid)}")
     return 0
@@ -125,39 +136,8 @@ def elf_facts(path: str) -> dict:
 
 
 def pe_facts(path: str) -> dict:
-    """The DLLs a PE image imports, read from its import directory, so no Visual Studio tool is needed."""
-    try:
-        with open(path, "rb") as handle:
-            data = handle.read()
-        pe = struct.unpack_from("<I", data, 0x3C)[0]
-        sections = struct.unpack_from("<H", data, pe + 6)[0]
-        optional_size = struct.unpack_from("<H", data, pe + 20)[0]
-        optional = pe + 24
-        magic = struct.unpack_from("<H", data, optional)[0]
-        directories = optional + (112 if magic == 0x20B else 96)
-        import_rva = struct.unpack_from("<I", data, directories + 8)[0]
-        table = optional + optional_size
-
-        def offset(rva):
-            for index in range(sections):
-                base = table + index * 40
-                size, address, _raw_size, raw = struct.unpack_from("<IIII", data, base + 8)
-                if address <= rva < address + max(size, _raw_size):
-                    return rva - address + raw
-            return None
-
-        imports = []
-        position = offset(import_rva) if import_rva else None
-        while position is not None:
-            name_rva = struct.unpack_from("<I", data, position + 12)[0]
-            if not name_rva:
-                break
-            start = offset(name_rva)
-            imports.append(data[start : data.index(b"\0", start)].decode("ascii", errors="replace").lower())
-            position += 20
-        return {"imports": sorted(imports)}
-    except (OSError, struct.error, ValueError):
-        return {"unreadable": "PE headers"}
+    imports = read_pe_imports(path)
+    return {"unreadable": "PE headers"} if imports is None else {"imports": sorted(imports)}
 
 
 FACTS = {"macho": macho_facts, "elf": elf_facts, "pe": pe_facts}
@@ -221,14 +201,32 @@ def cmd_compare(args) -> int:
 
 
 def find_programs(prefix: str) -> dict:
+    """The programs a user runs, by name: on Linux these are launcher scripts beside the real binaries, and are what is run."""
     found = {}
     for directory, _subdirectories, names in os.walk(prefix):
         for name in names:
             stem = os.path.splitext(name)[0].lower() if name.lower().endswith(".exe") else name.lower()
-            path = os.path.join(directory, name)
-            if stem in PROGRAMS and stem not in found and detect_format(path) in FACTS:
+            path = os.path.abspath(os.path.join(directory, name))
+            if stem in PROGRAMS and stem not in found and (name.lower().endswith(".exe") or os.access(path, os.X_OK)):
                 found[stem] = path
     return found
+
+
+def run_program(path: str, environment: dict):
+    """Exit code and output of <program> -version, or None and the reason it could not be started."""
+    try:
+        result = subprocess.run(
+            [path, "-version"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=300,
+            env=environment,
+            cwd=os.path.dirname(path),
+        )
+        return result.returncode, (result.stdout + result.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return None, str(error)
 
 
 def cmd_run(args) -> int:
@@ -236,6 +234,7 @@ def cmd_run(args) -> int:
     problems = [f"no {name} executable under {args.prefix}" for name in PROGRAMS if name not in programs]
 
     environment = {key: value for key, value in os.environ.items() if key not in LOADER_VARIABLES}
+    failed = {}
     hidden = []
     try:
         for directory in args.hide:
@@ -244,26 +243,26 @@ def cmd_run(args) -> int:
                 os.rename(directory, aside)
                 hidden.append((aside, directory))
         for name, path in sorted(programs.items()):
-            try:
-                result = subprocess.run(
-                    [path, "-version"],
-                    capture_output=True,
-                    text=True,
-                    errors="replace",
-                    timeout=300,
-                    env=environment,
-                    cwd=os.path.dirname(path),
-                )
-                output = (result.stdout + result.stderr).strip()
-                if result.returncode != 0:
-                    problems.append(f"{name} -version exited {result.returncode}: {output[-600:]}")
-                else:
-                    print(f"  ok   {name} -version: {output.splitlines()[0] if output else '(no output)'}")
-            except (OSError, subprocess.TimeoutExpired) as error:
-                problems.append(f"{name} -version could not run: {error}")
+            code, output = run_program(path, environment)
+            if code == 0:
+                print(f"  ok   {name} -version: {output.splitlines()[0] if output else '(no output)'}")
+            else:
+                failed[name] = (code, output)
     finally:
         for aside, directory in reversed(hidden):
             os.rename(aside, directory)
+
+    # A program that fails with the build directory and the store hidden is run again with nothing hidden, so that one that
+    # depends on them is told apart from one that fails wherever it is run.
+    for name, (code, output) in sorted(failed.items()):
+        retry, _ = run_program(programs[name], environment)
+        cause = (
+            "it also fails with nothing hidden"
+            if retry != 0
+            else "it runs with nothing hidden, so it depends on a hidden location"
+        )
+        status = f"exited {code}" if code is not None else "could not start"
+        problems.append(f"{name} -version {status}; {cause}: {output[-600:]}")
 
     if problems:
         print(f"the installed programs did not all run from {args.prefix}:")

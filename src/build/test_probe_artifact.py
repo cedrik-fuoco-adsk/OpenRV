@@ -87,6 +87,33 @@ def synth_pe(path: str, is_dll: bool) -> str:
     return path
 
 
+def synth_pe_with_imports(path: str, imports) -> str:
+    """A PE32+ DLL with one section holding a real import directory that names ``imports``."""
+    pe_offset, optional_size, raw, rva = 0x80, 240, 0x400, 0x1000
+    data = bytearray(0x600)
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = struct.pack("<I", pe_offset)
+    data[pe_offset : pe_offset + 4] = b"PE\x00\x00"
+    # COFF header: x64, one section, the optional header's size, IMAGE_FILE_DLL.
+    struct.pack_into("<HHIIIHH", data, pe_offset + 4, 0x8664, 1, 0, 0, 0, optional_size, 0x2022)
+    optional = pe_offset + 24
+    struct.pack_into("<H", data, optional, 0x20B)
+    # Data directory 1 is the import table; the directories start 112 bytes into a PE32+ optional header.
+    struct.pack_into("<II", data, optional + 112 + 8, rva, 0x100)
+    section = optional + optional_size
+    data[section : section + 8] = b".idata\x00\x00"
+    struct.pack_into("<IIII", data, section + 8, 0x200, rva, 0x200, raw)
+    names = 0x80
+    for index, name in enumerate(imports):
+        struct.pack_into("<I", data, raw + index * 20 + 12, rva + names)
+        encoded = name.encode("ascii") + b"\x00"
+        data[raw + names : raw + names + len(encoded)] = encoded
+        names += len(encoded)
+    with open(path, "wb") as handle:
+        handle.write(bytes(data))
+    return path
+
+
 def probe_document(directory: str, name: str, artifacts) -> dict:
     out = os.path.join(directory, f"{name}.json")
     args = ["probe"]
@@ -435,6 +462,24 @@ def test_missing_tool_behaviour(directory: str) -> None:
         module.shutil.which = original_which
 
 
+def test_pe_imports_without_tools(directory: str) -> None:
+    print("PE imports without an inspection tool")
+    module = load_module()
+    artifact = synth_pe_with_imports(os.path.join(directory, "imports.dll"), ["KERNEL32.dll", "MSVCP140.dll"])
+    original_which = shutil.which
+    try:
+        # Neither llvm-readobj nor dumpbin: a Windows machine outside a Visual Studio developer prompt.
+        module.shutil.which = lambda name, *args, **kwargs: None
+        demands = module._abi_demands_pe(artifact, strict=True)
+        names = [value["version"] for value in demands.get("values", [])]
+        check("the imports are read from the PE headers", demands.get("known") is True, str(demands))
+        check("every imported DLL is recorded, lower-cased", names == ["kernel32.dll", "msvcp140.dll"], str(names))
+        check("the source says where they came from", demands.get("source") == "PE import directory", str(demands))
+    finally:
+        module.shutil.which = original_which
+    check("a file that is not a PE image yields no imports", module.read_pe_imports(__file__) is None)
+
+
 def test_available_tools_against_real_artifacts(directory: str) -> None:
     print("tool-backed facts against real artifacts")
     clang = shutil.which("clang")
@@ -717,6 +762,7 @@ def main() -> int:
         test_version_name_parsing(directory)
         test_requirement_direction(directory)
         test_missing_tool_behaviour(directory)
+        test_pe_imports_without_tools(directory)
         test_framework_directory_is_resolved(directory)
         test_available_tools_against_real_artifacts(directory)
 

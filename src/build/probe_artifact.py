@@ -451,6 +451,49 @@ def _abi_demands_macho(path: str, strict: bool):
     return {"known": True, "values": values, "source": "otool -l"}
 
 
+def read_pe_imports(path: str):
+    """The DLLs a PE image imports, read from its import directory; None if the headers cannot be read.
+
+    Only the names are needed, so they are read directly rather than through llvm-readobj or dumpbin, which are often not
+    on PATH -- dumpbin only inside a Visual Studio developer prompt.
+    """
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read()
+        pe = struct.unpack_from("<I", data, 0x3C)[0]
+        if data[pe : pe + 4] != b"PE\0\0":
+            return None
+        sections = struct.unpack_from("<H", data, pe + 6)[0]
+        optional_size = struct.unpack_from("<H", data, pe + 20)[0]
+        optional = pe + 24
+        # The data directories follow the optional header's fixed part, which is longer in PE32+.
+        directories = optional + (112 if struct.unpack_from("<H", data, optional)[0] == 0x20B else 96)
+        import_rva = struct.unpack_from("<I", data, directories + 8)[0]
+        table = optional + optional_size
+
+        def offset(rva):
+            for index in range(sections):
+                virtual_size, address, raw_size, raw = struct.unpack_from("<IIII", data, table + index * 40 + 8)
+                if address <= rva < address + max(virtual_size, raw_size):
+                    return rva - address + raw
+            return None
+
+        imports = []
+        position = offset(import_rva) if import_rva else None
+        while position is not None:
+            name_rva = struct.unpack_from("<I", data, position + 12)[0]
+            if not name_rva:
+                break
+            start = offset(name_rva)
+            if start is None:
+                return None
+            imports.append(data[start : data.index(b"\0", start)].decode("ascii", errors="replace").lower())
+            position += 20
+        return imports
+    except (OSError, struct.error, ValueError):
+        return None
+
+
 def _abi_demands_pe(path: str, strict: bool):
     attempted = []
 
@@ -475,6 +518,15 @@ def _abi_demands_pe(path: str, strict: bool):
                 if entry not in values:
                     values.append(entry)
             return {"known": True, "values": values, "source": "dumpbin /dependents"}
+
+    imports = read_pe_imports(path)
+    if imports is not None:
+        values = []
+        for name in imports:
+            entry = {"kind": "import", "namespace": "import", "version": name}
+            if entry not in values:
+                values.append(entry)
+        return {"known": True, "values": values, "source": "PE import directory"}
 
     if attempted:
         # The tool exists but could not read this file. That is a different

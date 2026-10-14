@@ -148,6 +148,9 @@ def main() -> int:
         if os.name != "nt":
             code, output = run("scan", bound, "--forbid", bound_build)
             check("a program whose search path names the build directory is reported", code == 1, output[-600:])
+            check(
+                "the reference is labelled as a library search path", "[library search path]" in output, output[-600:]
+            )
 
         print("run")
         code, output = run("run", relocatable, "--hide", os.path.join(work, "relocatable", "build"))
@@ -155,7 +158,18 @@ def main() -> int:
         check("all three programs ran", output.count("  ok   ") == 3, output[-600:])
         code, output = run("run", bound, "--hide", bound_build)
         check("a package that loads from its build directory fails once it is hidden", code == 1, output[-600:])
+        check("the failure is put down to the hidden location", "depends on a hidden location" in output, output[-600:])
         check("the build directory is put back afterwards", os.path.isdir(bound_build))
+        if os.name != "nt":
+            # Linux packages start rv through a launcher script beside the real binary; the launcher is what is run.
+            launcher = os.path.join(relocatable, "bin", "rvls")
+            os.rename(launcher, launcher + ".bin")
+            with open(launcher, "w", encoding="utf-8") as handle:
+                handle.write('#!/bin/sh\nexec "$(dirname "$0")/rvls.bin" "$@"\n')
+            os.chmod(launcher, 0o755)
+            code, output = run("run", relocatable)
+            check("a launcher script is found and run", code == 0 and output.count("  ok   ") == 3, output[-600:])
+
         empty = os.path.join(work, "empty")
         os.makedirs(empty)
         code, output = run("run", empty)
