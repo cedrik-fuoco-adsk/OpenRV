@@ -550,7 +550,8 @@ jobs:
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    # TEMPORARY: the head_ref clause runs this job on the fork, as the baseline without the git clone fix. Never to be merged.
+    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' || github.head_ref == 'ci/conan-windows-baseline' }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
