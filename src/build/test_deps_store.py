@@ -123,6 +123,14 @@ if(HARNESS_STD)
   RV_CREATE_STANDARD_DEPS_VARIABLES("RV_DEPS_PNG" "1.6.0" "" "")
   message(STATUS "HARNESS std_png_options=${{_configure_options}}")
 endif()
+
+# A dependency that forces its own build from source, as tiff.cmake and raw.cmake do: the flag is set in the dependency file
+# itself, before the standard variables decide where it installs.
+if(HARNESS_SELF_FORCED)
+  set(RV_DEPS_SELFFORCED_FORCE_BUILD ON CACHE BOOL "")
+  RV_CREATE_STANDARD_DEPS_VARIABLES("RV_DEPS_SELFFORCED" "1.0" "" "")
+  message(STATUS "HARNESS self_forced_install=${{_install_dir}}")
+endif()
 """
 
 VALUE_RE = {
@@ -141,6 +149,7 @@ VALUE_RE = {
         "std_install_command",
         "std_png_options",
         "std_early_options",
+        "self_forced_install",
     )
 }
 
@@ -412,6 +421,51 @@ def test_a_forced_build_never_uses_the_store(directory: str, source: str) -> Non
         value("std_install_command", output),
     )
     check("the published entry is not used", value("found", output) == "FALSE", value("found", output))
+
+
+def test_a_dependency_forcing_itself_is_never_stored(directory: str, source: str) -> None:
+    print("a dependency that forces its own build from source stays out of the store from the first configure")
+    build = os.path.join(directory, "self-forced")
+    _, output = configure(
+        source,
+        build,
+        f"-DRV_DEPS_STORE={os.path.join(directory, 'self-forced-store')}",
+        "-DRV_DEPS_STORE_ELIGIBLE=RV_DEPS_ZLIB;RV_DEPS_SELFFORCED",
+        "-DHARNESS_SELF_FORCED=ON",
+    )
+    check(
+        "it installs in the build directory even though it is named as eligible",
+        normalized_path(value("self_forced_install", output))
+        == normalized_path(os.path.join(build, "RV_DEPS_SELFFORCED", "install")),
+        value("self_forced_install", output),
+    )
+
+
+def test_force_built_dependencies_stay_ineligible() -> None:
+    print("the dependencies built from source on purpose are never stored")
+    dependencies = os.path.join(REPO, "cmake", "dependencies")
+    with open(os.path.join(REPO, "cmake", "macros", "rv_deps_store.cmake"), encoding="utf-8") as handle:
+        default = re.search(r'SET\(RV_DEPS_STORE_ELIGIBLE_DEFAULT\s+"([^"]*)"', handle.read()).group(1).split(";")
+    forced = []
+    for name in sorted(os.listdir(dependencies)):
+        if not name.endswith(".cmake"):
+            continue
+        with open(os.path.join(dependencies, name), encoding="utf-8") as handle:
+            text = handle.read()
+        for match in re.finditer(r"SET\((RV_DEPS_\w+)_FORCE_BUILD\s+ON\b", text):
+            target = match.group(1)
+            forced.append(target)
+            standard = text.find(f'RV_CREATE_STANDARD_DEPS_VARIABLES("{target}"')
+            check(
+                f"{target} is forced before the standard variables decide where it installs ({name})",
+                standard == -1 or match.start() < standard,
+            )
+            check(f"{target} is not in the built-in eligible list", target not in default, str(default))
+    check(
+        "libtiff and libraw are among the dependencies forced to build from source",
+        {"RV_DEPS_TIFF", "RV_DEPS_RAW"} <= set(forced),
+        str(forced),
+    )
 
 
 def test_the_entry_follows_the_recipe(directory: str, source: str) -> None:
@@ -882,6 +936,8 @@ def main() -> int:
         test_an_empty_eligibility_list_places_nothing(directory, source)
         test_the_default_list_is_not_frozen(directory, source)
         test_a_forced_build_never_uses_the_store(directory, source)
+        test_a_dependency_forcing_itself_is_never_stored(directory, source)
+        test_force_built_dependencies_stay_ineligible()
         test_the_entry_follows_the_recipe(directory, source)
         test_one_store_holds_one_slot_per_identity(directory, source)
         test_the_store_location_is_normalized(directory, source)
