@@ -74,8 +74,37 @@ ENDIF()
 IF(NOT ${_target}_FOUND)
   INCLUDE(${CMAKE_CURRENT_LIST_DIR}/build/zlib.cmake)
 
+  IF(_staging_root)
+    # Stored: the adjustments below that would modify the installed tree are made to the staged tree before it is published instead, because a published entry
+    # is shared with other build directories and is never modified in place.
+    SET(_zlib_store_fixup
+        ""
+    )
+    IF(RV_TARGET_DARWIN)
+      STRING(APPEND _zlib_store_fixup
+             "EXECUTE_PROCESS(COMMAND \"${CMAKE_INSTALL_NAME_TOOL}\" -id \"@rpath/${_libname}\" \"\${RV_STAGED_INSTALL}/lib/${_libname}\" "
+             "COMMAND_ERROR_IS_FATAL ANY)\n"
+      )
+    ENDIF()
+    IF(RV_TARGET_WINDOWS
+       AND CMAKE_BUILD_TYPE MATCHES "^Debug$"
+    )
+      # FFmpeg expects "zlib" in Release and Debug.
+      STRING(APPEND _zlib_store_fixup "FILE(COPY_FILE \"\${RV_STAGED_INSTALL}/lib/${_implibname}\" \"\${RV_STAGED_INSTALL}/lib/zlib.lib\")\n")
+    ENDIF()
+    IF(_zlib_store_fixup)
+      RV_DEPS_STORE_FIXUP(${_target} "${_zlib_store_fixup}")
+    ENDIF()
+  ENDIF()
+
   IF(RV_TARGET_WINDOWS)
     RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} BIN_DIR ${_bin_dir} OUTPUTS ${RV_STAGE_BIN_DIR}/${_libname})
+  ELSEIF(
+    RV_TARGET_DARWIN
+    AND _staging_root
+  )
+    # The install name was set on the staged tree; see above.
+    RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} OUTPUTS ${RV_STAGE_LIB_DIR}/${_libname})
   ELSEIF(RV_TARGET_DARWIN)
     RV_STAGE_DEPENDENCY_LIBS(
       TARGET

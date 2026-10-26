@@ -22,8 +22,22 @@ on:
       - 'cmake/macros/rv_probe_artifact.cmake'
       - 'cmake/macros/rv_build_manifest.cmake'
       - 'cmake/defaults/rv_options.cmake'
+      # The dependency store, its relocation gate, and the dependency the round trip builds through it.
+      - 'cmake/macros/rv_deps_store.cmake'
+      - 'cmake/macros/rv_store_install.cmake'
+      - 'cmake/macros/rv_store_publish.cmake'
+      - 'cmake/macros/rv_create_std_deps_vars.cmake'
+      - 'cmake/macros/rv_find_dependency.cmake'
+      - 'cmake/dependencies/zlib.cmake'
+      - 'cmake/dependencies/build/zlib.cmake'
+      - 'src/build/check_relocation.py'
+      - 'src/build/test_check_relocation.py'
+      - 'src/build/test_deps_store.py'
+      - 'src/build/test_deps_store_roundtrip.py'
       - 'src/build/check_default_invariance.py'
       - 'src/build/test_check_default_invariance.py'
+      - 'src/build/check_packaging.py'
+      - 'src/build/test_check_packaging.py'
       - 'openrvcore-conanfile.py'
       - '.github/workflows/validate-identity.yml'
 
@@ -60,10 +74,37 @@ jobs:
       - name: Check the build manifest
         run: python3 src/build/test_build_manifest.py
 
+      # The store's addressing, publishing and opt-out are exercised by configuring, and
+      # reconfiguring, a small project that includes the real options, identity and store macros in
+      # the order the real configure uses them, and by racing real publishes and installs against one
+      # entry. Opting out only shows up on a second configure of the same tree.
+      - name: Check the dependency store path resolution
+        run: python3 src/build/test_deps_store.py
+
+      # The relocation gate decides what may be stored at all. Its tests build a real installed
+      # dependency four ways -- relocatable, hardcoding its install directory, working but still
+      # naming it, and reading a data file from it -- and require all but the first to fail. A gate
+      # that cannot fail is worth nothing.
+      - name: Check the relocation gate
+        run: python3 src/build/test_check_relocation.py
+
       # The default-configure invariance check runs on real configured trees in check-default-invariance.yml, where an equivalence it reported
       # wrongly would pass silently. These planted trees each differ in one way, and every real difference must be reported.
       - name: Check the default configure invariance check
         run: python3 src/build/test_check_default_invariance.py
+
+      # The packaging check runs on full builds in check-store-packaging.yml. These build a real package that runs from its
+      # prefix and one that only runs while its build directory is there, and require the check to tell them apart.
+      - name: Check the packaging check
+        run: python3 src/build/test_check_packaging.py
+
+      # The store's round trip with a real dependency: a first build populates it, staging leaves the
+      # entry untouched, the relocation gate passes on the published zlib, a second build directory
+      # consumes it, and deleting or cleaning the first leaves it untouched. This is the check that
+      # found every defect in the store, which the planted-tree suite could not. GitHub sets CI, so
+      # a download or toolchain failure fails this step instead of being reported as a skip.
+      - name: Check the store round trip with a real dependency
+        run: python3 src/build/test_deps_store_roundtrip.py
 
       # The runtime resolution is CMake string logic, which the Python checks cannot reach, and what
       # it produces decides whether two builds may share artifacts. Forcing MSVC on means the

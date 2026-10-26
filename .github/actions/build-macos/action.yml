@@ -34,6 +34,14 @@ inputs:
     description: 'Git ref to configure with the same options and compare against, or merge-base for the merge base with upstream main; empty to skip'
     required: false
     default: ''
+  deps-store:
+    description: 'Dependency store location, passed as RV_DEPS_STORE; empty to build without a store'
+    required: false
+    default: ''
+  packaging-check:
+    description: 'After installing, check that the staged and installed output is independent of the store and of the build directory'
+    required: false
+    default: 'false'
 
 runs:
   using: "composite"
@@ -172,7 +180,7 @@ runs:
       run: |
         which cmake
         cmake --version
-        cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }}
+        cmake -B _build -G "Ninja" -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} ${{ inputs.deps-store != '' && format('-DRV_DEPS_STORE={0}', inputs.deps-store) || '' }}
       shell: bash
 
     # Configures a baseline checkout with the same options and checks that this configure generates the same build. See
@@ -212,6 +220,32 @@ runs:
     - name: Install OpenRV
       if: inputs.configure-only != 'true'
       run: cmake --install _build --prefix $(pwd)/_install --config ${{ inputs.build-type }}
+      shell: bash
+
+
+    # Checks that the packaged output does not depend on where it was built: nothing installed finds libraries through the store, and rv and rvls run from the
+    # install prefix with the build directory and the store renamed aside. Also records a fingerprint of the staged tree, so that a build that used the store
+    # can be compared with one that did not. See src/build/check_packaging.py.
+    - name: Check the packaged output
+      if: inputs.packaging-check == 'true'
+      run: |
+        # Every check runs, so one build reports everything; the step fails at the end if any did.
+        status=0
+        store="${{ inputs.deps-store }}"
+        hide=(--hide _build)
+        if [ -n "$store" ]; then
+          # The packaged output must not find libraries through the store. A string a binary only records, such as FFmpeg's configure line, is reported.
+          python src/build/check_packaging.py scan _install --forbid "$store" --allow-embedded-strings || status=1
+          hide+=(--hide "$store")
+        fi
+        # Reported, not enforced: the staged tree keeps absolute paths into dependency install directories in every build -- they are removed at install -- and
+        # the build directory is named with or without the store. Both show what the store's references are measured against.
+        if [ -n "$store" ]; then python src/build/check_packaging.py scan _build/stage --forbid "$store" || true; fi
+        python src/build/check_packaging.py scan _install --forbid "$(pwd)/_build" || true
+        python src/build/check_packaging.py fingerprint _build/stage --out packaging-fingerprint-stage.json
+        python src/build/check_packaging.py fingerprint _install --out packaging-fingerprint-install.json
+        python src/build/check_packaging.py run _install "${hide[@]}" || status=1
+        exit $status
       shell: bash
 
     - name: Save dependencies cache

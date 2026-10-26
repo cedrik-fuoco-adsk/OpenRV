@@ -17,6 +17,7 @@ build_system/config_common_build
 build_system/build_errors
 build_system/build_identity
 build_system/artifact_probing_and_manifest
+build_system/dependency_store
 ```
 
 ```{toctree}

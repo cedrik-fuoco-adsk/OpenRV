@@ -9,6 +9,14 @@
 # https://www.libraw.org/docs/Install-LibRaw-eng.html
 #
 
+# Force build from source: pre-built libraw packages may link against a shared lcms2 DLL that isn't bundled.  Building from source uses OpenRV's own LCMS
+# (lcms.dll). We need to remove lcms from pub-sub and use lcms2 in RV. Set before RV_CREATE_STANDARD_DEPS_VARIABLES, which decides store eligibility, so that
+# libraw is never placed in the dependency store.
+SET(RV_DEPS_RAW_FORCE_BUILD
+    ON
+    CACHE BOOL "libraw must be built from source (requires OpenRV's own LCMS build)"
+)
+
 RV_CREATE_STANDARD_DEPS_VARIABLES("RV_DEPS_RAW" "${RV_DEPS_RAW_VERSION}" "make" "../src/configure")
 IF(RV_TARGET_LINUX)
   # Overriding _lib_dir created in 'RV_CREATE_STANDARD_DEPS_VARIABLES' since this autotools-based project isn't using lib64
@@ -16,13 +24,6 @@ IF(RV_TARGET_LINUX)
       ${_install_dir}/lib
   )
 ENDIF()
-
-# Force build from source: pre-built libraw packages may link against a shared lcms2 DLL that isn't bundled.  Building from source uses OpenRV's own LCMS
-# (lcms.dll). We need to remove lcms from pub-sub and use lcms2 in RV.
-SET(RV_DEPS_RAW_FORCE_BUILD
-    ON
-    CACHE BOOL "libraw must be built from source (requires OpenRV's own LCMS build)"
-)
 
 # LibRaw uses autotools (not CMake), so no CONFIG files. Fall back to pkg-config. List both targets naming because vcpkg creates libraw::raw and Conan creates
 # libraw::libraw. DEPS_LIST_TARGETS works regardless of which package manager provides it.

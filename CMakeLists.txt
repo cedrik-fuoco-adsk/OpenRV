@@ -113,10 +113,14 @@ SET(FETCHCONTENT_QUIET
     OFF
 )
 
-# The build identity is computed before the dependencies, so that what configures them can rely on it. It is reported further down, once the platform is
-# settled.
+# The build identity is computed before the dependencies, because a store location makes the dependency base directory an identity-derived path. It is reported
+# further down, once the platform is settled.
 INCLUDE(rv_build_identity)
 RV_COMPUTE_BUILD_IDENTITY()
+
+# The store is resolved before the dependencies are configured, because it decides where their installed trees go.
+INCLUDE(rv_deps_store)
+RV_RESOLVE_DEPS_STORE()
 
 ADD_SUBDIRECTORY(cmake/dependencies)
 

@@ -11,6 +11,9 @@ OPTION(RV_SHOW_ALL_VARIABLES "Displays all build variables." ON)
 
 #
 # General build options
+#
+# RV_DEPS_BASE_DIR stays local to the build directory: it holds dependency source, build and stamp trees, which embed absolute paths and must not be shared.
+# Only *installed* dependency trees are placed in the store, by RV_DEPS_INSTALL_PATHS in cmake/macros/rv_deps_store.cmake.
 SET(RV_DEPS_BASE_DIR
     "${CMAKE_BINARY_DIR}"
     CACHE STRING "RV's 3rd party cache location."
@@ -174,14 +177,41 @@ SET_PROPERTY(
 # Everything in this group is read-only: it records and reports what the build already is and reroutes nothing. It adds configure output and files in the build
 # directory, and never changes a dependency path.
 #
-# Probing inspects binaries with readelf/otool/dumpbin, which is too slow to do on every configure, so it is off by default.
+# Probing inspects binaries with readelf/otool/dumpbin, which is too slow to do on every configure, so it is off by default. The store path probes regardless of
+# this option, because a store entry must be verified before it is used.
 #
 OPTION(RV_BUILD_IDENTITY "Compute and report the build identity" ON)
 OPTION(RV_BUILD_MANIFEST "Write a build manifest recording what this build is made of" ON)
 OPTION(RV_DEPS_PROBE_ARTIFACTS "Probe prebuilt artifacts and record their facts in the build manifest" OFF)
 
 #
-# Strict artifact probing: fail naming the missing inspection tool instead of recording the fact as unknown, for a configuration that must not use an artifact
-# whose facts cannot be read. A default build leaves this OFF so that a machine without readelf/otool/dumpbin still builds.
+# Strict artifact probing: fail naming the missing inspection tool instead of recording the fact as unknown. The store path requires strict probing because a
+# store entry that cannot be verified must not be used. A default build leaves this OFF so that a machine without readelf/otool/dumpbin still builds.
 #
 OPTION(RV_DEPS_PROBE_STRICT "Fail artifact probing when an inspection tool is missing" OFF)
+
+#
+# Identity-addressed dependency store.
+#
+# When set, the *installed* trees of the dependencies named in RV_DEPS_STORE_ELIGIBLE are placed in this store, keyed by the build identity and by each
+# dependency's own recipe, instead of inside the build directory. Source, build and stamp trees stay local, because they embed absolute paths and are not
+# portable -- see docs/build_system/dependency_store.md. When unset, the default, nothing is placed in a store and the layout is exactly as before. A relative
+# path, or one starting with ~, is resolved against the build directory and the home directory respectively.
+#
+# The store is never required: building everything from source remains a supported mode on every platform.
+#
+SET(RV_DEPS_STORE
+    ""
+    CACHE STRING "Identity-addressed store for installed dependency trees (unset preserves the in-build-directory layout)"
+)
+#
+# Eligibility is per dependency: a dependency is named only once its relocation check has passed, so the store never holds a dependency whose installed tree
+# cannot be moved. "default" stands for the dependencies that have passed it, listed as RV_DEPS_STORE_ELIGIBLE_DEFAULT in cmake/macros/rv_deps_store.cmake, so a
+# tree configured before that list changes still follows it. Extend it with "default;RV_DEPS_<NAME>", replace it with an explicit list, or empty it to store
+# nothing.
+#
+SET(RV_DEPS_STORE_ELIGIBLE
+    "default"
+    CACHE STRING
+          "Semicolon-separated dependency targets whose installed trees may be placed in the store, or 'default'; each must have passed its relocation check"
+)

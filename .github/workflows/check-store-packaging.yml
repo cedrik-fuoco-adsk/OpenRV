@@ -1,0 +1,155 @@
+name: Check store packaging
+
+# Builds and installs OpenRV on each platform twice, once with the dependency store and once without, and checks that the packaged output does not depend on
+# where it was built: nothing installed finds libraries through the store, rv and rvls run from the install prefix with the build directory and the store
+# renamed aside, and the installed tree of the build that used the store is equivalent to that of the build that did not. See src/build/check_packaging.py.
+#
+# Run on demand: it is six full builds.
+
+on:
+  workflow_dispatch:
+
+
+jobs:
+  rocky-linux:
+    name: 'Rocky Linux 9 CY2025 Release <store=${{ matrix.store }}>'
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rockylinux:9
+      volumes:
+        - /usr/local/lib/android:/github/home/android
+        - /usr/share/dotnet:/github/home/dotnet
+        - /opt/ghc:/github/home/ghc
+        - /usr/local/.ghcup:/github/home/.ghcup
+        - /usr/local/graalvm:/github/home/graalvm
+        - /usr/local/share/powershell:/github/home/powershell
+        - /usr/local/share/chromium:/github/home/chromium
+        - /usr/local/lib/node_modules:/github/home/node_modules
+        - /opt/hostedtoolcache:/github/home/hostedtoolcache
+        - /usr/local/share/boost:/github/home/boost
+        - /usr/share/swift:/github/home/swift
+        - /usr/share/miniconda:/github/home/miniconda
+        - /usr/local/share/vcpkg:/github/home/vcpkg
+        - /home/runner/.cargo:/github/home/.cargo
+        - /home/runner/.rustup:/github/home/.rustup
+    strategy:
+      fail-fast: false
+      matrix:
+        store: ['on', 'off']
+    steps:
+      - name: Install git
+        run: dnf install -y git
+        shell: bash
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/build-linux
+        with:
+          rocky-version: "9"
+          build-type: "Release"
+          qt-version: "6.5.3"
+          cmake-version: "3.31.6"
+          python-version: "3.11.8"
+          vfx-platform: "CY2025"
+          extra_repo: "crb"
+          deps-store: ${{ matrix.store == 'on' && format('{0}/rv-deps-store', runner.temp) || '' }}
+          packaging-check: 'true'
+      - uses: actions/upload-artifact@v4
+        # Uploaded even when the check failed, which is when the comparison is most needed.
+        if: always()
+        with:
+          name: packaging-fingerprint-linux-store-${{ matrix.store }}
+          path: packaging-fingerprint-*.json
+
+  macos:
+    name: 'macOS 14 arm64 CY2025 Release <store=${{ matrix.store }}>'
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        store: ['on', 'off']
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/build-macos
+        with:
+          arch-type: "arm64"
+          build-type: "Release"
+          qt-version: "6.5.3"
+          qt-version-short: "6.5"
+          python-version: "3.11"
+          cmake-version: "3.31.6"
+          vfx-platform: "CY2025"
+          # Both builds build their dependencies, so that only the store differs between them.
+          skip_deps_cache: 'true'
+          deps-store: ${{ matrix.store == 'on' && format('{0}/rv-deps-store', runner.temp) || '' }}
+          packaging-check: 'true'
+      - uses: actions/upload-artifact@v4
+        # Uploaded even when the check failed, which is when the comparison is most needed.
+        if: always()
+        with:
+          name: packaging-fingerprint-macos-store-${{ matrix.store }}
+          path: packaging-fingerprint-*.json
+
+  windows:
+    name: 'Windows 2022 CY2025 Release <store=${{ matrix.store }}>'
+    runs-on: windows-2022
+    env:
+      SCCACHE_GHA_ENABLED: false
+    strategy:
+      fail-fast: false
+      matrix:
+        store: ['on', 'off']
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/build-windows
+        with:
+          build-type: "Release"
+          qt-version: "6.5.3"
+          python-version: "3.11"
+          cmake-version: "3.31.6"
+          vfx-platform: "CY2025"
+          msvc-component: "14.40.17.10.x86.x64"
+          msvc-compiler: "14.40.33807"
+          # Forward slashes, as CMake writes paths.
+          deps-store: ${{ matrix.store == 'on' && 'D:/rv-deps-store' || '' }}
+          packaging-check: 'true'
+      - uses: actions/upload-artifact@v4
+        # Uploaded even when the check failed, which is when the comparison is most needed.
+        if: always()
+        with:
+          name: packaging-fingerprint-windows-store-${{ matrix.store }}
+          path: packaging-fingerprint-*.json
+
+  # The staged tree of the build that took its dependencies from the store must be equivalent to that of the build that built them in place.
+  compare:
+    name: 'Compare staged and installed trees <${{ matrix.platform }}>'
+    needs: [rocky-linux, macos, windows]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux, macos, windows]
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packaging-fingerprint-${{ matrix.platform }}-store-*
+      - name: Compare the staged and installed trees
+        run: |
+          # The installed trees must be equivalent. The staged trees are compared for the record: they keep absolute paths into dependency install
+          # directories, which differ between the store and the build directory and are removed at install.
+          python3 src/build/check_packaging.py compare \
+            packaging-fingerprint-${{ matrix.platform }}-store-off/packaging-fingerprint-stage.json \
+            packaging-fingerprint-${{ matrix.platform }}-store-on/packaging-fingerprint-stage.json || true
+          python3 src/build/check_packaging.py compare \
+            packaging-fingerprint-${{ matrix.platform }}-store-off/packaging-fingerprint-install.json \
+            packaging-fingerprint-${{ matrix.platform }}-store-on/packaging-fingerprint-install.json

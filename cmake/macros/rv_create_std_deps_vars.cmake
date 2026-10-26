@@ -18,9 +18,18 @@ MACRO(RV_CREATE_STANDARD_DEPS_VARIABLES target_name version make_command configu
   SET(_base_dir
       ${RV_DEPS_BASE_DIR}/${target_name}
   )
-  SET(_install_dir
-      ${_base_dir}/install
-  )
+  # Where the installed tree goes, and whether it is staged and published there. An eligible dependency installs into its store entry, addressed by the platform
+  # and by this dependency's recipe; anything else installs beside its source and build trees, as before, with no staging at all. See rv_deps_store.cmake.
+  RV_DEPS_IS_STORE_ELIGIBLE(${target_name} _store_eligible)
+  IF(_store_eligible)
+    RV_DEPS_STORE_RECIPE(${target_name} "${version}" ${target_name}_STORE_RECIPE)
+  ENDIF()
+  RV_DEPS_INSTALL_PATHS(${target_name} _install_dir _staging_root)
+  IF(_staging_root)
+    RV_DEPS_STORE_RESET_STALE_INSTALL(${target_name} "${_install_dir}")
+    # A fixup is written by the dependency file only when it needs one, so one left by an earlier configure is not run against a different recipe.
+    FILE(REMOVE "${_base_dir}/store_fixup.cmake")
+  ENDIF()
   # Create commonly used definition when cross-building dependencies RV_DEPS_<target-name>_ROOT_DIR variable
   SET(${target_name}_ROOT_DIR
       ${_install_dir}
@@ -129,15 +138,47 @@ MACRO(RV_CREATE_STANDARD_DEPS_VARIABLES target_name version make_command configu
   SET(_configure_options
       ""
   )
+  # A dependency sub-build caches what its find modules found, and does not look again when only the hint it was given changes. In a tree that has used a store,
+  # every sub-build configured after a stored dependency forgets what it cached for it whenever it is reconfigured, so turning the store off, moving it, or
+  # bumping the stored dependency's recipe -- each of which changes that hint and so reconfigures the sub-build -- cannot leave it linking the previous tree. A
+  # tree that never used a store gets no such argument, and its configure commands are exactly as they were. See RV_FIND_DEPENDENCY.
+  GET_PROPERTY(
+    _store_forget GLOBAL
+    PROPERTY RV_DEPS_STORE_FORGET_IN_SUBBUILDS
+  )
+  FOREACH(
+    _store_package
+    ${_store_forget}
+  )
+    LIST(APPEND _configure_options "-U${_store_package}_*")
+  ENDFOREACH()
   LIST(APPEND _configure_options "-DCMAKE_INSTALL_PREFIX=${_install_dir}")
   LIST(APPEND _configure_options "-DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}")
   LIST(APPEND _configure_options "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
   LIST(APPEND _configure_options "-S ${_source_dir}")
   LIST(APPEND _configure_options "-B ${_build_dir}")
 
-  SET(_cmake_install_command
-      ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${_install_dir} --config ${CMAKE_BUILD_TYPE}
-  )
+  # A stored dependency is installed into a private staging tree and published afterwards, so that an interrupted install cannot leave a partial tree where a
+  # later configure would find it, and two builds of the same dependency cannot install over each other.
+  #
+  # Staged with DESTDIR rather than by changing the install prefix: the prefix stays where the tree will actually live, so anything the dependency bakes into
+  # its installed files names the real place, and the relocation check on the published path can see it. For everything not stored there is no staging and this
+  # is the command it always was.
+  IF(_staging_root)
+    # One command for both halves -- install into the staging tree, then publish -- because two commands here needed ExternalProject to treat COMMAND as a
+    # separator after a `cmake -E env` prefix, which it does not: the publish half silently never ran. The tag names this build directory's staging trees, so an
+    # interrupted one can be recognized; the install script makes each one unique.
+    STRING(SHA256 _store_tag "${CMAKE_BINARY_DIR}|${target_name}")
+    STRING(SUBSTRING "${_store_tag}" 0 8 _store_tag)
+    SET(_cmake_install_command
+        ${CMAKE_COMMAND} -DRV_INSTALL_BUILD=${_build_dir} -DRV_INSTALL_PREFIX=${_install_dir} -DRV_INSTALL_CONFIG=${CMAKE_BUILD_TYPE}
+        -DRV_INSTALL_STORE=${_staging_root} -DRV_INSTALL_TAG=${_store_tag} -DRV_INSTALL_FIXUP=${_base_dir}/store_fixup.cmake -P ${RV_DEPS_INSTALL_SCRIPT}
+    )
+  ELSE()
+    SET(_cmake_install_command
+        ${CMAKE_COMMAND} --install ${_build_dir} --prefix ${_install_dir} --config ${CMAKE_BUILD_TYPE}
+    )
+  ENDIF()
 
   #
   # Finally add a clean-<target-name> target
