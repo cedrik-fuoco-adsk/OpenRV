@@ -9,6 +9,19 @@ name: Check store packaging
 on:
   workflow_dispatch:
 
+  # TEMPORARY: lets the fork run this for the build identity branch, because a workflow can only be dispatched once it is on the default branch. Only changes to
+  # what the check covers trigger it. Remove before upstreaming.
+  push:
+    branches:
+      - ci/phase0-build-identity-manifest
+    paths:
+      - '.github/workflows/check-store-packaging.yml'
+      - 'src/build/check_packaging.py'
+      - 'src/build/remove_absolute_runpath.py'
+      - 'cmake/install/pre_install_linux.cmake'
+      - 'cmake/macros/rv_deps_store.cmake'
+      - 'cmake/macros/rv_store_install.cmake'
+      - 'cmake/macros/rv_store_publish.cmake'
 
 jobs:
   rocky-linux:

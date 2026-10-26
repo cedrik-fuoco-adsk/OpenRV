@@ -40,6 +40,10 @@ on:
       - 'src/build/test_check_packaging.py'
       - 'openrvcore-conanfile.py'
       - '.github/workflows/validate-identity.yml'
+  # TEMPORARY: remove before upstreaming. Fork validation: lets a push to this branch run the fast validation on a fork without moving its default branch.
+  push:
+    branches:
+      - ci/phase0-build-identity-manifest
 
 jobs:
   # Fast, platform-specific validation of the build-identity layer.

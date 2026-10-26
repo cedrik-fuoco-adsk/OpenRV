@@ -10,6 +10,21 @@ on:
       - '.github/workflows/conan.yml'
       - 'openrvcore-conanfile.py'
       - 'cmake/dependencies/**'
+  # TEMPORARY: remove before upstreaming, together with the github.ref clauses on the jobs below.
+  # Fork validation: lets a push to this branch run the Conan matrix on a fork without moving the
+  # fork's default branch. There is deliberately no push trigger for main: upstream runs this matrix
+  # nightly and on pull requests, and a full Conan matrix on every push is not wanted.
+  push:
+    branches:
+      - ci/phase0-build-identity-manifest
+  # Manual triggering, so a fork can run the Conan path on demand, one platform at a time if need
+  # be. This workflow uses no secrets: the ASWF Conan remote it configures is read anonymously.
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Comma-separated platforms to run: rocky8,macos,windows'
+        required: false
+        default: 'rocky8,macos,windows'
 
 env:
   SKIP_DEPS_CACHE: 'false'
@@ -22,7 +37,10 @@ env:
 
 jobs:
   rocky-linux:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    # The platforms input lets a fork dispatch a single platform instead of the whole matrix; for
+    # schedule and pull_request events it is empty, so every job runs.
+    # TEMPORARY: remove the github.ref clause before upstreaming; it is the fork-branch guard that pairs with the push trigger above.
+    if : ${{ (github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true' || github.ref == 'refs/heads/ci/phase0-build-identity-manifest') && contains(format(',{0},', inputs.platforms || 'rocky8,macos,windows'), ',rocky8,') }}
     name: 'Rocky Linux ${{ matrix.rocky-version }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -318,6 +336,18 @@ jobs:
           echo "Conan home path: $CONAN_HOME_OUTPUT"
           echo "CONAN_HOME=$CONAN_HOME_OUTPUT" >> $GITHUB_ENV
 
+      - name: Cache the Conan store
+        # TEMPORARY: remove before upstreaming. Exists to make iterating on the generated-file comparison affordable: the dependency
+        # installation is by far the slowest part of this job, and without a cache every attempt
+        # pays it again before reaching anything under test. Keyed on what determines resolution,
+        # with a restore-key so a change still gets the packages it did not affect.
+        uses: actions/cache@v4
+        with:
+          path: /github/home/.conan2
+          key: conan-${{ runner.os }}-${{ matrix.rocky-version }}-${{ hashFiles('conan/packages.yml', 'conan/profiles/common', 'openrvcore-conanfile.py') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ matrix.rocky-version }}-
+
       - name: Add ASWF Conan remote
         # Required so conan/profiles/common [replace_requires] can resolve
         # openssl/*@openrv/vfx2024 from the ASWF JFrog Artifactory.
@@ -380,7 +410,10 @@ jobs:
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   macos:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    # The platforms input lets a fork dispatch a single platform instead of the whole matrix; for
+    # schedule and pull_request events it is empty, so every job runs.
+    # TEMPORARY: remove the github.ref clause before upstreaming; it is the fork-branch guard that pairs with the push trigger above.
+    if : ${{ (github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true' || github.ref == 'refs/heads/ci/phase0-build-identity-manifest') && contains(format(',{0},', inputs.platforms || 'rocky8,macos,windows'), ',macos,') }}
     name: '${{ matrix.os }} ${{ matrix.arch-type }} ${{ matrix.vfx-platform }}
       <qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
@@ -550,7 +583,10 @@ jobs:
           cmake --install build/Release --prefix $(pwd)/_install --config ${{ matrix.build-type }}
 
   windows:
-    if : ${{ github.repository_owner == 'AcademySoftwareFoundation' }}
+    # The platforms input lets a fork dispatch a single platform instead of the whole matrix; for
+    # schedule and pull_request events it is empty, so every job runs.
+    # TEMPORARY: remove the github.ref clause before upstreaming; it is the fork-branch guard that pairs with the push trigger above.
+    if : ${{ (github.repository_owner == 'AcademySoftwareFoundation' || github.event_name == 'workflow_dispatch' || vars.RV_CI_ON_FORK == 'true' || github.ref == 'refs/heads/ci/phase0-build-identity-manifest') && contains(format(',{0},', inputs.platforms || 'rocky8,macos,windows'), ',windows,') }}
     name: 'Windows ${{ matrix.vfx-platform }}
       <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
