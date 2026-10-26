@@ -319,6 +319,13 @@ MACRO(RV_FIND_DEPENDENCY)
         ENDIF()
         LIST(APPEND RV_DEPS_LIST ${_rfd_actual_dep})
         RV_RESOLVE_DARWIN_INSTALL_NAME(${_rfd_actual_dep})
+
+        # This dependency was satisfied from an installed package, so it is a prebuilt artifact whose ABI the build is trusting. Register it for probing and for
+        # the manifest. Dependencies built from source are deliberately not registered: they are described by their build recipe, and probing them would slow
+        # every configure for no benefit.
+        IF(RV_DEPS_PROBE_ARTIFACTS)
+          RV_REGISTER_PREBUILT_TARGET(${_rfd_actual_dep})
+        ENDIF()
       ENDFOREACH()
 
       STRING(TOUPPER ${_RFD_PACKAGE} _RFD_PKG_UPPER)

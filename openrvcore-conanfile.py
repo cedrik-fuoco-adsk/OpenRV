@@ -1,4 +1,7 @@
+import json
 import os
+import shutil
+import subprocess
 import sys
 from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeDeps, cmake_layout, CMakeToolchain
@@ -198,8 +201,185 @@ class OpenRVBase:
         generators_folder = os.path.join(self.build_folder, "generators")
         tc.cache_variables["RV_CONAN_CMAKE_PREFIX_PATH"] = generators_folder
 
+        # Record what this profile says the platform is, and what was resolved, so the CMake path can check the profile against the identity it computed and
+        # the build manifest can record the package set. Both are bookkeeping: they change nothing about how dependencies resolve.
+        self.__write_conan_identity(tc)
+        self.__write_conan_packages(tc)
+
         # Generate the CMake's toolchain and preset files.
         tc.generate()
+
+    def __cmake_path(self, path):
+        """CMake reads cache variables as forward-slash paths on every platform."""
+        return os.path.abspath(path).replace("\\", "/")
+
+    def __write_conan_identity(self, tc):
+        """Write the profile's view of the platform identity.
+
+        The document is emitted as *partial*: a Conan profile genuinely cannot know the Python ABI series or the Qt version, so those are omitted rather than
+        guessed. The CMake path compares only the fields a profile can express.
+        """
+        script = os.path.join(self.recipe_folder, "src", "build", "build_identity.py")
+        if not os.path.isfile(script):
+            self.output.warning(f"Conan identity: {script} not found, so the profile was not recorded")
+            return
+
+        settings = self.settings
+        compiler = str(settings.get_safe("compiler") or "")
+        if compiler == "msvc":
+            stdlib = "msvc"
+        else:
+            stdlib = str(settings.get_safe("compiler.libcxx") or "")
+
+        inputs = {
+            "vfx_platform": str(self.options.vfx_platform),
+            "target_os": str(settings.get_safe("os") or ""),
+            "target_arch": str(settings.get_safe("arch") or ""),
+            "compiler_id": compiler,
+            "compiler_version": str(settings.get_safe("compiler.version") or ""),
+            "stdlib": stdlib,
+            "cxx_standard": str(settings.get_safe("compiler.cppstd") or ""),
+            "build_config": str(settings.get_safe("build_type") or ""),
+        }
+
+        # The C runtime is a Windows-only axis, and a profile expresses it as two settings. An unset
+        # runtime_type follows build_type: Conan's default profile plugin fills it in exactly that way
+        # before this runs, and the same rule is applied here for a profile plugin that does not, so
+        # the profiles need not state it to have the runtime compared. Without a runtime there is
+        # nothing to state, and recording half of it would report drift that does not exist.
+        runtime = str(settings.get_safe("compiler.runtime") or "")
+        runtime_type = str(settings.get_safe("compiler.runtime_type") or "")
+        if runtime and not runtime_type and compiler in ("msvc", "clang"):
+            runtime_type = "Debug" if str(settings.get_safe("build_type") or "") == "Debug" else "Release"
+        if runtime and runtime_type:
+            inputs["crt"] = f"{runtime}:{runtime_type}"
+
+        inputs_file = os.path.join(self.build_folder, "conan-identity.inputs")
+        document = os.path.join(self.build_folder, "conan-identity.json")
+        try:
+            with open(inputs_file, "w", encoding="utf-8") as handle:
+                handle.write("# Conan profile view of the platform, written by openrvcore-conanfile.py.\n")
+                for key, value in inputs.items():
+                    handle.write(f"{key}={value}\n")
+
+            python = self.__python_interpreter()
+            if not python:
+                self.output.warning("Conan identity: no Python 3 interpreter found, so the profile was not recorded")
+                return
+            completed = subprocess.run(
+                [python, script, "emit", "--inputs", inputs_file, "--partial", "--out", document],
+                capture_output=True,
+                text=True,
+            )
+            if completed.returncode != 0:
+                self.output.warning(
+                    f"Conan identity: could not record the profile (exit {completed.returncode}). {completed.stderr.strip()}"
+                )
+                return
+        except OSError as error:
+            self.output.warning(f"Conan identity: could not record the profile: {error}")
+            return
+
+        tc.cache_variables["RV_CONAN_IDENTITY_FILE"] = self.__cmake_path(document)
+        self.output.info(f"Conan identity: recorded the profile at {document}")
+
+        # The identity is computed by CMake's configure, which runs after this, so on a first install there
+        # is nothing to compare against yet and the configure reports drift instead. On a re-install into a
+        # build folder that has been configured, the computed identity is on disk and the profile is checked
+        # against it here, before any package is built with the wrong settings. Reported, not enforced.
+        computed = os.path.join(self.build_folder, "build-identity.json")
+        if os.path.isfile(computed):
+            try:
+                compared = subprocess.run(
+                    [
+                        python,
+                        script,
+                        "compare",
+                        "--left",
+                        computed,
+                        "--right",
+                        document,
+                        "--right-name",
+                        "conan-profile",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError as error:
+                self.output.warning(
+                    f"Conan identity: could not compare the profile with the computed identity: {error}"
+                )
+                return
+            if compared.returncode == 0:
+                self.output.info("Conan identity: the profile agrees with the computed identity")
+            elif compared.returncode == 2:
+                self.output.warning(
+                    "Conan identity: the profile disagrees with the computed identity (reported, not enforced):\n"
+                    + compared.stdout.strip()
+                )
+            else:
+                self.output.warning(
+                    f"Conan identity: could not compare the profile with the computed identity (exit {compared.returncode}). "
+                    + compared.stderr.strip()
+                )
+
+    def __python_interpreter(self):
+        """The interpreter to run build_identity.py with.
+
+        Conan's own interpreter when it has one. A frozen Conan -- the installer's conan.exe -- reports
+        itself as sys.executable, and running a script with it fails, so one is found on PATH instead.
+        """
+        if not getattr(sys, "frozen", False) and sys.executable:
+            return sys.executable
+        return shutil.which("python3") or shutil.which("python")
+
+    def __write_conan_packages(self, tc):
+        """Write the resolved host package set, sorted so the build manifest stays deterministic.
+
+        Bookkeeping must never fail an install, so a dependency whose fields cannot be read is
+        warned about and skipped rather than aborting ``conan install``. That matters here: the
+        first version of this method called ``dependency.package_id``, which does not exist --
+        Conan 2 exposes it on the package reference -- and the resulting AttributeError failed
+        ``conan install`` on every platform.
+        """
+        try:
+            dependencies = self.dependencies.host
+        except Exception as error:  # pragma: no cover - depends on the Conan version in use
+            self.output.warning(f"Conan packages: could not enumerate resolved dependencies: {error}")
+            return
+
+        packages = []
+        for dependency in dependencies.values():
+            try:
+                reference = dependency.ref
+                user = getattr(reference, "user", None)
+                channel = getattr(reference, "channel", None)
+                entry = {
+                    "name": str(reference.name),
+                    "version": str(reference.version),
+                    # str(RecipeReference) renders only name/version, so compose this explicitly.
+                    "ref": f"{reference.name}/{reference.version}" + (f"@{user}/{channel}" if user or channel else ""),
+                    "package_id": str(dependency.pref.package_id),
+                    "recipe_revision": str(getattr(reference, "revision", "") or ""),
+                }
+            except Exception as error:
+                self.output.warning(f"Conan packages: could not record a resolved dependency: {error}")
+                continue
+            packages.append(entry)
+
+        packages.sort(key=lambda entry: entry["ref"])
+
+        document = os.path.join(self.build_folder, "conan-packages.json")
+        try:
+            with open(document, "w", encoding="utf-8") as handle:
+                json.dump({"fields_version": 1, "packages": packages}, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+        except OSError as error:
+            self.output.warning(f"Conan packages: could not record the resolved package set: {error}")
+            return
+
+        tc.cache_variables["RV_CONAN_PACKAGES_FILE"] = self.__cmake_path(document)
+        self.output.info(f"Conan packages: recorded {len(packages)} resolved host package(s)")
 
     def build(self):
         # NOTE: `pip install --user` fails inside virtualenvs:

@@ -163,3 +163,25 @@ SET_PROPERTY(
   CACHE RV_DEPS_VERSION_MATCH
   PROPERTY STRINGS EXACT MINIMUM
 )
+
+#
+# Build identity, manifest and artifact probing
+#
+# The build identity is a single authoritative description of the platform this build targets -- VFX platform, target OS and architecture, toolchain, build
+# configuration, Python ABI series and Qt version -- computed once so that the CMake dependency path and the Conan profile cannot drift apart. It is reported at
+# configure time and recorded in the build manifest.
+#
+# Everything in this group is read-only: it records and reports what the build already is and reroutes nothing. It adds configure output and files in the build
+# directory, and never changes a dependency path.
+#
+# Probing inspects binaries with readelf/otool/dumpbin, which is too slow to do on every configure, so it is off by default.
+#
+OPTION(RV_BUILD_IDENTITY "Compute and report the build identity" ON)
+OPTION(RV_BUILD_MANIFEST "Write a build manifest recording what this build is made of" ON)
+OPTION(RV_DEPS_PROBE_ARTIFACTS "Probe prebuilt artifacts and record their facts in the build manifest" OFF)
+
+#
+# Strict artifact probing: fail naming the missing inspection tool instead of recording the fact as unknown, for a configuration that must not use an artifact
+# whose facts cannot be read. A default build leaves this OFF so that a machine without readelf/otool/dumpbin still builds.
+#
+OPTION(RV_DEPS_PROBE_STRICT "Fail artifact probing when an inspection tool is missing" OFF)

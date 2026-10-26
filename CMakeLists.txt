@@ -113,7 +113,19 @@ SET(FETCHCONTENT_QUIET
     OFF
 )
 
+# The build identity is computed before the dependencies, so that what configures them can rely on it. It is reported further down, once the platform is
+# settled.
+INCLUDE(rv_build_identity)
+RV_COMPUTE_BUILD_IDENTITY()
+
 ADD_SUBDIRECTORY(cmake/dependencies)
+
+# Build identity report and manifest. Both are read-only: they record and report what this build is made of and reroute nothing. Neither changes a dependency
+# path or what is built.
+RV_REPORT_BUILD_IDENTITY()
+
+INCLUDE(rv_build_manifest)
+RV_WRITE_BUILD_MANIFEST()
 
 # RV's main code
 ADD_SUBDIRECTORY(src)
