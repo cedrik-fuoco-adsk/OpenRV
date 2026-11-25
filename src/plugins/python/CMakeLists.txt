@@ -5,5 +5,6 @@
 #
 
 ADD_SUBDIRECTORY(gtoContainer)
+ADD_SUBDIRECTORY(gtoModule)
 ADD_SUBDIRECTORY(network)
 ADD_SUBDIRECTORY(rvSession)
