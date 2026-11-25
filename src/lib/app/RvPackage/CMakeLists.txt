@@ -36,7 +36,7 @@ TARGET_LINK_LIBRARIES(
   PRIVATE TwkDeploy
           TwkUtil
           TwkQtCoreUtil
-          yaml
+          yaml_cpp
           stl_ext
           TwkApp
           minizip

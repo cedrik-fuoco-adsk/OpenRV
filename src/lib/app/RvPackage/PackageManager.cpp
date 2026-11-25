@@ -9,7 +9,7 @@
 #include <TwkDeploy/Deploy.h>
 #include <TwkUtil/File.h>
 #include <unzip.h>
-#include <yaml.h>
+#include <yaml-cpp/yaml.h>
 #include <TwkApp/Bundle.h>
 #include <TwkUtil/File.h>
 #include <TwkQtCoreUtil/QtConvert.h>
@@ -32,6 +32,16 @@ namespace
         }
 
         return match.hasMatch() ? match.captured(1) : QString();
+    }
+
+    QString yamlScalarToQString(const YAML::Node& node)
+    {
+        if (!node || !node.IsScalar())
+        {
+            return {};
+        }
+
+        return QString::fromStdString(node.Scalar());
     }
 } // namespace
 
@@ -1133,197 +1143,150 @@ namespace Rv
 
                 if (!buffer.empty())
                 {
-                    yaml_parser_t parser;
-                    yaml_event_t input_event;
-                    memset(&parser, 0, sizeof(parser));
-                    memset(&input_event, 0, sizeof(input_event));
-
-                    if (!yaml_parser_initialize(&parser))
-                    {
-                        cerr << "ERROR: Could not initialize the YAML parser "
-                                "object"
-                             << endl;
-                        return;
-                    }
-
-                    yaml_parser_set_input_string(&parser, (const unsigned char*)&buffer.front(), buffer.size());
-
                     Package& package = m_packages.back();
                     package.installed = false;
                     package.hidden = false;
                     package.system = false;
                     package.optional = false;
                     package.openrvversion = "1.0.0";
-                    bool modeState = false;
-                    bool auxFileState = false;
-                    bool auxFolderState = false;
-                    bool valueState = false;
-                    QString pname;
-                    QString auxFile;
-                    QString auxFolder;
 
-                    for (bool done = false; !done;)
+                    try
                     {
-                        if (!yaml_parser_parse(&parser, &input_event))
+                        const YAML::Node root = YAML::Load(std::string(buffer.data(), buffer.size()));
+                        if (root && root.IsMap())
                         {
-                            cerr << "ERROR: YAML parser failed on PACKAGE file "
-                                    "in "
-                                 << infile.toStdString() << endl;
-                            break;
-                        }
-
-                        if (input_event.type == YAML_STREAM_END_EVENT)
-                            done = true;
-
-                        switch (input_event.type)
-                        {
-                        case YAML_STREAM_START_EVENT:
-                        case YAML_STREAM_END_EVENT:
-                        case YAML_DOCUMENT_START_EVENT:
-                        case YAML_DOCUMENT_END_EVENT:
-                        case YAML_ALIAS_EVENT:
-                            break;
-                        case YAML_SEQUENCE_START_EVENT:
-                            // cout << "seq start" << endl;
-                            break;
-                        case YAML_SEQUENCE_END_EVENT:
-                            // cout << "seq end" << endl;
-                            if (modeState)
-                                modeState = false;
-                            if (auxFileState)
-                                auxFileState = false;
-                            if (auxFolderState)
-                                auxFolderState = false;
-                            break;
-                        case YAML_MAPPING_START_EVENT:
-                            // cout << "map start" << endl;
-                            if (modeState)
-                                package.modes.push_back(Mode());
-                            else if (auxFileState)
+                            for (const auto& entry : root)
                             {
-                                package.auxFiles.push_back(AuxFile());
-                                package.auxFiles.back().file = auxFile;
-                            }
-                            else if (auxFolderState)
-                            {
-                                package.auxFolders.push_back(AuxFolder());
-                                package.auxFolders.back().folder = auxFolder;
-                            }
-                            break;
-                        case YAML_MAPPING_END_EVENT:
-                            // cout << "map end" << endl;
-                            break;
-                        case YAML_SCALAR_EVENT:
-                        {
-                            QString v = QString::fromUtf8((const char*)input_event.data.scalar.value);
-                            // cout << "scalar " << v.toUtf8().data() << endl;
+                                const QString pname = yamlScalarToQString(entry.first);
+                                const YAML::Node& node = entry.second;
 
-                            if (!valueState)
-                            {
-                                pname = v;
-
-                                if (v == "modes")
-                                    modeState = true;
-                                else if (v == "files")
-                                    auxFileState = true;
-                                else if (v == "folders")
-                                    auxFolderState = true;
-                                else
-                                    valueState = true;
-                            }
-                            else if (modeState)
-                            {
-                                if (package.modes.size())
+                                if (pname == "modes")
                                 {
-                                    Mode& m = package.modes.back();
+                                    if (node.IsSequence())
+                                    {
+                                        for (const auto& modeNode : node)
+                                        {
+                                            if (!modeNode.IsMap())
+                                                continue;
 
-                                    if (pname == "file")
-                                        m.file = v;
-                                    else if (pname == "menu")
-                                        m.menu = v;
-                                    else if (pname == "shortcut")
-                                        m.shortcut = v;
-                                    else if (pname == "event")
-                                        m.event = v;
-                                    else if (pname == "load")
-                                        m.load = v;
+                                            Mode m;
+                                            for (const auto& field : modeNode)
+                                            {
+                                                const QString key = yamlScalarToQString(field.first);
+                                                const QString v = yamlScalarToQString(field.second);
+
+                                                if (key == "file")
+                                                    m.file = v;
+                                                else if (key == "menu")
+                                                    m.menu = v;
+                                                else if (key == "shortcut")
+                                                    m.shortcut = v;
+                                                else if (key == "event")
+                                                    m.event = v;
+                                                else if (key == "load")
+                                                    m.load = v;
+                                                else if (key == "icon")
+                                                    m.icon = v;
+                                                else if (key == "requires")
+                                                    m.requiresList = v.split(" ");
+                                            }
+                                            package.modes.push_back(std::move(m));
+                                        }
+                                    }
+                                }
+                                else if (pname == "files")
+                                {
+                                    if (node.IsSequence())
+                                    {
+                                        for (const auto& fileNode : node)
+                                        {
+                                            if (!fileNode.IsMap())
+                                                continue;
+
+                                            AuxFile a;
+                                            for (const auto& field : fileNode)
+                                            {
+                                                const QString key = yamlScalarToQString(field.first);
+                                                const QString v = yamlScalarToQString(field.second);
+
+                                                if (key == "file")
+                                                    a.file = v;
+                                                else if (key == "location")
+                                                    a.location = v;
+                                            }
+                                            package.auxFiles.push_back(std::move(a));
+                                        }
+                                    }
+                                }
+                                else if (pname == "folders")
+                                {
+                                    if (node.IsSequence())
+                                    {
+                                        for (const auto& folderNode : node)
+                                        {
+                                            if (!folderNode.IsMap())
+                                                continue;
+
+                                            AuxFolder a;
+                                            for (const auto& field : folderNode)
+                                            {
+                                                const QString key = yamlScalarToQString(field.first);
+                                                const QString v = yamlScalarToQString(field.second);
+
+                                                if (key == "folder")
+                                                    a.folder = v;
+                                                else if (key == "location")
+                                                    a.location = v;
+                                            }
+                                            package.auxFolders.push_back(std::move(a));
+                                        }
+                                    }
+                                }
+                                else if (node.IsScalar() || node.IsNull())
+                                {
+                                    const QString v = yamlScalarToQString(node);
+
+                                    if (pname == "package")
+                                        package.name = v;
+                                    else if (pname == "url")
+                                        package.url = v;
                                     else if (pname == "icon")
-                                        m.icon = v;
+                                        package.icon = v;
+                                    else if (pname == "description")
+                                        package.description = v;
+                                    else if (pname == "author")
+                                        package.author = v;
+                                    else if (pname == "organization")
+                                        package.organization = v;
+                                    else if (pname == "contact")
+                                        package.contact = v;
+                                    else if (pname == "version")
+                                        package.version = v;
+                                    else if (pname == "excludes")
+                                        package.excludes = v;
                                     else if (pname == "requires")
-                                        m.requiresList = v.split(" ");
+                                        package.requiresList = v;
+                                    else if (pname == "rv")
+                                        package.rvversion = v;
+                                    else if (pname == "openrv")
+                                        package.openrvversion = v;
+                                    else if (pname == "imageio")
+                                        package.imageio = v.split(" ");
+                                    else if (pname == "movieio")
+                                        package.movieio = v.split(" ");
+                                    else if (pname == "hidden")
+                                        package.hidden = v == "true";
+                                    else if (pname == "system")
+                                        package.system = v == "true";
+                                    else if (pname == "optional")
+                                        package.optional = v == "true";
                                 }
-
-                                valueState = false;
-                            }
-                            else if (auxFileState)
-                            {
-                                if (package.auxFiles.size())
-                                {
-                                    AuxFile& a = package.auxFiles.back();
-                                    if (pname == "file")
-                                        a.file = v;
-                                    else if (pname == "location")
-                                        a.location = v;
-                                }
-
-                                valueState = false;
-                            }
-                            else if (auxFolderState)
-                            {
-                                if (package.auxFolders.size())
-                                {
-                                    AuxFolder& a = package.auxFolders.back();
-                                    if (pname == "folder")
-                                        a.folder = v;
-                                    else if (pname == "location")
-                                        a.location = v;
-                                }
-
-                                valueState = false;
-                            }
-                            else
-                            {
-                                if (pname == "package")
-                                    package.name = v;
-                                else if (pname == "url")
-                                    package.url = v;
-                                else if (pname == "icon")
-                                    package.icon = v;
-                                else if (pname == "description")
-                                    package.description = v;
-                                else if (pname == "author")
-                                    package.author = v;
-                                else if (pname == "organization")
-                                    package.organization = v;
-                                else if (pname == "contact")
-                                    package.contact = v;
-                                else if (pname == "version")
-                                    package.version = v;
-                                else if (pname == "excludes")
-                                    package.excludes = v;
-                                else if (pname == "requires")
-                                    package.requiresList = v;
-                                else if (pname == "rv")
-                                    package.rvversion = v;
-                                else if (pname == "openrv")
-                                    package.openrvversion = v;
-                                else if (pname == "imageio")
-                                    package.imageio = v.split(" ");
-                                else if (pname == "movieio")
-                                    package.movieio = v.split(" ");
-                                else if (pname == "hidden")
-                                    package.hidden = v == "true";
-                                else if (pname == "system")
-                                    package.system = v == "true";
-                                else if (pname == "optional")
-                                    package.optional = v == "true";
-                                valueState = false;
                             }
                         }
-                        break;
-                        default:
-                            break;
-                        }
+                    }
+                    catch (const YAML::Exception&)
+                    {
+                        cerr << "ERROR: YAML parser failed on PACKAGE file in " << infile.toStdString() << endl;
                     }
 
                     static const bool isOpenRV = std::string_view(INTERNAL_APPLICATION_NAME) == "OpenRV";
@@ -1333,8 +1296,6 @@ namespace Rv
 
                     package.zipFile = true;
                     package.installing = false;
-                    yaml_event_delete(&input_event);
-                    yaml_parser_delete(&parser);
 
                     for (auto& auxFolder : package.auxFolders)
                     {

@@ -52,7 +52,6 @@
 #include <iostream>
 #include <sstream>
 #include <unzip.h>
-#include <yaml.h>
 
 #ifdef PLATFORM_DARWIN
 extern const char* rv_mac_aqua;

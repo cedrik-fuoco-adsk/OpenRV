@@ -444,7 +444,6 @@ TARGET_LINK_LIBRARIES(
           TwkPython
           arg
           stl_ext
-          yaml
           minizip
           IOcin
           IOdpx
